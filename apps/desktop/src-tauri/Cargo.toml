@@ -1,0 +1,31 @@
+[package]
+name = "openclicky-desktop"
+description = "openclicky macOS app (Tauri 2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "openclicky_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "openclicky"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+openclicky-core.workspace = true
+openclicky-voice.workspace = true
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger = "0.11"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+block2 = "0.6"
