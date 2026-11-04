@@ -1,0 +1,8 @@
+[package]
+name = "openclicky-llm"
+description = "LLM provider trait + Anthropic implementation (M2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

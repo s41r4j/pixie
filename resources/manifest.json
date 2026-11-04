@@ -1,0 +1,366 @@
+{
+  "version": 1,
+  "sounds": {
+    "agent-launch": {
+      "files": [
+        "sounds/agent-launch.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "agent-done": {
+      "files": [
+        "sounds/agent-done.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "agent-needs-you": {
+      "files": [
+        "sounds/agent-needs-you.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "agent-close": {
+      "files": [
+        "sounds/agent-close.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "badge-pop": {
+      "files": [
+        "sounds/badge-pop-1.wav",
+        "sounds/badge-pop-2.wav",
+        "sounds/badge-pop-3.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "clicky-question": {
+      "files": [
+        "sounds/clicky-question.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "clicky-surprised": {
+      "files": [
+        "sounds/clicky-surprised.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "clicky-text-open": {
+      "files": [
+        "sounds/clicky-text-open.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "clicky-text-close": {
+      "files": [
+        "sounds/clicky-text-close.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "clicky-text-send": {
+      "files": [
+        "sounds/clicky-text-send.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "clicky-text-receive": {
+      "files": [
+        "sounds/clicky-text-receive.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "ding": {
+      "files": [
+        "sounds/ding-1.wav",
+        "sounds/ding-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "enter": {
+      "files": [
+        "sounds/enter.mp3"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "pen-flick": {
+      "files": [
+        "sounds/pen-flick-1.wav",
+        "sounds/pen-flick-2.wav",
+        "sounds/pen-flick-3.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "highlighter": {
+      "files": [
+        "sounds/highlighter-1.wav",
+        "sounds/highlighter-2.wav",
+        "sounds/highlighter-3.wav"
+      ],
+      "gain": 0.7,
+      "category": "ui"
+    },
+    "pencil-paper-bed": {
+      "files": [
+        "sounds/pencil-paper-bed-1.wav",
+        "sounds/pencil-paper-bed-2.wav"
+      ],
+      "gain": 0.5,
+      "category": "ambient",
+      "bed": true
+    },
+    "pen-screen-bed": {
+      "files": [
+        "sounds/pen-screen-bed-1.wav"
+      ],
+      "gain": 0.5,
+      "category": "ambient",
+      "bed": true
+    },
+    "handwriting-bed": {
+      "files": [
+        "sounds/handwriting-bed-1.wav",
+        "sounds/handwriting-bed-2.wav"
+      ],
+      "gain": 0.5,
+      "category": "ambient",
+      "bed": true
+    },
+    "eraser-bed": {
+      "files": [
+        "sounds/eraser-bed-1.wav"
+      ],
+      "gain": 0.5,
+      "category": "ambient",
+      "bed": true
+    },
+    "paper-place": {
+      "files": [
+        "sounds/paper-place-1.wav",
+        "sounds/paper-place-2.wav",
+        "sounds/paper-place-3.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "photo-drop": {
+      "files": [
+        "sounds/photo-drop-1.wav",
+        "sounds/photo-drop-2.wav",
+        "sounds/photo-drop-3.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "slide": {
+      "files": [
+        "sounds/slide-1.wav",
+        "sounds/slide-2.wav",
+        "sounds/slide-3.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "sticky-press": {
+      "files": [
+        "sounds/sticky-press-1.wav",
+        "sounds/sticky-press-2.wav",
+        "sounds/sticky-press-3.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "stamp": {
+      "files": [
+        "sounds/stamp-1.wav",
+        "sounds/stamp-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "tada": {
+      "files": [
+        "sounds/tada-1.wav",
+        "sounds/tada-2.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "whoosh": {
+      "files": [
+        "sounds/whoosh-1.wav",
+        "sounds/whoosh-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "nope": {
+      "files": [
+        "sounds/nope-1.wav",
+        "sounds/nope-2.wav"
+      ],
+      "gain": 1,
+      "category": "agent"
+    },
+    "sparkle": {
+      "files": [
+        "sounds/sparkle-1.wav",
+        "sounds/sparkle-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "target-ping": {
+      "files": [
+        "sounds/target-ping-1.wav",
+        "sounds/target-ping-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "page-clear": {
+      "files": [
+        "sounds/page-clear-1.wav",
+        "sounds/page-clear-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "gel-pop": {
+      "files": [
+        "sounds/gel-pop-1.wav",
+        "sounds/gel-pop-2.wav",
+        "sounds/gel-pop-3.wav",
+        "sounds/gel-pop-4.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "type-keys": {
+      "files": [
+        "sounds/type-keys-1.wav",
+        "sounds/type-keys-2.wav"
+      ],
+      "gain": 0.6,
+      "category": "ui"
+    },
+    "reveal-boot": {
+      "files": [
+        "sounds/reveal-boot.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "hatching": {
+      "files": [
+        "sounds/hatching.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "home-reveal": {
+      "files": [
+        "sounds/home-reveal.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "boing": {
+      "files": [
+        "sounds/boing-1.wav",
+        "sounds/boing-2.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    },
+    "build-3d": {
+      "files": [
+        "sounds/build-3d-1.wav",
+        "sounds/build-3d-2.wav",
+        "sounds/build-3d-3.wav",
+        "sounds/build-3d-4.wav"
+      ],
+      "gain": 1,
+      "category": "ui"
+    }
+  },
+  "icons": {
+    "app-icon-1024": {
+      "files": [
+        "icons/app-icon-1024.png"
+      ]
+    },
+    "tray-template": {
+      "files": [
+        "icons/tray-template.png"
+      ]
+    },
+    "ext-16": {
+      "files": [
+        "icons/ext-16.png"
+      ]
+    },
+    "ext-32": {
+      "files": [
+        "icons/ext-32.png"
+      ]
+    },
+    "ext-48": {
+      "files": [
+        "icons/ext-48.png"
+      ]
+    },
+    "ext-128": {
+      "files": [
+        "icons/ext-128.png"
+      ]
+    }
+  },
+  "videos": {
+    "onboarding-intro": {
+      "files": [
+        "videos/onboarding-intro.mp4"
+      ]
+    },
+    "paywall-intro": {
+      "files": [
+        "videos/paywall-intro.mp4"
+      ]
+    }
+  },
+  "fonts": {
+    "barlow-regular": {
+      "files": [
+        "fonts/Barlow-Regular.ttf"
+      ]
+    },
+    "barlow-medium": {
+      "files": [
+        "fonts/Barlow-Medium.ttf"
+      ]
+    },
+    "barlow-semibold": {
+      "files": [
+        "fonts/Barlow-SemiBold.ttf"
+      ]
+    },
+    "patrick-hand": {
+      "files": [
+        "fonts/PatrickHand.ttf"
+      ]
+    }
+  }
+}

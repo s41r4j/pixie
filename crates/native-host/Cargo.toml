@@ -1,0 +1,12 @@
+[package]
+name = "openclicky-native-host"
+description = "Chrome native messaging host com.openclicky.browser (M7)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "openclicky-native-host"
+path = "src/main.rs"
+
+[dependencies]

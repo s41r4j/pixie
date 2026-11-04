@@ -1,0 +1,16 @@
+# build
+target/
+node_modules/
+dist/
+apps/desktop/src-tauri/gen/
+
+# reverse-engineering reference material: never commit (proprietary binaries, extracted assets)
+work/
+heyclicky/
+
+# secrets / captured media
+.env
+.env.*
+*.dmg
+*.exe
+captures/
