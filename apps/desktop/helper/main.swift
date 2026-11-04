@@ -20,6 +20,7 @@ import Foundation
 import ScreenCaptureKit
 import Speech
 import Vision
+import PDFKit
 import WebKit
 
 // MARK: - wire
@@ -772,6 +773,25 @@ if argv.count >= 4 && argv[1] == "pdf" {
         exit(1)
     }
     app.run()
+} else if argv.count >= 3 && argv[1] == "text" {
+    // Plain text of a PDF, Word, RTF, HTML or Pages file.
+    let url = URL(fileURLWithPath: (argv[2] as NSString).expandingTildeInPath)
+    if url.pathExtension.lowercased() == "pdf" {
+        guard let doc = PDFDocument(url: url) else {
+            FileHandle.standardError.write("can't open pdf\n".data(using: .utf8)!)
+            exit(1)
+        }
+        for i in 0..<doc.pageCount {
+            if let t = doc.page(at: i)?.string { print("--- page \(i + 1) ---\n\(t)") }
+        }
+        exit(0)
+    }
+    if let attr = try? NSAttributedString(url: url, options: [:], documentAttributes: nil) {
+        print(attr.string)
+        exit(0)
+    }
+    FileHandle.standardError.write("unsupported file\n".data(using: .utf8)!)
+    exit(1)
 } else if argv.count >= 2 && argv[1] == "voices" {
     for v in Speaker.list() { print("\(v["quality"]!)\t\(v["language"]!)\t\(v["name"]!)\t\(v["id"]!)") }
     exit(0)

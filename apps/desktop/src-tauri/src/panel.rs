@@ -1,26 +1,45 @@
-//! The notch panel: top-centre of the screen under the cursor, never steals focus.
-//! Sounds play only on state changes (open → `agent-launch`, close → `agent-close`).
+//! The notch panel. A transparent window pinned to the top edge of the screen under the
+//! pointer, over the menu bar; the UI draws a black shape that grows out of the notch.
+//! Clicks pass through everywhere except the drawn shape (see `hit.rs`). Never steals focus,
+//! except in `Typing` mode where the user asked to type.
 
-use crate::{emit, AppState, PANEL};
+use crate::macos::{self, Rect};
+use crate::{emit, hit, AppState, PANEL};
 use openclicky_core::Event;
 use serde::Serialize;
 use serde_json::json;
-use tauri::{AppHandle, Manager, PhysicalPosition, Runtime, WebviewWindow};
+use std::time::Duration;
+use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
+
+/// Window size (points). The visible shape is drawn inside it.
+pub const WIDTH: f64 = 720.0;
+pub const HEIGHT: f64 = 460.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelMode {
     #[default]
     Hidden,
-    /// Hotkey held: mic would be live (M2).
+    /// Hold-to-talk: mic live, transcript streaming.
     Listening,
-    /// Open, turn finished / waiting.
+    /// fn+⌃ dictation.
+    Dictating,
+    /// Waiting for the first words of the answer.
+    Thinking,
+    /// The answer (spoken + written).
+    Answer,
+    /// Opened with a tap: a hint and a text box.
     Idle,
+    /// Text box focused.
+    Typing,
+    /// A one-line notice (job finished, typed it…).
+    Toast,
 }
 
 #[derive(Debug, Default)]
 pub struct PanelState {
     pub mode: PanelMode,
+    pub screen: macos::ScreenInfo,
 }
 
 fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
@@ -28,31 +47,21 @@ fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
 }
 
 pub fn configure(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
     if let Some(w) = window(app) {
-        crate::macos::configure_overlay(&w);
+        macos::configure_overlay(&w, macos::PANEL_LEVEL);
+        macos::set_ignores_mouse(&w, true);
     }
-}
-
-/// Place the panel top-centre on the monitor under the cursor, just below the menu bar.
-fn position(app: &AppHandle, win: &WebviewWindow) {
-    let monitor = app
-        .cursor_position()
-        .ok()
-        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
-        .or_else(|| app.primary_monitor().ok().flatten());
-    let (Some(m), Ok(size)) = (monitor, win.outer_size()) else { return };
-    let area = m.work_area();
-    let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
-    let y = area.position.y + (8.0 * m.scale_factor()) as i32;
-    let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
 pub fn mode(app: &AppHandle) -> PanelMode {
     app.state::<AppState>().panel.lock().map(|p| p.mode).unwrap_or_default()
 }
 
-/// Set the mode; shows/hides the window and plays a sound on open/close transitions.
+pub fn screen(app: &AppHandle) -> macos::ScreenInfo {
+    app.state::<AppState>().panel.lock().map(|p| p.screen).unwrap_or_default()
+}
+
+/// Set the mode; shows/hides the window and plays a sound on open/close.
 pub fn set_mode(app: &AppHandle, next: PanelMode) {
     let state = app.state::<AppState>();
     let prev = {
@@ -65,33 +74,49 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(win) = window(&handle) else { return };
-        match (prev, next) {
-            (PanelMode::Hidden, _) => {
-                position(&handle, &win);
-                #[cfg(target_os = "macos")]
-                crate::macos::order_front_without_focus(&win);
-                #[cfg(not(target_os = "macos"))]
-                let _ = win.show();
-                handle.state::<AppState>().play("agent-launch");
+        let st = handle.state::<AppState>();
+        if prev == PanelMode::Hidden {
+            let s = macos::screen_at_cursor();
+            let frame = Rect { x: s.frame.x + (s.frame.w - WIDTH) / 2.0, y: s.frame.y, w: WIDTH, h: HEIGHT };
+            macos::set_frame(&win, frame);
+            st.panel.lock().unwrap().screen = s;
+            hit::set_frame(&handle, PANEL, frame);
+            macos::order_front_without_focus(&win);
+            hit::set_visible(&handle, PANEL, true);
+            emit(&handle, Event::new("panel.screen", json!({ "screen": s })));
+            if next != PanelMode::Toast {
+                st.play("agent-launch");
             }
-            (_, PanelMode::Hidden) => {
-                #[cfg(target_os = "macos")]
-                crate::macos::order_out(&win);
-                #[cfg(not(target_os = "macos"))]
-                let _ = win.hide();
-                handle.state::<AppState>().play("agent-close");
+        }
+        if next == PanelMode::Typing {
+            macos::make_key(&win);
+            let _ = win.set_focus();
+        } else if prev == PanelMode::Typing {
+            macos::deactivate();
+        }
+        if next == PanelMode::Hidden {
+            hit::set_visible(&handle, PANEL, false);
+            if !matches!(prev, PanelMode::Toast) {
+                st.play("agent-close");
             }
-            _ => {}
+            // Let the collapse animation play, then take the window off screen.
+            let h2 = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(320));
+                let h3 = h2.clone();
+                let _ = h2.run_on_main_thread(move || {
+                    if mode(&h3) == PanelMode::Hidden {
+                        if let Some(w) = window(&h3) {
+                            macos::order_out(&w);
+                        }
+                    }
+                });
+            });
         }
     });
-    emit(app, Event::new("panel.state", json!({ "mode": next })));
+    emit(app, Event::new("panel.state", json!({ "mode": next, "prev": prev })));
 }
 
 pub fn hide(app: &AppHandle) {
     set_mode(app, PanelMode::Hidden);
-}
-
-pub fn toggle(app: &AppHandle) {
-    let next = if mode(app) == PanelMode::Hidden { PanelMode::Idle } else { PanelMode::Hidden };
-    set_mode(app, next);
 }

@@ -1,4 +1,4 @@
-//! Menu-bar icon: left click toggles the panel; the menu has panel, setup and quit.
+//! Menu-bar icon (the `:)` mark): left click opens the panel to type; right click for the menu.
 
 use crate::{commands, panel, AppState};
 use openclicky_core::ResourceKind;
@@ -8,10 +8,14 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager};
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(app, "panel", "Show / Hide Panel (hold ⌃⌥ to talk)", true, None::<&str>)?;
-    let setup = MenuItem::with_id(app, "permissions", "Permissions…", true, None::<&str>)?;
+    let hint = MenuItem::with_id(app, "hint", "Hold ⌃⌥ to talk · fn⌃ to dictate", false, None::<&str>)?;
+    let ask = MenuItem::with_id(app, "ask", "Type a Question…", true, None::<&str>)?;
+    let jobs = MenuItem::with_id(app, "jobs", "Show Jobs", true, None::<&str>)?;
+    let setup = MenuItem::with_id(app, "settings", "Settings…", true, Some("cmd+,"))?;
     let quit = MenuItem::with_id(app, "quit", "Quit openclicky", true, Some("cmd+q"))?;
-    let menu = Menu::with_items(app, &[&toggle, &setup, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&hint, &sep, &ask, &jobs, &setup, &sep2, &quit])?;
 
     let icon = app
         .state::<AppState>()
@@ -26,8 +30,15 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .icon_as_template(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "panel" => panel::toggle(app),
-            "permissions" => commands::open_permissions_window(app),
+            "ask" => panel::set_mode(app, panel::PanelMode::Typing),
+            "jobs" => {
+                if let Some(j) = app.state::<AppState>().jobs.list().first() {
+                    crate::windows::open_note(app, &j.id);
+                } else {
+                    crate::jobs::toast(app, "No jobs yet. Ask for something bigger and I'll make one.", "info", None);
+                }
+            }
+            "settings" => commands::open_permissions_window(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -38,7 +49,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                panel::toggle(tray.app_handle());
+                let app = tray.app_handle();
+                if panel::mode(app) == panel::PanelMode::Hidden {
+                    panel::set_mode(app, panel::PanelMode::Typing);
+                } else {
+                    crate::session::escape(app);
+                }
             }
         });
     if let Some(icon) = icon {

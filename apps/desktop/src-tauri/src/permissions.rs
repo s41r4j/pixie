@@ -41,7 +41,7 @@ impl PermId {
             PermId::Microphone => ("microphone", "Microphone", "Hear you while you hold ⌃⌥.", true, "Privacy_Microphone"),
             PermId::Screen => ("screen", "Screen Recording", "See what you're looking at when you ask about it.", true, "Privacy_ScreenCapture"),
             PermId::Accessibility => ("accessibility", "Accessibility", "Point at buttons and type into fields for you.", true, "Privacy_Accessibility"),
-            PermId::Speech => ("speech", "Speech Recognition", "Turn your voice into text on this Mac.", false, "Privacy_SpeechRecognition"),
+            PermId::Speech => ("speech", "Speech Recognition", "Turn your voice into text, on this Mac.", true, "Privacy_SpeechRecognition"),
             PermId::Files => ("files", "Desktop, Documents & Downloads", "Find and save files where you keep them.", false, "Privacy_FilesAndFolders"),
         }
     }

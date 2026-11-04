@@ -1,7 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Panel + permissions windows",
-  "windows": ["panel", "permissions"],
-  "permissions": ["core:default", "core:window:allow-hide"]
+  "description": "All openclicky windows",
+  "windows": [
+    "panel",
+    "overlay",
+    "shelf",
+    "settings",
+    "note"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close"
+  ]
 }

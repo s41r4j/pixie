@@ -19,13 +19,23 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 openclicky-core.workspace = true
 openclicky-voice.workspace = true
+openclicky-llm.workspace = true
+openclicky-tools.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
 env_logger = "0.11"
+tokio = { version = "1", features = ["full"] }
+base64 = "0.22"
+async-trait = "0.1"
+chrono = "0.4"
+rand.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
 block2 = "0.6"
+
+[dev-dependencies]
+tempfile = "3"

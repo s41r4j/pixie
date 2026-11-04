@@ -4,13 +4,16 @@
 //! Accessibility/Input Monitoring. Polling `CGEventSourceFlagsState` needs no permission
 //! and costs ~nothing at 50 Hz, so the hotkey works before the wizard is done.
 //!
-//! Panel behaviour:
-//! - press   → panel opens in `listening` (sound on open)
-//! - release → `idle` (M2 ends the turn here)
-//! - a quick tap (<250 ms) while the panel was already open → close it
-//! - Escape  → cancel + close
+//! Behaviour:
+//! - press   → panel opens listening (mic live, screenshot taken in parallel)
+//! - release → the turn runs; a quick tap (<250 ms) opens the text box, or closes the panel
+//!   if it was already open
+//! - Escape  → stop speech + the turn, close
+//! - fn+⌃    → dictate into the focused field
 
 use crate::panel::{self, PanelMode};
+use crate::session;
+use tauri::Manager;
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
@@ -29,7 +32,7 @@ pub const TAP: Duration = Duration::from_millis(250);
 pub enum HotkeyEvent {
     TalkDown,
     TalkUp { held: Duration },
-    /// fn+control. TODO(M4): dictate clean text into the focused field.
+    /// fn+control: dictate clean text into the focused field.
     DictateDown,
     DictateUp,
     Escape,
@@ -82,7 +85,7 @@ impl ChordTracker {
     }
 }
 
-/// Spawn the polling thread (macOS only; other platforms have no hotkey yet).
+/// Spawn the polling thread (macOS only). Also drives click-through hit testing.
 pub fn spawn(app: AppHandle) {
     #[cfg(target_os = "macos")]
     std::thread::Builder::new()
@@ -96,6 +99,7 @@ pub fn spawn(app: AppHandle) {
                 for ev in tracker.update(flags, esc, Instant::now()) {
                     handle(&app, ev, &mut was_open_at_press);
                 }
+                crate::hit::tick(&app);
                 std::thread::sleep(POLL);
             }
         })
@@ -109,23 +113,16 @@ fn handle(app: &AppHandle, ev: HotkeyEvent, was_open_at_press: &mut bool) {
     match ev {
         HotkeyEvent::TalkDown => {
             *was_open_at_press = panel::mode(app) != PanelMode::Hidden;
-            panel::set_mode(app, PanelMode::Listening);
+            session::talk_down(app);
         }
-        HotkeyEvent::TalkUp { held } => {
-            if held < TAP && *was_open_at_press {
-                panel::hide(app);
-            } else {
-                // TODO(M2): end the turn → STT final → Claude → TTS.
-                panel::set_mode(app, PanelMode::Idle);
-            }
-        }
+        HotkeyEvent::TalkUp { held } => session::talk_up(app, held < TAP, *was_open_at_press),
         HotkeyEvent::Escape => {
-            if panel::mode(app) != PanelMode::Hidden {
-                crate::emit(app, openclicky_core::Event::new("hotkey.cancel", serde_json::json!({})));
-                panel::hide(app);
+            if panel::mode(app) != PanelMode::Hidden || app.state::<crate::AppState>().session.is_speaking() {
+                session::escape(app);
             }
         }
-        HotkeyEvent::DictateDown | HotkeyEvent::DictateUp => {} // TODO(M4)
+        HotkeyEvent::DictateDown => session::dictate_down(app),
+        HotkeyEvent::DictateUp => session::dictate_up(app),
     }
 }
 

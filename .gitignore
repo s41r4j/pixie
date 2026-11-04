@@ -14,3 +14,4 @@ heyclicky/
 *.dmg
 *.exe
 captures/
+apps/desktop/src-tauri/binaries/

@@ -19,6 +19,10 @@ impl Event {
         Self { kind: kind.into(), job_id: None, payload }
     }
 
+    pub fn with_job(kind: impl Into<String>, job_id: impl Into<JobId>, payload: serde_json::Value) -> Self {
+        Self { kind: kind.into(), job_id: Some(job_id.into()), payload }
+    }
+
     pub fn for_job(mut self, job_id: impl Into<JobId>) -> Self {
         self.job_id = Some(job_id.into());
         self

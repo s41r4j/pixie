@@ -14,9 +14,9 @@
 //! Optional `DRAFT:` (free text) and `CHOICES:` (list). Block names are case-sensitive and
 //! must start a line; anything before the first block is the body.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Report {
     pub body: String,
     pub done_title: Option<String>,
