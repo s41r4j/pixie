@@ -21,6 +21,10 @@ rust-version = "1.80"
 [workspace.dependencies]
 openclicky-core = { path = "crates/core" }
 openclicky-voice = { path = "crates/voice" }
+openclicky-llm = { path = "crates/llm" }
+openclicky-tools = { path = "crates/tools" }
+openclicky-mcp = { path = "crates/mcp" }
+openclicky-native-host = { path = "crates/native-host" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

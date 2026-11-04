@@ -1,8 +1,19 @@
 [package]
 name = "openclicky-llm"
-description = "LLM provider trait + Anthropic implementation (M2)"
+description = "LLM provider trait + Anthropic Messages implementation (Claude default, DeepSeek compatible)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+log.workspace = true
+async-trait = "0.1"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+tokio = { version = "1", features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

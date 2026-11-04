@@ -1,8 +1,24 @@
 [package]
 name = "openclicky-tools"
-description = "Agent tools: bash, files, web, device, note (M5)"
+description = "Agent tools (BUILD-SPEC §5): shell, files, web, device, note; the tool loop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+openclicky-core.workspace = true
+openclicky-llm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+async-trait = "0.1"
+base64 = "0.22"
+regex = "1"
+url = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["process", "fs", "time", "macros", "rt", "io-util"] }
+tokio-util = "0.7"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs", "time"] }
