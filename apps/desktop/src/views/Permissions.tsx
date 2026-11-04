@@ -101,7 +101,7 @@ export function Permissions() {
         <div className="setup__meta">
           {res &&
             (res.missing.length === 0
-              ? `${res.sounds} sound slots ready`
+              ? `${res.sounds} sound slots ready${res.pack === "local" ? " (local pack)" : ""}`
               : `${res.missing.length} media file(s) missing. Run npm run placeholders`)}
           <button className="btn btn--link" onClick={() => api.playSound("agent-done")}>
             Test sound

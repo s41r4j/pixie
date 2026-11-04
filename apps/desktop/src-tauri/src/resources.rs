@@ -8,29 +8,61 @@ use std::path::PathBuf;
 use tauri::http::{Request, Response, StatusCode};
 use tauri::{AppHandle, Manager, Runtime, UriSchemeContext};
 
-/// Resolution order: `$OPENCLICKY_RESOURCES` → bundled `Contents/Resources/resources` →
-/// the repo's `resources/` (dev builds).
-fn resources_root<R: Runtime>(app: &AppHandle<R>) -> PathBuf {
+/// Where the active resources came from (shown in the setup window).
+#[derive(Clone, Copy, Debug, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PackSource {
+    Env,
+    Local,
+    Bundled,
+    Repo,
+}
+
+/// The per-user local pack: `~/Library/Application Support/com.openclicky.app/resources`.
+/// Filled by `npm run assets:local`; never part of the repo or the bundle.
+pub fn local_pack_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("resources"))
+}
+
+/// Resolution order: `$OPENCLICKY_RESOURCES` → local pack → bundled
+/// `Contents/Resources/resources` → the repo's `resources/` (dev builds).
+fn resources_root<R: Runtime>(app: &AppHandle<R>) -> (PathBuf, PackSource) {
     if let Some(p) = std::env::var_os("OPENCLICKY_RESOURCES") {
-        return PathBuf::from(p);
+        return (PathBuf::from(p), PackSource::Env);
+    }
+    if let Some(local) = local_pack_dir(app) {
+        if local.join("manifest.json").is_file() {
+            return (local, PackSource::Local);
+        }
     }
     if let Ok(dir) = app.path().resource_dir() {
         let bundled = dir.join("resources");
         if bundled.join("manifest.json").is_file() {
-            return bundled;
+            return (bundled, PackSource::Bundled);
         }
     }
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../resources"))
+    (PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../resources")), PackSource::Repo)
+}
+
+/// Shipped design tokens; used when the active pack has no readable `theme.json`.
+const DEFAULT_THEME: &str = include_str!("../../../../resources/theme.json");
+
+/// Design tokens from `<root>/theme.json` (BUILD-SPEC §8), exposed to the UI as CSS vars.
+pub fn load_theme(root: &std::path::Path) -> serde_json::Value {
+    std::fs::read_to_string(root.join("theme.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::from_str(DEFAULT_THEME).expect("shipped theme.json is valid"))
 }
 
 /// Load the store, falling back to an empty manifest so the app always starts.
-pub fn load_store<R: Runtime>(app: &AppHandle<R>) -> ResourceStore {
-    let root = resources_root(app);
-    match ResourceStore::load(&root) {
+pub fn load_store<R: Runtime>(app: &AppHandle<R>) -> (ResourceStore, PackSource) {
+    let (root, source) = resources_root(app);
+    let store = match ResourceStore::load(&root) {
         Ok(store) => {
             let missing = store.missing();
             if missing.is_empty() {
-                log::info!("resources: {} ready", root.display());
+                log::info!("resources: {} ready ({source:?})", root.display());
             } else {
                 log::warn!(
                     "resources: {} file(s) missing under {} (run `npm run placeholders`)",
@@ -45,7 +77,8 @@ pub fn load_store<R: Runtime>(app: &AppHandle<R>) -> ResourceStore {
             let empty = Manifest { version: 1, ..Default::default() };
             ResourceStore::from_manifest(root, empty).expect("empty manifest is valid")
         }
-    }
+    };
+    (store, source)
 }
 
 fn content_type(path: &std::path::Path) -> &'static str {
@@ -57,6 +90,7 @@ fn content_type(path: &std::path::Path) -> &'static str {
         "ttf" => "font/ttf",
         "otf" => "font/otf",
         "woff2" => "font/woff2",
+        "jpg" | "jpeg" => "image/jpeg",
         _ => "application/octet-stream",
     }
 }

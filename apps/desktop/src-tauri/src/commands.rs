@@ -41,6 +41,7 @@ pub fn show_permissions(app: AppHandle) {
 #[derive(Serialize)]
 pub struct ResourcesReport {
     root: String,
+    pack: crate::resources::PackSource,
     sounds: usize,
     missing: Vec<MissingFile>,
 }
@@ -49,9 +50,16 @@ pub struct ResourcesReport {
 pub fn resources_report(state: State<'_, AppState>) -> ResourcesReport {
     ResourcesReport {
         root: state.store.root().display().to_string(),
+        pack: state.pack,
         sounds: state.store.manifest().sounds.len(),
         missing: state.store.missing(),
     }
+}
+
+/// Design tokens (`theme.json`) for the UI to apply as CSS custom properties.
+#[tauri::command]
+pub fn theme(state: State<'_, AppState>) -> serde_json::Value {
+    state.theme.clone()
 }
 
 /// The wizard is a normal window: the user asked for it, so it may take focus.

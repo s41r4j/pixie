@@ -31,9 +31,13 @@ export interface PermissionInfo {
 
 export interface ResourcesReport {
   root: string;
+  pack: "env" | "local" | "bundled" | "repo";
   sounds: number;
   missing: { kind: string; slot: string; file: string }[];
 }
+
+/** `resources/theme.json`: groups of name → CSS value. */
+export type Theme = { version: number } & Record<string, Record<string, string> | number>;
 
 export type SlotKind = "sound" | "icon" | "video" | "font";
 
@@ -50,6 +54,7 @@ export const api = {
   stopBed: () => invoke<void>("stop_bed"),
   showPermissions: () => invoke<void>("show_permissions"),
   resourcesReport: () => invoke<ResourcesReport>("resources_report"),
+  theme: () => invoke<Theme>("theme"),
   permissions: () => invoke<PermissionInfo[]>("permissions_status"),
   requestPermission: (id: string) => invoke<PermissionInfo>("permission_request", { id }),
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),

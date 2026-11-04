@@ -1,7 +1,9 @@
 {
   "name": "openclicky",
   "private": true,
-  "workspaces": ["apps/desktop"],
+  "workspaces": [
+    "apps/desktop"
+  ],
   "scripts": {
     "dev": "npm run tauri -w apps/desktop -- dev",
     "build": "npm run build -w apps/desktop",
@@ -10,6 +12,7 @@
     "app:build:universal": "npm run tauri -w apps/desktop -- build --target universal-apple-darwin",
     "placeholders": "node scripts/gen-placeholders.mjs",
     "check": "cargo check --workspace && npm run build",
-    "test": "cargo test --workspace"
+    "test": "cargo test --workspace",
+    "assets:local": "node scripts/local-assets.mjs"
   }
 }

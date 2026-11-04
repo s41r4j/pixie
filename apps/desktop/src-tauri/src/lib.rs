@@ -20,6 +20,8 @@ pub const PERMISSIONS: &str = "permissions";
 
 pub struct AppState {
     pub store: Arc<ResourceStore>,
+    pub pack: resources::PackSource,
+    pub theme: serde_json::Value,
     pub audio: Mutex<AudioBus<RodioOutput>>,
     pub panel: Mutex<panel::PanelState>,
 }
@@ -52,6 +54,7 @@ pub fn run() {
             commands::stop_bed,
             commands::show_permissions,
             commands::resources_report,
+            commands::theme,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
@@ -61,10 +64,14 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let store = Arc::new(resources::load_store(app.handle()));
+            let (store, pack) = resources::load_store(app.handle());
+            let theme = resources::load_theme(store.root());
+            let store = Arc::new(store);
             let audio = AudioBus::new(store.clone(), RodioOutput::spawn());
             app.manage(AppState {
                 store,
+                pack,
+                theme,
                 audio: Mutex::new(audio),
                 panel: Mutex::new(panel::PanelState::default()),
             });

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "colors": {
+    "ink": "#2B2620",
+    "paper-top": "#ECEBED",
+    "paper-bottom": "#F7F7F7",
+    "label": "#ECECEF",
+    "secondary": "#9093A0",
+    "tertiary": "#5C5E6A",
+    "bubble-in": "#3B3B3D",
+    "focus": "#8EC5FF",
+    "gel-rim": "#221898",
+    "ready": "#4CC874",
+    "working": "#1F9E4A",
+    "needs": "#F2B458",
+    "panel": "rgba(255,255,255,0.045)",
+    "hair": "rgba(255,255,255,0.08)",
+    "chrome": "rgba(14,14,16,0.92)"
+  },
+  "draw": {
+    "butter": "#FFD84D",
+    "coral": "#F2706B",
+    "mint": "#7ED6A0",
+    "peach": "#FFB59A",
+    "sky": "#5AA8F5",
+    "ink": "#2C2E33",
+    "pink": "#F59AB5"
+  },
+  "paper": {
+    "butter": "#E0C477",
+    "butter-light": "#FFE27A",
+    "coral": "#C1604F",
+    "mint": "#94BCA2",
+    "mint-light": "#BFEFCF",
+    "peach": "#D8A287",
+    "peach-light": "#FFD0BC",
+    "sky": "#8AAFCC",
+    "sky-light": "#CFE6FF",
+    "pink": "#C7848F"
+  },
+  "radius": { "sm": "12px", "md": "14px", "lg": "16px" },
+  "motion": { "in": "220ms", "out": "140ms", "spring": "cubic-bezier(.2,.9,.3,1.15)" }
+}

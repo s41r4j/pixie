@@ -19,6 +19,24 @@ Hold **⌃ control + ⌥ option** to open the panel (you'll hear the launch soun
 it stays open; tap the chord again or press **esc** to close it. Clicking the menu-bar icon
 toggles it too.
 
+### Run the built app
+
+```bash
+npm run app:build
+open target/release/bundle/macos/openclicky.app
+```
+
+### Local media pack (testing on your Mac only)
+
+```bash
+npm run assets:local                 # sounds/videos from work/reference-assets → local pack
+npm run assets:local -- --from DIR   # or any folder laid out like resources/
+npm run assets:local -- --clear      # back to the bundled placeholders
+```
+
+The pack goes to `~/Library/Application Support/com.openclicky.app/resources` and wins over
+the bundled media. It is never committed or bundled; keep third-party media out of the repo.
+
 Other commands:
 
 ```bash
