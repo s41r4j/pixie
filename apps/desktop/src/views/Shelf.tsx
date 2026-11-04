@@ -135,9 +135,9 @@ export function Shelf() {
 
   return (
     <div className="shelf" onMouseLeave={() => setOpen(false)}>
-      <div ref={pill} className={`pill ${running ? "pill--busy" : ""} ${needs ? "pill--needs" : ""}`} onMouseEnter={() => setOpen(true)} onClick={() => setOpen(!open)}>
+      <div ref={pill} className={`jobpill ${running ? "jobpill--busy" : ""} ${needs ? "jobpill--needs" : ""}`} onMouseEnter={() => setOpen(true)} onClick={() => setOpen(!open)}>
         <Mark size={30} live={running > 0} />
-        {(running > 0 || needs > 0) && <span className="pill__badge">{needs || running}</span>}
+        {(running > 0 || needs > 0) && <span className="jobpill__badge">{needs || running}</span>}
       </div>
       <div ref={stack} className="stack">
         {shown.map((j) => (

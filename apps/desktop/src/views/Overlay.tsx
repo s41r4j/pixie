@@ -112,7 +112,7 @@ export function Overlay() {
           const id = ids.current++;
           setFlying(false);
           setTarget({ id, rect: p.rect, label: p.label ?? "" });
-          requestAnimationFrame(() => requestAnimationFrame(() => setFlying(true)));
+          setTimeout(() => setFlying(true), 34);
           setTimeout(() => setTarget((t) => (t?.id === id ? null : t)), 7000);
           break;
         }
@@ -142,8 +142,9 @@ export function Overlay() {
   const startY = (screen?.top_inset ?? 30) / 2;
 
   const r = target?.rect;
-  const tx = r ? r.x - ox + r.w / 2 : startX;
-  const ty = r ? r.y - oy + r.h / 2 : startY;
+  // The tip rests just inside the lower right of the target, so the target stays readable.
+  const tx = r ? r.x - ox + Math.min(r.w * 0.72, r.w - 6) : startX;
+  const ty = r ? r.y - oy + Math.min(r.h * 0.78, r.h - 4) : startY;
 
   return (
     <div className="overlay">

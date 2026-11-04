@@ -134,9 +134,11 @@ function Items({ items, ordered }: { items: ListItem[]; ordered: boolean }) {
         <li key={i} className={`${it.checked ? "is-done" : ""} ${it.marks.includes("now") ? "is-now" : ""}`}>
           {it.checked !== null && <span className={`box ${it.checked ? "box--on" : ""}`} />}
           <span className="items__text">
-            <Inline text={it.text} />
-            {it.marks.includes("new") && <span className="mark-new">new</span>}
-            {it.marks.includes("pick") && <span className="mark-pick">★ pick</span>}
+            <span>
+              <Inline text={it.text} />
+              {it.marks.includes("new") && <span className="mark-new">new</span>}
+              {it.marks.includes("pick") && <span className="mark-pick">★ pick</span>}
+            </span>
             {it.detail.map((d, j) => (
               <span key={j} className="items__detail"><Inline text={d} /></span>
             ))}

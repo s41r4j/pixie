@@ -196,11 +196,16 @@ export function Panel() {
 
   // Measure the body so the shape's height can spring (CSS can't animate to `auto`).
   useLayoutEffect(() => {
+    const h = body.current?.scrollHeight ?? 0;
+    if (h !== bodyH) setBodyH(h);
+  });
+  useEffect(() => {
     if (!body.current) return;
     const ro = new ResizeObserver(() => setBodyH(body.current?.scrollHeight ?? 0));
     ro.observe(body.current);
+    Array.from(body.current.children).forEach((c) => ro.observe(c));
     return () => ro.disconnect();
-  }, [mode]);
+  }, [mode, segments.length, note, error, chips.length]);
 
   useHitRects("panel", [shape], [mode, bodyH]);
 

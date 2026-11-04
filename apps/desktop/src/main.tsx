@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { installPreview } from "./preview";
 import { loadSlotFonts } from "./lib/fonts";
 import { loadTheme } from "./lib/theme";
 import { Panel } from "./views/Panel";
@@ -16,6 +17,7 @@ import "./styles/paper.css";
 import "./styles/windows.css";
 
 // One bundle, one view per window label.
+installPreview();
 const label = getCurrentWindow().label;
 document.documentElement.dataset.view = label;
 loadTheme();

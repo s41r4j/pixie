@@ -159,3 +159,9 @@ kbd {
 .shimmer i:nth-child(2) { animation-delay: .15s; }
 .shimmer i:nth-child(3) { animation-delay: .3s; }
 @keyframes dots { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+
+/* Browser preview (src/preview.ts): a stand-in desktop behind the transparent views. */
+html.preview[data-view="panel"] body, html.preview[data-view="overlay"] body, html.preview[data-view="shelf"] body {
+  background: linear-gradient(135deg, #c9d6e8, #e8dccb) !important;
+}
+html.preview.static *, html.preview.static *::before, html.preview.static *::after { transition: none !important; animation-delay: 0s !important; animation-duration: 0s !important; }
