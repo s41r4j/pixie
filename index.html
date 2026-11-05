@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>openclicky — a free, open-source helper that lives in your Mac's notch</title>
+  <meta name="description" content="Hold control + option and talk. openclicky sees your screen, points at things, explains on a whiteboard, and takes bigger jobs off your hands. Free and open source." />
+  <meta property="og:title" content="openclicky :)" />
+  <meta property="og:description" content="A free, open-source helper that lives in your Mac's notch." />
+  <meta property="og:image" content="site/shots/answer.png" />
+  <meta name="theme-color" content="#0c0c0d" />
+  <link rel="icon" type="image/png" href="resources/icons/ext-32.png" />
+  <style>
+    :root {
+      --bg: #0c0c0d; --surface: #161618; --surface-2: #1c1c1e; --line: rgba(255,255,255,.08);
+      --text: #f5f5f7; --text-2: #a1a1a6; --text-3: #6e6e73; --accent: #0a84ff; --ok: #30d158;
+      --max: 1120px;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", system-ui, sans-serif;
+      letter-spacing: -0.011em; -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; height: auto; }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+    h1, h2, h3 { font-family: -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif; letter-spacing: -0.03em; line-height: 1.08; }
+
+    /* nav */
+    nav { position: sticky; top: 0; z-index: 10; backdrop-filter: saturate(1.6) blur(20px); -webkit-backdrop-filter: saturate(1.6) blur(20px); background: rgba(12,12,13,.72); border-bottom: .5px solid var(--line); }
+    nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; }
+    .brand svg { width: 22px; height: 22px; }
+    .links { display: flex; gap: 26px; font-size: 14px; color: var(--text-2); }
+    .links a:hover { color: var(--text); }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px; font-size: 15px; font-weight: 500; transition: background .15s ease, transform .15s ease; }
+    .btn:active { transform: scale(.98); }
+    .btn--primary { background: var(--text); color: #000; }
+    .btn--primary:hover { background: #fff; }
+    .btn--ghost { background: rgba(255,255,255,.08); color: var(--text); }
+    .btn--ghost:hover { background: rgba(255,255,255,.13); }
+    .btn--sm { height: 32px; padding: 0 14px; font-size: 13px; }
+
+    /* hero */
+    .hero { padding: 96px 0 40px; text-align: center; }
+    .badge { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); padding: 6px 12px; border-radius: 999px; background: var(--surface); border: .5px solid var(--line); }
+    .badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+    .hero h1 { font-size: clamp(42px, 7vw, 80px); font-weight: 700; margin: 26px auto 18px; max-width: 900px; }
+    .hero h1 span { color: var(--text-2); }
+    .hero p { font-size: clamp(17px, 2vw, 21px); color: var(--text-2); max-width: 640px; margin: 0 auto; }
+    .cta { display: flex; gap: 12px; justify-content: center; margin-top: 34px; flex-wrap: wrap; }
+    .fine { margin-top: 14px; font-size: 13px; color: var(--text-3); }
+    kbd { font: 500 .85em -apple-system, system-ui, sans-serif; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.1); color: var(--text); }
+
+    .stage { margin: 64px auto 0; max-width: 980px; border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #1b1b1d, #111112); border: .5px solid var(--line); box-shadow: 0 40px 120px rgba(0,0,0,.55); }
+    .stage img { width: 100%; }
+
+    /* sections */
+    section { padding: 110px 0 0; }
+    .eyebrow { font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+    .section-head { max-width: 720px; margin-bottom: 44px; }
+    .section-head h2 { font-size: clamp(32px, 4.4vw, 52px); font-weight: 700; margin-top: 12px; }
+    .section-head p { color: var(--text-2); font-size: 18px; margin-top: 14px; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .feature { background: var(--surface); border: .5px solid var(--line); border-radius: 18px; padding: 26px; min-height: 190px; }
+    .feature h3 { font-size: 19px; font-weight: 600; letter-spacing: -.02em; margin: 14px 0 8px; }
+    .feature p { color: var(--text-2); font-size: 15px; }
+    .icon { width: 38px; height: 38px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; border: .5px solid var(--line); }
+    .icon svg { width: 20px; height: 20px; stroke: var(--text); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .shot { background: var(--surface); border: .5px solid var(--line); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column; }
+    .shot img { width: 100%; background: #111; }
+    .shot div { padding: 20px 24px 24px; }
+    .shot h3 { font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+    .shot p { color: var(--text-2); font-size: 15px; margin-top: 6px; }
+
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: s; }
+    .step { padding: 26px; border-radius: 18px; border: .5px solid var(--line); }
+    .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--text); color: #000; font-weight: 600; font-size: 14px; margin-bottom: 16px; }
+    .step h3 { font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+    .step p { color: var(--text-2); font-size: 15px; margin-top: 6px; }
+    pre { margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2); font: 13px/1.6 "SF Mono", ui-monospace, Menlo, monospace; color: var(--text); overflow-x: auto; }
+
+    .free { text-align: center; padding: 72px 28px; border-radius: 24px; background: var(--surface); border: .5px solid var(--line); }
+    .free h2 { font-size: clamp(34px, 5vw, 60px); font-weight: 700; }
+    .free p { color: var(--text-2); font-size: 18px; max-width: 620px; margin: 16px auto 0; }
+    .free .cta { margin-top: 28px; }
+
+    /* changelog */
+    .log { border-top: .5px solid var(--line); }
+    .release { display: grid; grid-template-columns: 200px 1fr; gap: 24px; padding: 34px 0; border-bottom: .5px solid var(--line); }
+    .release__meta h3 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+    .release__meta time { color: var(--text-3); font-size: 14px; }
+    .tag { display: inline-block; margin-top: 8px; font-size: 12px; padding: 2px 8px; border-radius: 6px; background: rgba(10,132,255,.15); color: #64aaff; }
+    .release ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .release li { color: var(--text-2); font-size: 15px; padding-left: 22px; position: relative; }
+    .release li::before { content: ""; position: absolute; left: 4px; top: .65em; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+    .release li b { color: var(--text); font-weight: 600; }
+
+    footer { padding: 90px 0 60px; color: var(--text-3); font-size: 13px; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; border-top: .5px solid var(--line); padding-top: 28px; }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 900px) {
+      .grid, .steps { grid-template-columns: 1fr 1fr; }
+      .split { grid-template-columns: 1fr; }
+      .release { grid-template-columns: 1fr; gap: 12px; }
+      .links { display: none; }
+    }
+    @media (max-width: 600px) {
+      .grid, .steps { grid-template-columns: 1fr; }
+      .hero { padding-top: 64px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="wrap">
+      <a class="brand" href="#">
+        <svg viewBox="230 230 600 560" aria-hidden="true"><g fill="currentColor"><circle cx="408" cy="405" r="56"/><circle cx="408" cy="607" r="56"/></g><path d="M584 316 C721 408 719 612 578 713" fill="none" stroke="currentColor" stroke-width="96" stroke-linecap="round"/></svg>
+        openclicky
+      </a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#changelog">Changelog</a>
+        <a class="js-repo" href="https://github.com/openclicky/openclicky">GitHub</a>
+      </div>
+      <a class="btn btn--primary btn--sm js-download" href="https://github.com/openclicky/openclicky/releases/latest">Download</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <span class="badge"><i></i> Free &amp; open source · macOS 14+</span>
+      <h1>A helper that lives in your notch. <span>And just helps.</span></h1>
+      <p>Hold <kbd>⌃</kbd> <kbd>⌥</kbd> and talk. openclicky sees what's on your screen, points at the right button, sketches an explanation, or quietly takes on the bigger job while you keep working.</p>
+      <div class="cta">
+        <a class="btn btn--primary js-download" href="https://github.com/openclicky/openclicky/releases/latest">Download for Mac</a>
+        <a class="btn btn--ghost js-repo" href="https://github.com/openclicky/openclicky">View source</a>
+      </div>
+      <div class="fine">Free forever. MIT licensed. Bring your own Claude or DeepSeek key.</div>
+      <div class="stage"><img src="site/shots/answer.png" alt="The openclicky notch answering a question" width="1440" height="660" /></div>
+    </div>
+  </header>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Features</div>
+        <h2>Everything happens where you already are.</h2>
+        <p>No chat window to switch to. It answers out loud, shows you on the screen, and gets out of the way.</p>
+      </div>
+      <div class="grid">
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+          <h3>Talk, don't type</h3>
+          <p>Hold control and option, ask, let go. You hear the answer in a natural voice a second later.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 3l7 17 2.5-7.5L21 10z"/></svg></div>
+          <h3>Sees and points</h3>
+          <p>“Where's the export button?” A pointer flies out of the notch and lands right on it.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 14l3-4 3 3 4-5"/></svg></div>
+          <h3>Explains on a board</h3>
+          <p>Ask why something works and it sketches the idea on a clean whiteboard while it talks you through it.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4"/></svg></div>
+          <h3>Jobs in the background</h3>
+          <p>“Make me a one-page PDF about tea.” A card shows the plan; a live note fills in; the file lands where you asked.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 18h16M4 12h10M4 6h16"/></svg></div>
+          <h3>Dictation anywhere</h3>
+          <p>Hold fn and control and speak. Clean, punctuated text is typed into whatever field you're in.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+          <h3>Private by default</h3>
+          <p>Speech recognition and the voice run on your Mac. Screens and files only leave it when a question needs a model.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="split">
+        <div class="shot"><img src="site/shots/peek.png" alt="Hovering the notch shows quick actions" loading="lazy" /><div><h3>Hover the notch</h3><p>Talk, type, your running jobs and the last answer, one glance away.</p></div></div>
+        <div class="shot"><img src="site/shots/board.png" alt="A diagram sketched on the board" loading="lazy" /><div><h3>A board for explanations</h3><p>Diagrams get their own paper, so nothing covers what it's drawing.</p></div></div>
+        <div class="shot"><img src="site/shots/note.png" alt="A job's live note" loading="lazy" /><div><h3>Notes, not chat</h3><p>Every job writes a page: the answer first, then the details, with buttons for what's next.</p></div></div>
+        <div class="shot"><img src="site/shots/shelf.png" alt="Job cards on the edge of the screen" loading="lazy" /><div><h3>Cards on the edge</h3><p>See progress at a glance. When a job needs you, it asks once, with tap answers.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">How it works</div>
+        <h2>Running in two minutes.</h2>
+      </div>
+      <div class="steps">
+        <div class="step"><h3>Download</h3><p>Open the DMG and drag openclicky to Applications. It lives in your menu bar, not your Dock.</p></div>
+        <div class="step"><h3>Allow four switches</h3><p>Microphone, speech, screen and accessibility. The welcome screen walks you through each one.</p></div>
+        <div class="step"><h3>Add your key</h3><p>Paste a Claude or DeepSeek API key in Settings. You pay your provider directly; openclicky costs nothing.</p></div>
+      </div>
+      <pre>git clone https://github.com/openclicky/openclicky && cd openclicky
+npm install && npm run app:build && npm run app:install</pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="free">
+        <div class="eyebrow">Free</div>
+        <h2>Free. Open source. Yours.</h2>
+        <p>No subscription, no account, no usage meter. The code is MIT licensed, so you can read it, change it and ship your own.</p>
+        <div class="cta">
+          <a class="btn btn--primary js-download" href="https://github.com/openclicky/openclicky/releases/latest">Download for Mac</a>
+          <a class="btn btn--ghost js-repo" href="https://github.com/openclicky/openclicky">Star on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="changelog">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Changelog</div>
+        <h2>What's new.</h2>
+      </div>
+      <div class="log">
+        <article class="release">
+          <div class="release__meta"><h3>0.3.0</h3><time datetime="2026-11-05">November 5, 2026</time><br /><span class="tag">Latest</span></div>
+          <ul>
+            <li><b>The board.</b> Visual explanations are sketched on a clean paper canvas instead of over your screen.</li>
+            <li><b>Hover to peek.</b> Rest the pointer on the notch for quick actions, running jobs and your last answer.</li>
+            <li><b>Precise pointing.</b> Screenshots are 1:1 with the screen and the pointer snaps to the real button or line.</li>
+            <li><b>Smoother.</b> Marks stay through the answer and fade on their own; nothing waits for a click.</li>
+            <li><b>Quieter design.</b> A neutral, native look with the system font.</li>
+            <li><b>Permissions that stick.</b> Builds keep a stable identity, so macOS remembers your switches.</li>
+          </ul>
+        </article>
+        <article class="release">
+          <div class="release__meta"><h3>0.2.0</h3><time datetime="2026-11-05">November 5, 2026</time></div>
+          <ul>
+            <li><b>Voice loop.</b> Hold ⌃⌥, talk, and hear the answer while it streams.</li>
+            <li><b>Natural voice</b> with Kokoro, running offline on your Mac.</li>
+            <li><b>Jobs</b> with a plan, a live note, questions when stuck, and files saved where you want them.</li>
+            <li><b>Your browser</b> through the openclicky extension, and <b>connectors</b> through MCP.</li>
+            <li><b>Dictation</b> into any field with fn⌃.</li>
+          </ul>
+        </article>
+        <article class="release">
+          <div class="release__meta"><h3>0.1.0</h3><time datetime="2026-11-04">November 4, 2026</time></div>
+          <ul>
+            <li>Menu-bar app, notch panel, hold-to-talk hotkey, permissions setup and sounds.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>openclicky · MIT licence · not affiliated with any other assistant app.</span>
+      <span><a class="js-repo" href="https://github.com/openclicky/openclicky">GitHub</a> · <a href="#changelog">Changelog</a></span>
+    </div>
+  </footer>
+
+  <script>
+    // One place to point the site at the repository.
+    const REPO = "https://github.com/openclicky/openclicky";
+    document.querySelectorAll(".js-repo").forEach((a) => (a.href = REPO));
+    document.querySelectorAll(".js-download").forEach((a) => (a.href = REPO + "/releases/latest"));
+  </script>
+</body>
+</html>
