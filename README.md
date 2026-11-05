@@ -106,11 +106,15 @@ catalogue, cached in `prices.json`, refreshed daily). See `.env.example` for ove
 
 ## Releases
 
-Push a tag like `v0.5.0` and `.github/workflows/release.yml` builds a universal DMG + zip from
-source and publishes a GitHub release; the website's Download buttons point at
-`releases/latest/download/Pixie-macOS-universal.dmg`. Optional secrets for a signed, notarized
-build: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
-`APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+`.github/workflows/build.yml` builds Pixie for **macOS** (universal `.dmg` + `.zip`) and
+**Windows** (x64 NSIS `-setup.exe`) on every push to `main` that touches the app; the files are
+attached to the run as artifacts. Run it by hand from Actions → Build, or push a tag like
+`v0.5.1`, to also publish a GitHub release; the website's Download buttons point at
+`releases/latest/download/Pixie-macOS-universal.dmg` and `…/Pixie-Windows-x64-setup.exe`.
+The Windows build is a preview: chat, agents, models, usage and settings work; voice input,
+screen reading and pointing use the Swift helper and are macOS-only for now. Optional secrets for
+a signed, notarized Mac build: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
 
 The website lives in `site/`: Home (with the interactive demo), Features, Download, Docs and
 Changelog, sharing `site/assets/site.css` and `site/assets/site.js`. `npm run site` builds it into

@@ -17,5 +17,15 @@
   <string>Pixie can find and save files in Downloads when you ask.</string>
   <key>NSAppleEventsUsageDescription</key>
   <string>Pixie uses an app's own scripting to do things you ask for.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Pixie reads and adds calendar events when you ask, like "what's on tomorrow?"</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Pixie reads and adds calendar events when you ask.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Pixie lists, adds and ticks off reminders when you ask.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>Pixie lists, adds and ticks off reminders when you ask.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>Pixie looks people up in Contacts when you mention them, e.g. to find an email address.</string>
 </dict>
 </plist>

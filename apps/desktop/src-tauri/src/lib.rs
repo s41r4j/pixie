@@ -7,13 +7,18 @@ mod chats;
 mod commands;
 mod config;
 mod connectors;
+mod google;
 mod helper;
 mod hit;
 mod host;
 mod hotkey;
+mod integrations;
 mod jobs;
 mod kokoro;
 #[cfg(target_os = "macos")]
+mod macos;
+#[cfg(not(target_os = "macos"))]
+#[path = "desktop_other.rs"]
 mod macos;
 mod overlay;
 mod panel;
@@ -194,6 +199,13 @@ pub fn run() {
             commands::guide_hide,
             commands::voice_status,
             commands::voice_install,
+            commands::apps_status,
+            commands::app_set,
+            commands::google_sign_in,
+            commands::google_sign_out,
+            commands::connectors_gallery,
+            commands::connector_save,
+            commands::connector_remove,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
@@ -235,7 +247,8 @@ pub fn run() {
                 last_capture: Mutex::new(None),
                 skills,
                 os_version: format!(
-                    "macOS {} ({})",
+                    "{} {} ({})",
+                    if cfg!(target_os = "macos") { "macOS" } else { std::env::consts::OS },
                     command_output("/usr/bin/sw_vers", &["-productVersion"]),
                     std::env::consts::ARCH
                 ),
@@ -246,6 +259,7 @@ pub fn run() {
             state.jobs.load(&data_dir);
             app.manage(state);
 
+            macos::init(app.handle());
             panel::configure(app.handle());
             panel::rest(app.handle());
             overlay::configure(app.handle());
@@ -291,9 +305,17 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             // Windows hide instead of closing; the app lives in the menu bar.
+            if let WindowEvent::Destroyed = event {
+                if window.label() == NOTE {
+                    windows::dock_sync(window.app_handle(), NOTE);
+                }
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == NOTE {
                     return; // the note window is created on demand; let it close
+                }
+                if window.label() == SETTINGS {
+                    windows::dock_sync(window.app_handle(), SETTINGS);
                 }
                 api.prevent_close();
                 if window.label() == PANEL {
@@ -306,10 +328,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Pixie");
 
-    app.run(|_app, event| {
+    app.run(|_app, event| match event {
         // Closing the last window must not quit a menu-bar app; only Quit (exit code) does.
-        if let RunEvent::ExitRequested { code: None, api, .. } = event {
-            api.prevent_exit();
-        }
+        RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        // Clicking Pixie in the Dock, Launchpad or Finder while it runs brings Settings back.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => windows::open_settings(_app, ""),
+        _ => {}
     });
 }

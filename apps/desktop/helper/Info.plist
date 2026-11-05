@@ -6,5 +6,15 @@
   <key>CFBundleName</key><string>Pixie</string>
   <key>NSMicrophoneUsageDescription</key><string>Pixie listens while you hold ctrl+option.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Pixie turns what you say into text.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Pixie reads and adds calendar events when you ask, like "what's on tomorrow?"</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Pixie reads and adds calendar events when you ask.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Pixie lists, adds and ticks off reminders when you ask.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>Pixie lists, adds and ticks off reminders when you ask.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>Pixie looks people up in Contacts when you mention them, e.g. to find an email address.</string>
 </dict>
 </plist>

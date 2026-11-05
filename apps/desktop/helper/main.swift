@@ -18,6 +18,8 @@ import AVFoundation
 import AppKit
 import ApplicationServices
 import Carbon
+import Contacts
+import EventKit
 import Foundation
 import ScreenCaptureKit
 import Speech
@@ -803,6 +805,191 @@ final class Player: NSObject, AVAudioPlayerDelegate {
     var playing: Bool { current != nil }
 }
 
+// MARK: - Calendar, Reminders, Contacts (EventKit / Contacts; permission is asked once, by Pixie)
+
+enum PIM {
+    static let store = EKEventStore()
+    static let people = CNContactStore()
+
+    static func ek(_ s: EKAuthorizationStatus) -> String {
+        switch s {
+        case .fullAccess: return "granted"
+        case .writeOnly: return "write_only"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "not_determined"
+        default: return "granted"
+        }
+    }
+
+    static func status(_ kind: String) -> String {
+        switch kind {
+        case "calendar": return ek(EKEventStore.authorizationStatus(for: .event))
+        case "reminders": return ek(EKEventStore.authorizationStatus(for: .reminder))
+        case "contacts":
+            switch CNContactStore.authorizationStatus(for: .contacts) {
+            case .denied: return "denied"
+            case .restricted: return "restricted"
+            case .notDetermined: return "not_determined"
+            default: return "granted"
+            }
+        default: return "unknown"
+        }
+    }
+
+    static func request(_ kind: String, _ done: @escaping (String) -> Void) {
+        let back: (Bool, Error?) -> Void = { _, _ in DispatchQueue.main.async { store.refreshSourcesIfNecessary(); done(status(kind)) } }
+        switch kind {
+        case "calendar": store.requestFullAccessToEvents(completion: back)
+        case "reminders": store.requestFullAccessToReminders(completion: back)
+        case "contacts": people.requestAccess(for: .contacts, completionHandler: back)
+        default: done("unknown")
+        }
+    }
+
+    static func need(_ kind: String) throws {
+        let s = status(kind)
+        if s != "granted" {
+            let what = kind == "calendar" ? "Calendars" : kind == "reminders" ? "Reminders" : "Contacts"
+            throw HelperError("Pixie can't use \(what) yet (\(s)). Turn it on in Settings → Apps, or System Settings → Privacy & Security → \(what).")
+        }
+    }
+
+    static let isoOut: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = .current
+        return f
+    }()
+
+    static func iso(_ d: Date?) -> String { d.map { isoOut.string(from: $0) } ?? "" }
+
+    /// ISO 8601 with or without a zone ("2026-11-05T15:00", "2026-11-05"), local time when none.
+    static func date(_ s: String?) -> Date? {
+        guard let s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
+        for opts: ISO8601DateFormatter.Options in [[.withInternetDateTime], [.withInternetDateTime, .withFractionalSeconds]] {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = opts
+            if let d = f.date(from: s) { return d }
+        }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = .current
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+            df.dateFormat = fmt
+            if let d = df.date(from: s) { return d }
+        }
+        return nil
+    }
+
+    static func events(_ a: [String: Any]) throws -> [String: Any] {
+        try need("calendar")
+        let from = date(str(a, "from")) ?? Calendar.current.startOfDay(for: Date())
+        let to = date(str(a, "to")) ?? from.addingTimeInterval(7 * 86400)
+        let q = (str(a, "query") ?? "").lowercased()
+        let limit = (a["limit"] as? Int) ?? 40
+        let pred = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        var evs = store.events(matching: pred).sorted { $0.startDate < $1.startDate }
+        if !q.isEmpty {
+            evs = evs.filter { e in [e.title, e.location, e.notes].contains { ($0 ?? "").lowercased().contains(q) } }
+        }
+        let list: [[String: Any]] = evs.prefix(limit).map { e in
+            ["id": e.calendarItemIdentifier, "title": e.title ?? "", "start": iso(e.startDate), "end": iso(e.endDate),
+             "all_day": e.isAllDay, "location": e.location ?? "", "calendar": e.calendar?.title ?? "",
+             "notes": String((e.notes ?? "").prefix(300)), "attendees": (e.attendees ?? []).compactMap { $0.name }]
+        }
+        return ["from": iso(from), "to": iso(to), "count": evs.count, "events": list]
+    }
+
+    static func addEvent(_ a: [String: Any]) throws -> [String: Any] {
+        try need("calendar")
+        guard let title = str(a, "title"), !title.isEmpty else { throw HelperError("An event needs a title.") }
+        guard let start = date(str(a, "start")) else { throw HelperError("start must be a date like 2026-11-05T15:00.") }
+        let e = EKEvent(eventStore: store)
+        e.title = title
+        e.startDate = start
+        e.isAllDay = (a["all_day"] as? Bool) ?? false
+        e.endDate = date(str(a, "end")) ?? start.addingTimeInterval(e.isAllDay ? 86400 : 3600)
+        if let l = str(a, "location"), !l.isEmpty { e.location = l }
+        if let n = str(a, "notes"), !n.isEmpty { e.notes = n }
+        let name = (str(a, "calendar") ?? "").lowercased()
+        e.calendar = store.calendars(for: .event).first { $0.title.lowercased() == name && $0.allowsContentModifications }
+            ?? store.defaultCalendarForNewEvents
+        try store.save(e, span: .thisEvent, commit: true)
+        return ["id": e.calendarItemIdentifier, "title": title, "start": iso(e.startDate), "end": iso(e.endDate), "calendar": e.calendar?.title ?? ""]
+    }
+
+    static func reminders(_ id: Any, _ a: [String: Any]) throws {
+        try need("reminders")
+        let name = (str(a, "list") ?? "").lowercased()
+        let lists = store.calendars(for: .reminder)
+        let cals = name.isEmpty ? nil : lists.filter { $0.title.lowercased() == name }
+        let done = (a["done"] as? Bool) ?? false
+        let limit = (a["limit"] as? Int) ?? 50
+        let pred = done
+            ? store.predicateForCompletedReminders(withCompletionDateStarting: Date().addingTimeInterval(-30 * 86400), ending: nil, calendars: cals)
+            : store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: cals)
+        store.fetchReminders(matching: pred) { rs in
+            let items: [[String: Any]] = (rs ?? []).prefix(limit).map { r in
+                ["id": r.calendarItemIdentifier, "title": r.title ?? "", "list": r.calendar?.title ?? "",
+                 "due": iso(r.dueDateComponents?.date ?? r.dueDateComponents.flatMap { Calendar.current.date(from: $0) }),
+                 "done": r.isCompleted, "notes": String((r.notes ?? "").prefix(200)), "priority": r.priority]
+            }
+            DispatchQueue.main.async { reply(id, ["lists": lists.map { $0.title }, "reminders": items]) }
+        }
+    }
+
+    static func addReminder(_ a: [String: Any]) throws -> [String: Any] {
+        try need("reminders")
+        guard let title = str(a, "title"), !title.isEmpty else { throw HelperError("A reminder needs a title.") }
+        let r = EKReminder(eventStore: store)
+        r.title = title
+        let name = (str(a, "list") ?? "").lowercased()
+        r.calendar = store.calendars(for: .reminder).first { $0.title.lowercased() == name } ?? store.defaultCalendarForNewReminders()
+        if let due = date(str(a, "due")) {
+            r.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+            r.addAlarm(EKAlarm(absoluteDate: due))
+        }
+        if let n = str(a, "notes"), !n.isEmpty { r.notes = n }
+        try store.save(r, commit: true)
+        return ["id": r.calendarItemIdentifier, "title": title, "list": r.calendar?.title ?? ""]
+    }
+
+    static func completeReminder(_ a: [String: Any]) throws -> [String: Any] {
+        try need("reminders")
+        guard let r = store.calendarItem(withIdentifier: str(a, "id") ?? "") as? EKReminder else {
+            throw HelperError("No reminder with that id; list them first.")
+        }
+        r.isCompleted = true
+        try store.save(r, commit: true)
+        return ["id": r.calendarItemIdentifier, "title": r.title ?? "", "done": true]
+    }
+
+    static func findContacts(_ a: [String: Any]) throws -> [String: Any] {
+        try need("contacts")
+        let q = (str(a, "query") ?? "").trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { throw HelperError("Say who to look for.") }
+        let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactOrganizationNameKey, CNContactJobTitleKey,
+                    CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactBirthdayKey, CNContactPostalAddressesKey] as [CNKeyDescriptor]
+        var found = try people.unifiedContacts(matching: CNContact.predicateForContacts(matchingName: q), keysToFetch: keys)
+        if found.isEmpty && q.contains("@") {
+            found = try people.unifiedContacts(matching: CNContact.predicateForContacts(matchingEmailAddress: q), keysToFetch: keys)
+        }
+        let list: [[String: Any]] = found.prefix((a["limit"] as? Int) ?? 10).map { c in
+            var d: [String: Any] = [
+                "name": "\(c.givenName) \(c.familyName)".trimmingCharacters(in: .whitespaces),
+                "organization": c.organizationName, "job": c.jobTitle,
+                "emails": c.emailAddresses.map { "\(CNLabeledValue<NSString>.localizedString(forLabel: $0.label ?? "")): \($0.value)" },
+                "phones": c.phoneNumbers.map { "\(CNLabeledValue<CNPhoneNumber>.localizedString(forLabel: $0.label ?? "")): \($0.value.stringValue)" },
+                "addresses": c.postalAddresses.map { CNPostalAddressFormatter.string(from: $0.value, style: .mailingAddress).replacingOccurrences(of: "\n", with: ", ") },
+            ]
+            if let b = c.birthday, let m = b.month, let day = b.day { d["birthday"] = b.year.map { "\($0)-\(m)-\(day)" } ?? "\(m)-\(day)" }
+            return d
+        }
+        return ["count": found.count, "contacts": list]
+    }
+}
+
 // MARK: - dispatcher
 
 let listener = Listener()
@@ -899,6 +1086,22 @@ func handle(_ line: String) {
         case "open":
             try openTarget(str(args, "target") ?? "")
             reply(id)
+        case "pim_status":
+            reply(id, ["calendar": PIM.status("calendar"), "reminders": PIM.status("reminders"), "contacts": PIM.status("contacts")])
+        case "pim_request":
+            PIM.request(str(args, "kind") ?? "") { s in reply(id, ["status": s]) }
+        case "calendar_events":
+            reply(id, try PIM.events(args))
+        case "calendar_add":
+            reply(id, try PIM.addEvent(args))
+        case "reminders_list":
+            try PIM.reminders(id, args)
+        case "reminder_add":
+            reply(id, try PIM.addReminder(args))
+        case "reminder_done":
+            reply(id, try PIM.completeReminder(args))
+        case "contacts_find":
+            reply(id, try PIM.findContacts(args))
         case "frontmost":
             let app = NSWorkspace.shared.frontmostApplication
             reply(id, ["app": app?.localizedName ?? "", "bundle": app?.bundleIdentifier ?? "",

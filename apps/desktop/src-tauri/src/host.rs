@@ -15,17 +15,26 @@ async fn clipboard(action: &str, text: &str) -> ToolOutput {
     use tokio::io::AsyncWriteExt;
     match action {
         "copy" => {
-            let child = tokio::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn();
+            let (cmd, args): (&str, &[&str]) = if cfg!(windows) {
+                ("powershell", &["-NoProfile", "-Command", "$input | Set-Clipboard"])
+            } else {
+                ("/usr/bin/pbcopy", &[])
+            };
+            let child = tokio::process::Command::new(cmd).args(args).stdin(std::process::Stdio::piped()).spawn();
             let Ok(mut child) = child else { return ToolOutput::err("Couldn't reach the clipboard.") };
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes()).await;
             }
             match child.wait().await {
-                Ok(s) if s.success() => ToolOutput::ok(format!("Copied {} characters; they can paste with ⌘V.", text.chars().count())),
+                Ok(s) if s.success() => ToolOutput::ok(format!("Copied {} characters; they can paste with {}.", text.chars().count(), if cfg!(windows) { "Ctrl+V" } else { "⌘V" })),
                 _ => ToolOutput::err("Couldn't copy."),
             }
         }
-        "read" => match tokio::process::Command::new("/usr/bin/pbpaste").output().await {
+        "read" => match if cfg!(windows) {
+            tokio::process::Command::new("powershell").args(["-NoProfile", "-Command", "Get-Clipboard -Raw"]).output().await
+        } else {
+            tokio::process::Command::new("/usr/bin/pbpaste").output().await
+        } {
             Ok(o) => {
                 let t = String::from_utf8_lossy(&o.stdout);
                 if t.trim().is_empty() {
@@ -127,6 +136,8 @@ impl Host for AppHost {
             },
             "browser" => browser::call(app, input).await.into(),
             other if other.starts_with("mcp__") => crate::connectors::call(app, other, input).await.into(),
+            other if crate::integrations::handles(other) => crate::integrations::call(app, other, input).await.into(),
+            other if crate::google::handles(other) => crate::google::call(app, other, input).await.into(),
             _ => return None,
         };
         Some(out)
@@ -148,7 +159,10 @@ impl Host for AppHost {
 
     fn extra_tools(&self, mode: Mode) -> Vec<ToolDef> {
         if matches!(mode, Mode::Job | Mode::Voice | Mode::Live) {
-            crate::connectors::tools(&self.app)
+            let mut t = crate::connectors::tools(&self.app);
+            t.extend(crate::integrations::tools(&self.app));
+            t.extend(crate::google::tools(&self.app));
+            t
         } else {
             vec![]
         }

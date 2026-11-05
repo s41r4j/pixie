@@ -1,6 +1,8 @@
 //! Bridge to the user's Chrome (M7): the extension talks to the native host, which relays to
 //! this unix socket. One JSON object per line each way; requests carry an `id`.
 
+#![cfg_attr(not(unix), allow(unused))]
+
 use crate::AppState;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -11,6 +13,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, oneshot};
 
@@ -70,6 +73,12 @@ fn install(app: &AppHandle, data: &Path) {
     }
 }
 
+#[cfg(not(unix))]
+pub fn start(_app: AppHandle) {
+    log::info!("browser: the Chrome bridge is macOS-only for now");
+}
+
+#[cfg(unix)]
 pub fn start(app: AppHandle) {
     let data = app.state::<AppState>().data_dir.clone();
     install(&app, &data);

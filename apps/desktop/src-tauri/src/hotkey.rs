@@ -115,9 +115,8 @@ impl ChordTracker {
     }
 }
 
-/// Spawn the polling thread (macOS only). Also drives click-through hit testing.
+/// Spawn the polling thread. Also drives click-through hit testing.
 pub fn spawn(app: AppHandle) {
-    #[cfg(target_os = "macos")]
     std::thread::Builder::new()
         .name("openclicky-hotkey".into())
         .spawn(move || {
@@ -134,8 +133,6 @@ pub fn spawn(app: AppHandle) {
             }
         })
         .expect("spawn hotkey thread");
-    #[cfg(not(target_os = "macos"))]
-    let _ = app;
 }
 
 fn handle(app: &AppHandle, ev: HotkeyEvent, was_open_at_press: &mut bool) {

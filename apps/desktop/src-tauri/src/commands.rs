@@ -364,6 +364,7 @@ pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
             deepseek_key: mask_if(&settings.deepseek_key),
             anthropic_key: mask_if(&settings.anthropic_key),
             openai_key: mask_if(&settings.openai_key),
+            google_client_secret: mask_if(&settings.google_client_secret),
             ..settings
         },
     }
@@ -382,7 +383,7 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
         let mut cur = serde_json::to_value(&*s).map_err(|e| e.to_string())?;
         if let (Some(obj), Some(p)) = (cur.as_object_mut(), patch.as_object()) {
             for (k, v) in p {
-                if (k == "deepseek_key" || k == "anthropic_key" || k == "openai_key") && v.as_str().map(|x| x.contains('•')).unwrap_or(false) {
+                if (k == "deepseek_key" || k == "anthropic_key" || k == "openai_key" || k == "google_client_secret") && v.as_str().map(|x| x.contains('•')).unwrap_or(false) {
                     continue;
                 }
                 obj.insert(k.clone(), v.clone());
@@ -524,4 +525,45 @@ pub fn status(app: AppHandle) -> Value {
 /// The wizard is a normal window: the user asked for it, so it may take focus.
 pub fn open_permissions_window(app: &AppHandle) {
     windows::open_settings(app, "setup");
+}
+
+// ---- apps, Google, connectors ----------------------------------------------------------
+
+#[tauri::command]
+pub async fn apps_status(app: AppHandle) -> Value {
+    let mut v = crate::integrations::status(&app).await;
+    v["google"] = crate::google::status(&app);
+    v
+}
+
+#[tauri::command]
+pub async fn app_set(app: AppHandle, kind: String, on: bool) -> Result<String, String> {
+    crate::integrations::set(&app, &kind, on).await
+}
+
+#[tauri::command]
+pub async fn google_sign_in(app: AppHandle) -> Result<String, String> {
+    crate::google::sign_in(&app).await
+}
+
+#[tauri::command]
+pub fn google_sign_out(app: AppHandle) {
+    crate::google::sign_out(&app)
+}
+
+#[tauri::command]
+pub fn connectors_gallery(app: AppHandle) -> Value {
+    crate::connectors::gallery(&app)
+}
+
+#[tauri::command]
+pub fn connector_save(app: AppHandle, id: String, values: Value, on: bool) -> Result<Value, String> {
+    crate::connectors::save(&app, &id, &values, on)?;
+    Ok(crate::connectors::gallery(&app))
+}
+
+#[tauri::command]
+pub fn connector_remove(app: AppHandle, id: String) -> Result<Value, String> {
+    crate::connectors::remove(&app, &id)?;
+    Ok(crate::connectors::gallery(&app))
 }

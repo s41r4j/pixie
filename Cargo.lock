@@ -2862,11 +2862,11 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openclicky-capture"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "openclicky-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "log",
  "rand 0.8.8",
@@ -2878,7 +2878,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-desktop"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2898,17 +2898,19 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-drag",
  "tauri-plugin-single-instance",
  "tempfile",
  "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "openclicky-llm"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -2922,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-mcp"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "log",
  "serde",
@@ -2933,14 +2935,14 @@ dependencies = [
 
 [[package]]
 name = "openclicky-native-host"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "openclicky-tools"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2959,7 +2961,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-voice"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "log",
  "openclicky-core",
@@ -5558,6 +5560,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

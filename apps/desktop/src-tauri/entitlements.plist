@@ -7,6 +7,11 @@
   <true/>
   <key>com.apple.security.automation.apple-events</key>
   <true/>
+  <!-- Calendar, Reminders and Contacts, only when switched on in Settings → Apps. -->
+  <key>com.apple.security.personal-information.calendars</key>
+  <true/>
+  <key>com.apple.security.personal-information.addressbook</key>
+  <true/>
   <!-- The local voice engine loads sherpa-onnx/onnxruntime dylibs signed by their authors. -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>

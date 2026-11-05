@@ -7,7 +7,10 @@ use objc2::msg_send;
 use objc2::runtime::{AnyClass, AnyObject};
 use objc2_foundation::{NSEdgeInsets, NSPoint, NSRect, NSSize};
 use serde::Serialize;
-use tauri::{Runtime, WebviewWindow};
+use tauri::{AppHandle, Runtime, WebviewWindow};
+
+/// Nothing to set up on the Mac (the Windows twin keeps an app handle).
+pub fn init(_app: &AppHandle) {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]

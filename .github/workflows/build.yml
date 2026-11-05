@@ -1,0 +1,171 @@
+name: Build
+
+# Builds Pixie for macOS (universal .dmg) and Windows (.exe installer).
+#   • every push to main that touches the app → downloadable artifacts on the run page
+#   • Actions → Build → "Run workflow"        → the same, on demand (give a tag to also release)
+#   • pushing a tag like v0.5.1                → builds both and publishes a GitHub release
+# Release assets keep stable names so the website can link to
+#   https://github.com/<owner>/<repo>/releases/latest/download/Pixie-macOS-universal.dmg
+#   https://github.com/<owner>/<repo>/releases/latest/download/Pixie-Windows-x64-setup.exe
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "apps/**"
+      - "crates/**"
+      - "resources/**"
+      - "skills/**"
+      - "scripts/finalize-app.mjs"
+      - "Cargo.*"
+      - "package*.json"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Also publish a release with this tag (e.g. v0.5.1). Leave empty for artifacts only."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  TAG: ${{ github.event.inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+
+jobs:
+  macos:
+    name: macOS (universal .dmg)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-universal
+      - run: npm ci
+
+      # Optional: real Developer ID signing + notarization when these repo secrets exist
+      # (APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
+      # APPLE_PASSWORD, APPLE_TEAM_ID). Without them the app is ad-hoc signed and users open it
+      # once with right-click → Open.
+      - name: Signing environment
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!v}" ]; then
+              { echo "$v<<__EOF__"; echo "${!v}"; echo "__EOF__"; } >> "$GITHUB_ENV"
+            fi
+          done
+          [ -n "$APPLE_SIGNING_IDENTITY" ] && echo "Developer ID signing on" || echo "Ad-hoc signing"
+
+      - name: Build universal app + dmg
+        run: npm run app:build:universal
+
+      - name: Collect
+        run: |
+          set -euo pipefail
+          BUNDLE=target/universal-apple-darwin/release/bundle
+          mkdir -p out
+          cp "$BUNDLE"/dmg/*.dmg out/Pixie-macOS-universal.dmg
+          ditto -c -k --keepParent "$BUNDLE/macos/Pixie.app" out/Pixie-macOS-universal.zip
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pixie-macOS
+          path: out/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64 .exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-x64
+      - run: npm ci
+
+      - name: Build installer
+        run: npm run tauri -w apps/desktop -- build --bundles nsis
+
+      - name: Collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp target/release/bundle/nsis/*-setup.exe out/Pixie-Windows-x64-setup.exe
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pixie-Windows
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [macos, windows]
+    if: ${{ needs.macos.result == 'success' && needs.windows.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Versioned copies, checksums, notes
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd dist
+          cp Pixie-macOS-universal.dmg "Pixie_${VERSION}_macOS_universal.dmg"
+          cp Pixie-Windows-x64-setup.exe "Pixie_${VERSION}_Windows_x64-setup.exe"
+          sha256sum *.dmg *.zip *.exe > SHA256SUMS.txt
+          ls -la
+          cd ..
+          # Release notes: this version's section of CHANGELOG.md.
+          awk -v v="$VERSION" '$0 ~ "^## "v" " {f=1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md || true
+          cat >> notes.md <<'NOTES'
+
+          ---
+          **macOS** (Apple Silicon and Intel, macOS 14+): **Pixie-macOS-universal.dmg**. If macOS says it can’t check the app, right-click Pixie in Applications → Open once.
+
+          **Windows** (preview, 64-bit Windows 10/11): **Pixie-Windows-x64-setup.exe**. Chat, agents, models and settings work; voice input, screen reading and pointing still need the Mac helper and come later. SmartScreen may ask once: More info → Run anyway.
+          NOTES
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Pixie ${{ env.TAG }}
+          body_path: notes.md
+          files: |
+            dist/Pixie-macOS-universal.dmg
+            dist/Pixie-macOS-universal.zip
+            dist/Pixie_*_macOS_universal.dmg
+            dist/Pixie-Windows-x64-setup.exe
+            dist/Pixie_*_Windows_x64-setup.exe
+            dist/SHA256SUMS.txt

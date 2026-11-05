@@ -51,6 +51,11 @@ pub struct Settings {
     pub can_click: bool,
     pub user_name: String,
     pub locale: String,
+    /// Settings → Apps: "calendar", "reminders", "contacts", "mail" switched on.
+    pub apps: BTreeMap<String, bool>,
+    /// The user's own Google OAuth client ("Desktop app") for Gmail + Google Calendar.
+    pub google_client_id: String,
+    pub google_client_secret: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -100,6 +105,9 @@ impl Default for Settings {
             can_click: true,
             user_name: String::new(),
             locale: String::new(),
+            apps: BTreeMap::new(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
         }
     }
 }

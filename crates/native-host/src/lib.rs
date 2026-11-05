@@ -7,7 +7,10 @@
 //! The app's own binary doubles as the host: `main` calls [`run`] when argv[1] starts with
 //! `chrome-extension://`, so there is nothing extra to install.
 
+#![cfg_attr(not(unix), allow(unused))]
+
 use std::io::{self, BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -49,6 +52,7 @@ pub fn write_message(w: &mut impl Write, json: &[u8]) -> io::Result<()> {
     w.flush()
 }
 
+#[cfg(unix)]
 fn connect(socket: &PathBuf) -> io::Result<UnixStream> {
     let mut last = None;
     for i in 0..40 {
@@ -67,7 +71,15 @@ fn connect(socket: &PathBuf) -> io::Result<UnixStream> {
     Err(last.unwrap_or_else(|| io::Error::other("no socket")))
 }
 
+/// The browser bridge is macOS-only for now (it relays over a unix socket).
+#[cfg(not(unix))]
+pub fn run(_socket: PathBuf) -> i32 {
+    eprintln!("openclicky native host: the browser bridge isn't available on this system yet");
+    1
+}
+
 /// Relay until either side closes. Returns the process exit code.
+#[cfg(unix)]
 pub fn run(socket: PathBuf) -> i32 {
     let stream = match connect(&socket) {
         Ok(s) => s,

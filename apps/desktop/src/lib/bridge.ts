@@ -196,6 +196,9 @@ export interface Settings {
   can_click: boolean;
   user_name: string;
   locale: string;
+  apps: Record<string, boolean>;
+  google_client_id: string;
+  google_client_secret: string;
 }
 export interface SettingsView {
   settings: Settings;
@@ -203,6 +206,38 @@ export interface SettingsView {
   key_hint: string;
   active?: string | null;
   effective?: Record<string, ModelChoice>;
+}
+export type PermWord = "granted" | "denied" | "restricted" | "not_determined" | "write_only" | "ask" | "unknown";
+export interface AppsStatus {
+  supported: boolean;
+  on: Record<string, boolean>;
+  calendar: PermWord;
+  reminders: PermWord;
+  contacts: PermWord;
+  mail: PermWord;
+  google: { configured: boolean; signed_in: boolean; email: string };
+}
+export interface ConnectorCard {
+  id: string;
+  name: string;
+  blurb?: string;
+  help?: string;
+  help_url?: string;
+  fields?: { key: string; label: string; placeholder: string }[];
+  folder?: boolean;
+  command?: string;
+  added: boolean;
+  on: boolean;
+  tools: number | null;
+  error: string | null;
+  env: Record<string, string> | null;
+  args: string[] | null;
+}
+export interface Gallery {
+  presets: ConnectorCard[];
+  custom: ConnectorCard[];
+  node: boolean;
+  path: string;
 }
 export interface Voice {
   id: string;
@@ -254,6 +289,13 @@ export const api = {
   jobDismiss: (id: string) => invoke<void>("job_dismiss", { id }),
   jobDelete: (id: string) => invoke<void>("job_delete", { id }),
   openNote: (id: string) => invoke<void>("open_note", { id }),
+  appsStatus: () => invoke<AppsStatus>("apps_status"),
+  appSet: (kind: string, on: boolean) => invoke<string>("app_set", { kind, on }),
+  googleSignIn: () => invoke<string>("google_sign_in"),
+  googleSignOut: () => invoke<void>("google_sign_out"),
+  connectorsGallery: () => invoke<Gallery>("connectors_gallery"),
+  connectorSave: (id: string, values: Record<string, string>, on: boolean) => invoke<Gallery>("connector_save", { id, values, on }),
+  connectorRemove: (id: string) => invoke<Gallery>("connector_remove", { id }),
   openTarget: (target: string, reveal = false) => invoke<void>("open_target", { target, reveal }),
   settings: () => invoke<SettingsView>("settings_get"),
   setSettings: (patch: Partial<Settings>) => invoke<SettingsView>("settings_set", { patch }),

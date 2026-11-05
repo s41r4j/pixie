@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-11-05
+- **Apps on your Mac** (Settings → Apps): Calendar, Reminders and Contacts through macOS's own frameworks, and Apple Mail through its scripting. Each is off until you switch it on, which asks macOS once. "What's on tomorrow?", "remind me to call Sam at 5", "what's Priya's email?", "draft a reply to the last mail from Alex". Mail drafts open in Mail for you to send; Pixie never sends.
+- **Google account**: sign in with your own Google OAuth client and Pixie reads and searches Gmail, saves drafts (never sends), and reads or adds Google Calendar events, straight from Google's APIs. Tokens stay on your Mac.
+- **Connectors gallery** (Settings → Connectors): GitHub, Notion, Slack, Linear, Jira & Confluence, Brave Search and a folder of your choice in one click, each with an on/off switch, live tool counts and errors. Changes apply right away, no restart; anything else still goes in `mcp.json`.
+- **Hover to read**: while Pixie thinks or talks, hover the notch and it drops down to show the question, the answer word by word and the tools it used; move away and it folds back up.
+- **Dock**: clicking Pixie in the Dock, Launchpad or Finder after closing its windows opens Settings again, and Pixie shows in the Dock and ⌘-Tab while Settings or a note is open.
+- **Windows build (preview)** and a new build pipeline: every push builds a universal macOS `.dmg` and a Windows `-setup.exe`; tags publish both in a GitHub release. On Windows, chat, agents, models, usage and settings work; voice, screen reading and pointing are Mac-only for now.
+
 ## 0.5.0 — 2026-11-05
 - **Notch tabs**: hover the notch for **Chat** (this conversation's questions and answers, type a follow-up, start a new chat) and **Agents** (every job with its plan, progress, questions you can answer in place, and stop). The edge job cards are gone.
 - **Voice shows no text**: while you talk and Pixie answers, nothing is drawn under the notch; it only widens. Click-to-talk stops from the right ear.

@@ -4,9 +4,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, onEvent, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
 import { Glyph, Mark, Wordmark } from "../components/Mark";
 import { CodingPanel, ModelsPanel, UsagePanel } from "./SettingsModels";
+import { AppsPanel, ConnectorsPanel } from "./SettingsApps";
 import { chordLabel, Kbd, PRESETS, useShortcuts } from "../lib/keys";
 
-type Tab = "welcome" | "general" | "setup" | "ai" | "usage" | "coding" | "voice" | "sounds" | "connectors" | "about";
+type Tab = "welcome" | "general" | "setup" | "ai" | "usage" | "coding" | "voice" | "sounds" | "apps" | "connectors" | "about";
 
 const PILL: Record<PermState, { text: string; tone: "ok" | "warn" | "muted" }> = {
   granted: { text: "Allowed", tone: "ok" },
@@ -486,37 +487,6 @@ function SoundsPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v
   );
 }
 
-function ConnectorsPanel() {
-  const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
-  useEffect(() => {
-    api.status().then(setSt);
-    const t = setInterval(() => api.status().then(setSt), 3000);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <div className="stack-gap">
-      <div className={`banner ${st?.browser ? "banner--ok" : "banner--muted"}`}>
-        <b>Chrome</b> {st?.browser ? "is connected." : "isn't connected yet."}
-      </div>
-      <ol className="steps">
-        <li>Open <code>chrome://extensions</code> and switch on Developer mode.</li>
-        <li>
-          Click <b>Load unpacked</b> and pick the <code>extension</code> folder in Pixie's support folder.
-          <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/extension`)}>Show folder</button>
-        </li>
-        <li>That's it. Pixie can then read pages, click and type in your browser when you ask.</li>
-      </ol>
-      <div className="banner banner--muted">
-        <b>Apps</b> {st?.connectors.length ? `connected: ${st.connectors.join(", ")}` : "— none yet."}
-      </div>
-      <p className="muted small">
-        Connect apps (Gmail, Notion, GitHub…) with MCP servers: add them to <code>mcp.json</code> in the support folder and restart Pixie.
-        <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/mcp.json`)}>Open mcp.json</button>
-      </p>
-    </div>
-  );
-}
-
 function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button role="switch" aria-checked={on} aria-label={label} data-tip={`${label}: ${on ? "on" : "off"}. Click to turn it ${on ? "off" : "on"}.`} className={`switch ${on ? "switch--on" : ""}`} onClick={() => onChange(!on)}>
@@ -842,7 +812,8 @@ const GROUPS: { title: string; tabs: TabDef[] }[] = [
     title: "Mac",
     tabs: [
       { id: "setup", label: "Permissions", icon: "lock", blurb: "What Pixie may hear, see and do on this Mac." },
-      { id: "connectors", label: "Connectors", icon: "layers", blurb: "Your browser and apps over MCP." },
+      { id: "apps", label: "Apps", icon: "grid", blurb: "Calendar, Reminders, Contacts, Mail and your Google account." },
+      { id: "connectors", label: "Connectors", icon: "layers", blurb: "GitHub, Notion, Slack, Linear and more in one click, plus Chrome." },
       { id: "about", label: "About", icon: "eye", blurb: "Version and where Pixie keeps its files." },
     ],
   },
@@ -876,7 +847,12 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "coding", title: "Coding agent: Codex, Claude Code, opencode", words: "code harness t3 local agent model sandbox permissions folder" },
   { tab: "setup", title: "Microphone, Speech, Screen Recording, Accessibility", words: "permission privacy allow reset tcc" },
   { tab: "connectors", title: "Chrome extension", words: "browser tabs extension" },
-  { tab: "connectors", title: "Apps over MCP", words: "mcp gmail notion github connectors" },
+  { tab: "connectors", title: "Connectors: GitHub, Notion, Slack, Linear, Jira, Brave Search", words: "mcp notion github slack linear jira confluence atlassian brave search folder connectors integrations" },
+  { tab: "apps", sid: "app_calendar", title: "Calendar", words: "events meetings schedule eventkit icloud google calendar" },
+  { tab: "apps", sid: "app_reminders", title: "Reminders", words: "todo tasks remind list" },
+  { tab: "apps", sid: "app_contacts", title: "Contacts", words: "people email phone address book" },
+  { tab: "apps", sid: "app_mail", title: "Apple Mail", words: "email inbox draft reply mail.app" },
+  { tab: "apps", title: "Google account: Gmail and Google Calendar", words: "google gmail calendar sign in oauth email drafts integrations" },
   { tab: "about", title: "Version and support folder", words: "about version folder logs" },
   { tab: "usage", title: "Filter by provider or voice/agents", words: "filter all time total spent" },
 ];
@@ -895,7 +871,7 @@ function search(q: string) {
 }
 
 export function Settings() {
-  const [tab, setTab] = useState<Tab>("general");
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).get("tab") as Tab) || "general");
   const [view, setView] = useState<SettingsView | null>(null);
   const [q, setQ] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
@@ -939,7 +915,7 @@ export function Settings() {
   if (tab === "welcome") {
     return (
       <div className="settings settings--welcome" data-tauri-drag-region>
-        <Welcome view={view} onSaved={setView} done={() => { setTab("setup"); getCurrentWindow().hide(); }} />
+        <Welcome view={view} onSaved={setView} done={() => { setTab("setup"); getCurrentWindow().close(); }} />
       </div>
     );
   }
@@ -1024,6 +1000,7 @@ export function Settings() {
               {tab === "coding" && <CodingPanel view={view} onSaved={setView} />}
               {tab === "voice" && <VoicePanel view={view} onSaved={setView} />}
               {tab === "sounds" && <SoundsPanel view={view} onSaved={setView} />}
+              {tab === "apps" && <AppsPanel view={view} onSaved={setView} />}
               {tab === "connectors" && <ConnectorsPanel />}
               {tab === "about" && <AboutPanel />}
             </div>

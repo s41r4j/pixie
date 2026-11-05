@@ -18,7 +18,8 @@ fn build_helper() {
     let target = std::env::var("TARGET").unwrap();
     let bin_dir = manifest.join("binaries");
     std::fs::create_dir_all(&bin_dir).unwrap();
-    let out = bin_dir.join(format!("openclicky-helper-{target}"));
+    let exe = if target.contains("windows") { ".exe" } else { "" };
+    let out = bin_dir.join(format!("openclicky-helper-{target}{exe}"));
 
     if !target.contains("apple-darwin") {
         // Non-mac builds get an empty placeholder so bundling config stays valid.
@@ -58,8 +59,10 @@ fn build_voice() {
     println!("cargo:rerun-if-changed={}", src.display());
     let target = std::env::var("TARGET").unwrap();
     let bin_dir = manifest.join("binaries");
-    let out = bin_dir.join(format!("openclicky-voice-{target}"));
+    let exe = if target.contains("windows") { ".exe" } else { "" };
+    let out = bin_dir.join(format!("openclicky-voice-{target}{exe}"));
     if !target.contains("apple-darwin") {
+        std::fs::create_dir_all(&bin_dir).unwrap();
         if !out.exists() {
             std::fs::write(&out, b"").unwrap();
         }

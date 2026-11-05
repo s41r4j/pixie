@@ -80,7 +80,9 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
         // While the card springs open its reported rect lags; count its final footprint too.
         let w = (screen.notch_width.unwrap_or(0.0) + 300.0).max(500.0);
         let zone = Rect { x: (frame.w - w) / 2.0, y: 0.0, w, h: screen.top_inset + 190.0 };
-        let in_zone = mode == PanelMode::Peek && zone.contains(cx - frame.x, cy - frame.y);
+        // A voice answer hovered open grows the same way.
+        let growing = mode == PanelMode::Peek || (matches!(mode, PanelMode::Thinking | PanelMode::Answer) && hover_state().lock().unwrap().was_inside);
+        let in_zone = growing && zone.contains(cx - frame.x, cy - frame.y);
         in_zone || rects.iter().any(|r| r.contains(cx - frame.x, cy - frame.y))
     };
     let now = Instant::now();
@@ -95,6 +97,8 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
     if inside != h.was_inside {
         h.was_inside = inside;
         st.session.set_hovered(inside);
+        // The notch drops down to show the conversation while hovered mid-answer.
+        crate::emit(app, openclicky_core::Event::new("panel.hover", serde_json::json!({ "inside": inside })));
     }
     let in_for = h.inside_since.map(|t| now - t).unwrap_or_default();
     let out_for = h.outside_since.map(|t| now - t).unwrap_or_default();

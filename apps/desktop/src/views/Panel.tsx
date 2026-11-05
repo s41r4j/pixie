@@ -98,6 +98,9 @@ export function Panel() {
   const [log, setLog] = useState<ChatEntry[]>([]);
   const logEnd = useRef<HTMLDivElement>(null);
   const [, setDrawing] = useState(false);
+  // Hovering the notch mid-answer drops it down to show the conversation; leaving folds it up.
+  const [hover, setHover] = useState(false);
+  const hoverTimer = useRef<number | undefined>(undefined);
   const keys = useShortcuts();
   const turn = useRef(0);
   const shape = useRef<HTMLDivElement>(null);
@@ -131,6 +134,10 @@ export function Panel() {
           break;
         case "panel.screen":
           setScreen(p.screen);
+          break;
+        case "panel.hover":
+          window.clearTimeout(hoverTimer.current);
+          hoverTimer.current = window.setTimeout(() => setHover(!!p.inside), p.inside ? 120 : 280);
           break;
         case "mic.start":
           turn.current = p.turn;
@@ -230,9 +237,9 @@ export function Panel() {
     ro.observe(body.current);
     Array.from(body.current.children).forEach((c) => ro.observe(c));
     return () => ro.disconnect();
-  }, [mode, segments.length, note, error, chips.length]);
+  }, [mode, segments.length, note, error, chips.length, hover]);
 
-  useHitRects("panel", [shape], [mode, bodyH]);
+  useHitRects("panel", [shape], [mode, bodyH, hover]);
   useEffect(() => {
     if (mode === "peek" && tab === "chat") logEnd.current?.scrollIntoView({ block: "end" });
   }, [mode, tab, log.length]);
@@ -244,7 +251,9 @@ export function Panel() {
   const wide = mode === "thinking" || mode === "answer" || mode === "idle" || mode === "typing" || mode === "peek";
   const ear = mode === "toast" ? 170 : live ? 96 : 120;
   // Voice turns live in the ears only (HeyClicky-style): the notch widens, never drops down.
-  const voice = mode === "listening" || mode === "dictating" || mode === "thinking" || mode === "answer";
+  // Hovered while thinking or speaking, it drops down like a normal answer card.
+  const expanded = hover && (mode === "thinking" || mode === "answer");
+  const voice = !expanded && (mode === "listening" || mode === "dictating" || mode === "thinking" || mode === "answer");
   const compact = false;
   const width = voice
     ? Math.max(notchW + 2 * 118, hasNotch ? 0 : 320)

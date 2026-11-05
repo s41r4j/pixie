@@ -574,3 +574,40 @@ span.tagbox { width: 18px; height: 18px; font-size: 13px; cursor: default; }
 .apane .field input { width: 100%; }
 .apane .choice-cards { margin-top: 4px; }
 .utable-wrap .utable { min-width: 640px; }
+
+/* ---- Settings → Apps / Connectors ---------------------------------------------------- */
+.app-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.app-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: var(--oc-black); border: 2px solid var(--oc-charcoal); }
+.app-row--on { border-color: var(--oc-white); box-shadow: var(--oc-shadow); }
+.app-row__icon { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border: 2px solid var(--oc-charcoal); color: var(--oc-silver); }
+.app-row--on .app-row__icon { border-color: var(--oc-white); color: var(--oc-white); }
+.app-row__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.app-row__name { display: flex; align-items: center; gap: 10px; font: 10px/1.6 var(--font-display); }
+.app-row__name .pill { font: 12px var(--font-ui); }
+.app-row__err { font-size: 12px; color: #ff8a8a; overflow-wrap: anywhere; }
+.switch--busy { opacity: .5; cursor: progress; }
+
+.gcard { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--oc-black); border: 2px solid var(--oc-charcoal); }
+.gcard--on { border-color: var(--oc-white); box-shadow: var(--oc-shadow); }
+.gcard__head { display: flex; align-items: center; gap: 14px; }
+.gcard__head > div { flex: 1; min-width: 0; }
+.gcard__head b { font-weight: 600; }
+.gcard__logo { width: 36px; height: 36px; flex: none; display: grid; place-items: center; background: var(--oc-white); color: var(--oc-black); font: 14px var(--font-display); }
+.gcard__setup summary { cursor: pointer; color: var(--oc-mid); font-size: 12.5px; }
+.gcard__setup[open] summary { margin-bottom: 8px; }
+.gcard__fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.ctiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ctile { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--oc-black); border: 2px solid var(--oc-charcoal); min-width: 0; }
+.ctile--on { border-color: var(--oc-white); box-shadow: var(--oc-shadow); }
+.ctile--err { border-color: #ff8a8a; }
+.ctile__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ctile__top b { font: 10px/1.6 var(--font-display); }
+.ctile__blurb { font-size: 12.5px; color: var(--oc-mid); line-height: 1.4; }
+.ctile__state { font-size: 11.5px; color: var(--oc-silver); }
+.ctile__state--err { color: #ff8a8a; overflow-wrap: anywhere; }
+.ctile__actions { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 4px; }
+.ctile__actions .btn--ghost { display: inline-flex; align-items: center; gap: 6px; }
+.ctile__form { display: flex; flex-direction: column; gap: 8px; }
+.ctile__form .field input { width: 100%; }
+@media (max-width: 860px) { .ctiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
