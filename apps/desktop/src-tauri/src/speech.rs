@@ -23,7 +23,7 @@ pub fn speakable(s: &str) -> String {
         out.push_str(t);
         out.push(' ');
     }
-    out.replace("**", "").replace('`', "").replace('*', "").replace("  ", " ").trim().to_string()
+    out.replace("**", "").replace(['`', '*'], "").replace("  ", " ").trim().to_string()
 }
 
 /// Index just past the first sentence end at or after `min` chars.

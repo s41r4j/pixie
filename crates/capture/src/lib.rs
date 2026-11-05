@@ -1,4 +1,7 @@
-//! Screen capture (ScreenCaptureKit Swift shim) + annotation model.
+//! Screen capture + annotation model.
 //!
-//! TODO(M3): focused-display capture, overlay ops (pen/highlighter/arrow), annotated frames.
-//! Never capture while secure input is focused; overlays are excluded from capture.
+//! Capture itself runs in the Swift helper (`apps/desktop/helper/main.swift`: ScreenCaptureKit
+//! screenshot of the display under the pointer, our windows excluded, Vision OCR, and the
+//! frontmost window's Accessibility controls). The desktop crate reads it as
+//! `screen::Capture`. Annotations (`highlight`, `draw`) are rendered by the overlay window.
+//! This crate is kept for a future Rust-side capture model.

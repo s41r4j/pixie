@@ -401,7 +401,7 @@ async fn device_list_folder(ctx: &ToolCtx, input: &Value) -> ToolOutput {
             (modified, line)
         })
         .collect();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.0));
     let total = rows.len();
     let mut out: Vec<String> = rows.into_iter().take(300).map(|r| r.1).collect();
     if total > 300 {

@@ -96,6 +96,7 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
         }
         if next == PanelMode::Hidden {
             hit::set_visible(&handle, PANEL, false);
+            st.session.set_hovered(false);
             if !matches!(prev, PanelMode::Toast) {
                 st.play("agent-close");
             }

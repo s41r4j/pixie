@@ -132,7 +132,7 @@ fn slim(messages: &[Message]) -> Vec<Message> {
 impl Jobs {
     pub fn list(&self) -> Vec<JobView> {
         let mut v: Vec<JobView> = self.map.lock().unwrap().values().map(|e| e.view.clone()).collect();
-        v.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        v.sort_by_key(|j| std::cmp::Reverse(j.created_at));
         v
     }
 
@@ -166,7 +166,7 @@ impl Jobs {
             .filter_map(|e| std::fs::read_to_string(e.path().join("state.json")).ok())
             .filter_map(|s| serde_json::from_str::<Saved>(&s).ok())
             .collect();
-        loaded.sort_by(|a, b| b.view.created_at.cmp(&a.view.created_at));
+        loaded.sort_by_key(|s| std::cmp::Reverse(s.view.created_at));
         let mut m = self.map.lock().unwrap();
         for mut s in loaded.into_iter().take(30) {
             if matches!(s.view.state, JobState::Running | JobState::WaitingOnUser | JobState::Offered) {

@@ -122,7 +122,7 @@ pub fn screens() -> Vec<ScreenInfo> {
             let scale: f64 = msg_send![*s, backingScaleFactor];
             let menubar = (f.origin.y + f.size.height) - (vis.origin.y + vis.size.height);
             let notch = (insets.top > 0.0 && left.size.width > 0.0 && right.size.width > 0.0)
-                .then(|| f.size.width - left.size.width - right.size.width)
+                .then_some(f.size.width - left.size.width - right.size.width)
                 .filter(|w| *w > 40.0);
             ScreenInfo {
                 frame: Rect {
