@@ -257,7 +257,7 @@ export function Panel() {
       );
     if (mode === "toast")
       return (
-        <button className={`ear__toast ear__toast--${toast?.kind ?? "info"}`} onClick={() => toast?.job && api.openNote(toast.job)}>
+        <button className={`ear__toast ear__toast--${toast?.kind ?? "info"}`} onClick={() => (toast?.job ? api.openNote(toast.job) : toast?.kind === "needs" ? api.showSettings("setup") : undefined)}>
           {toast?.text}
         </button>
       );

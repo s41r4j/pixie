@@ -505,6 +505,11 @@ enum Screen {
             done(.success(["secure": true]))
             return
         }
+        // Never trigger the system prompt from a voice turn: only capture once it's allowed.
+        guard CGPreflightScreenCaptureAccess() else {
+            done(.failure(HelperError("Screen Recording is off for openclicky (Settings → Permissions).")))
+            return
+        }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
             guard let content else {
                 done(.failure(HelperError(error.map { "Screen capture unavailable: \($0.localizedDescription)" }
@@ -885,11 +890,8 @@ if argv.count >= 4 && argv[1] == "pdf" {
     exit(1)
 } else if argv.count >= 2 && argv[1] == "screen-check" {
     // A fresh process sees the current Screen Recording grant (the app's own check is cached).
-    SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
-        exit(content != nil && error == nil ? 0 : 1)
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { exit(2) }
-    app.run()
+    // Preflight never shows a prompt; calling ScreenCaptureKit here would.
+    exit(CGPreflightScreenCaptureAccess() ? 0 : 1)
 } else if argv.count >= 2 && argv[1] == "voices" {
     for v in Speaker.list() { print("\(v["quality"]!)\t\(v["language"]!)\t\(v["name"]!)\t\(v["id"]!)") }
     exit(0)

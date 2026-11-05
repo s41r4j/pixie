@@ -124,6 +124,19 @@ fn open_settings(id: PermId) {
 /// Screen Recording as a fresh process sees it. `CGPreflightScreenCaptureAccess` in this
 /// process is cached from launch, so a grant made in System Settings shows up here first.
 fn screen_check_fresh() -> bool {
+    // The UI polls every 1.5 s; one subprocess every 3 s is plenty.
+    static LAST: std::sync::Mutex<Option<(std::time::Instant, bool)>> = std::sync::Mutex::new(None);
+    if let Some((at, v)) = *LAST.lock().unwrap() {
+        if at.elapsed() < std::time::Duration::from_secs(3) {
+            return v;
+        }
+    }
+    let v = screen_check_run();
+    *LAST.lock().unwrap() = Some((std::time::Instant::now(), v));
+    v
+}
+
+fn screen_check_run() -> bool {
     let Some(helper) = crate::helper::locate() else { return false };
     let Ok(mut child) = std::process::Command::new(helper)
         .arg("screen-check")
@@ -308,8 +321,13 @@ mod native {
         }
         autoreleasepool(|_| match id {
             PermId::Screen => {
-                // Prompts once per install; afterwards only System Settings can grant it.
-                unsafe { CGRequestScreenCaptureAccess() };
+                // Ask macOS once so openclicky appears in the list; after that just open the
+                // pane (repeating the request only repeats the dialog).
+                static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if !ASKED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    unsafe { CGRequestScreenCaptureAccess() };
+                    return true;
+                }
                 false
             }
             PermId::Accessibility => {

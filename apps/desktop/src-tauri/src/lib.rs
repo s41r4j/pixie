@@ -223,8 +223,16 @@ pub fn run() {
             kokoro::start(app.handle().clone());
             shelf::refresh(app.handle());
 
-            if !settings.onboarded || !permissions::required_granted() {
-                windows::open_settings(app.handle(), if settings.onboarded { "setup" } else { "welcome" });
+            // The welcome shows once; after that a missing permission is a gentle notch toast,
+            // never a window that keeps coming back.
+            if !settings.onboarded {
+                windows::open_settings(app.handle(), "welcome");
+            } else if !permissions::required_granted() {
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    jobs::toast(&h, "Some permissions are off · open Settings", "needs", None);
+                });
             }
             // Dev/smoke-test aids.
             if std::env::args().any(|a| a == "--show-panel") {
