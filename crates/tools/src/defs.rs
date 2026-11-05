@@ -116,9 +116,20 @@ pub fn highlight() -> ToolDef {
         obj(json!({ "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"}, "label": {"type":"string"} }), &["x", "y", "w", "h"]))
 }
 pub fn mac_step() -> ToolDef {
-    def("mac_step", "Do one step in the frontmost app through Accessibility. action: press (a button/link/menu-bar item by its label or id like e12), menu (a path like \"File > Export…\"), type (put text into the focused field), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without pressing).",
-        obj(json!({ "action": {"type":"string","enum":["press","menu","type","key","focus","open","scroll","find"]}, "target": {"type":"string"} }), &["action"]))
+    def("mac_step", "Do one step in their apps. Your buddy pointer flies there first so they see it. action: click / double_click / right_click (target = a label, an element id like e12, or give x and y in screen points), drag (x,y → to_x,to_y), press (a button by label/id through Accessibility), menu (a path like \"File > Export…\"), type (put text into the focused field), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without acting). Each click returns what the screen looks like after; check it before the next step.",
+        obj(json!({
+            "action": {"type":"string","enum":["click","double_click","right_click","drag","press","menu","type","key","focus","open","scroll","find"]},
+            "target": {"type":"string"},
+            "x": {"type":"number"}, "y": {"type":"number"},
+            "to_x": {"type":"number"}, "to_y": {"type":"number"}
+        }), &["action"]))
 }
+pub fn code() -> ToolDef {
+    // Not in §5's table: delegation to the user's local coding agents. TODO: fold into the spec.
+    def("code", "Hand a coding task to a local coding agent on their Mac (Codex CLI, Claude Code or opencode, whichever is installed; see the environment). It edits files in dir (a repo on their Mac, or output/ by default) and returns its summary. Write the task as a complete brief: goal, files, constraints, how to check. Use it for real code changes, apps, scripts and fixes; review its summary and check the result.",
+        obj(json!({ "task": {"type":"string"}, "dir": {"type":"string"}, "agent": {"type":"string","enum":["auto","codex","claude","opencode"]}, "timeout_minutes": {"type":"integer"} }), &["task"]))
+}
+
 pub fn start_job() -> ToolDef {
     // Not in §5's list: the voice loop needs a way to hand work to a background job. TODO: fold into
     // the spec's tool table.
@@ -126,7 +137,7 @@ pub fn start_job() -> ToolDef {
         obj(json!({ "title": {"type":"string","description":"2-4 words"}, "instructions": {"type":"string"} }), &["title", "instructions"]))
 }
 pub fn browser() -> ToolDef {
-    def("browser", "Use their Chrome through the openclicky extension. operation: tabs, open {url}, snapshot {tabId?} (numbered elements + text), click {ref}, type {ref, text, submit?}, scroll {direction}, navigate {url}, back, screenshot, batch {steps:[...]} (up to 20 operations). Re-snapshot after actions that change the page.",
+    def("browser", "Use their Chrome through the Pixie extension. operation: tabs, open {url}, snapshot {tabId?} (numbered elements + text), click {ref}, type {ref, text, submit?}, scroll {direction}, navigate {url}, back, screenshot, batch {steps:[...]} (up to 20 operations). Re-snapshot after actions that change the page.",
         json!({ "type":"object", "properties": { "operation": {"type":"string"}, "tabId": {"type":"integer"} }, "required": ["operation"], "additionalProperties": true }))
 }
 
@@ -142,7 +153,7 @@ pub fn for_mode(mode: Mode, browser_connected: bool) -> Vec<ToolDef> {
         Mode::Job => vec![
             bash(), read(), write(), edit(), grep(), find(), view_image(), fetch_url(), web_search(),
             device_list_folder(), device_find_files(), device_read_file(), device_save_file(), device_open(),
-            update_plan(), progress(), ask_user(),
+            update_plan(), progress(), ask_user(), code(),
             note(), note_add(), note_answer(), note_replace(), note_remove(), note_tick(), say(),
         ],
     };

@@ -49,7 +49,7 @@ export function NoteWindow() {
   }, []);
 
   useEffect(() => {
-    document.title = job ? `${job.title} — openclicky` : "openclicky";
+    document.title = job ? `${job.title} — Pixie` : "Pixie";
   }, [job]);
 
   const say = (text: string) => {

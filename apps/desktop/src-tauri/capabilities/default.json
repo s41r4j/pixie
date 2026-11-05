@@ -8,12 +8,14 @@
     "shelf",
     "settings",
     "note",
-    "board"
+    "board",
+    "guide"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
     "core:window:allow-start-dragging",
-    "core:window:allow-close"
+    "core:window:allow-close",
+    "drag:default"
   ]
 }

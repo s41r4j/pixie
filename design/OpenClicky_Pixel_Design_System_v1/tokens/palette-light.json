@@ -1,0 +1,13 @@
+{
+  "canvas": "#FFFFFF",
+  "surface": "#FFFFFF",
+  "raised": "#E5E5E5",
+  "foreground": "#000000",
+  "secondary": "#404040",
+  "muted": "#404040",
+  "border": "#A0A0A0",
+  "borderStrong": "#000000",
+  "selectedBackground": "#000000",
+  "selectedForeground": "#FFFFFF",
+  "disabled": "#A0A0A0"
+}

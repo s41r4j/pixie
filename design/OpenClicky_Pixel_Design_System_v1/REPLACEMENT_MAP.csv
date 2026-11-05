@@ -1,0 +1,202 @@
+original_slot,openclicky_asset,status,notes
+agent/agent-close.wav,assets/audio/agent/agent-close.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+agent/agent-done.wav,assets/audio/agent/agent-done.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+agent/agent-launch.wav,assets/audio/agent/agent-launch.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+agent/agent-needs-you.wav,assets/audio/agent/agent-needs-you.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+agent/clicky-question.wav,assets/audio/agent/clicky-question.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 850ms
+agent/clicky-surprised.wav,assets/audio/agent/clicky-surprised.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 500ms
+agent/clicky-text-close.wav,assets/audio/agent/clicky-text-close.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 850ms
+agent/clicky-text-open.wav,assets/audio/agent/clicky-text-open.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+agent/clicky-text-receive.wav,assets/audio/agent/clicky-text-receive.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+agent/clicky-text-send.wav,assets/audio/agent/clicky-text-send.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 500ms
+agent/hatching.wav,assets/audio/agent/hatching.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 3958ms
+agent/home-reveal.wav,assets/audio/agent/home-reveal.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1760ms
+agent/reveal-boot.wav,assets/audio/agent/reveal-boot.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1360ms
+agent/skill-down.wav,assets/audio/agent/skill-down.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 750ms
+agent/skill-up.wav,assets/audio/agent/skill-up.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 790ms
+agent/tada-1.wav,assets/audio/agent/tada-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+agent/tada-2.wav,assets/audio/agent/tada-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1000ms
+ambient/eraser-bed-1.wav,assets/audio/ambient/eraser-bed-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/eraser-bed-2.wav,assets/audio/ambient/eraser-bed-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/handwriting-bed-1.wav,assets/audio/ambient/handwriting-bed-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/handwriting-bed-2.wav,assets/audio/ambient/handwriting-bed-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/pen-screen-bed-1.wav,assets/audio/ambient/pen-screen-bed-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/pencil-paper-bed-1.wav,assets/audio/ambient/pencil-paper-bed-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/pencil-paper-bed-2.wav,assets/audio/ambient/pencil-paper-bed-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/type-keys-1.wav,assets/audio/ambient/type-keys-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+ambient/type-keys-2.wav,assets/audio/ambient/type-keys-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 2975ms
+drawing/boing-1.wav,assets/audio/drawing/boing-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+drawing/boing-2.wav,assets/audio/drawing/boing-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+drawing/build-3d-1.wav,assets/audio/drawing/build-3d-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+drawing/build-3d-2.wav,assets/audio/drawing/build-3d-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+drawing/build-3d-3.wav,assets/audio/drawing/build-3d-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+drawing/build-3d-4.wav,assets/audio/drawing/build-3d-4.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+drawing/highlighter-1.wav,assets/audio/drawing/highlighter-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 900ms
+drawing/highlighter-2.wav,assets/audio/drawing/highlighter-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 900ms
+drawing/highlighter-3.wav,assets/audio/drawing/highlighter-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 900ms
+drawing/pen-flick-1.wav,assets/audio/drawing/pen-flick-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 250ms
+drawing/pen-flick-2.wav,assets/audio/drawing/pen-flick-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 250ms
+drawing/pen-flick-3.wav,assets/audio/drawing/pen-flick-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 250ms
+ui/badge-pop-1.wav,assets/audio/ui/badge-pop-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+ui/badge-pop-2.wav,assets/audio/ui/badge-pop-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+ui/badge-pop-3.wav,assets/audio/ui/badge-pop-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+ui/button-appear-1.wav,assets/audio/ui/button-appear-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/button-appear-2.wav,assets/audio/ui/button-appear-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/connection-question.wav,assets/audio/ui/connection-question.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1500ms
+ui/copy-tick-1.wav,assets/audio/ui/copy-tick-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+ui/copy-tick-2.wav,assets/audio/ui/copy-tick-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 300ms
+ui/ding-1.wav,assets/audio/ui/ding-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 800ms
+ui/ding-2.wav,assets/audio/ui/ding-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 800ms
+ui/enter.mp3,assets/audio/ui/enter.mp3,supplied,original synthesized pixel sound; original legacy filename preserved; duration 120ms
+ui/eshop.mp3,assets/audio/ui/eshop.mp3,supplied,original synthesized pixel sound; original legacy filename preserved; duration 1680ms
+ui/gel-pop-1.wav,assets/audio/ui/gel-pop-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 350ms
+ui/gel-pop-2.wav,assets/audio/ui/gel-pop-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 350ms
+ui/gel-pop-3.wav,assets/audio/ui/gel-pop-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 350ms
+ui/gel-pop-4.wav,assets/audio/ui/gel-pop-4.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 350ms
+ui/nope-1.wav,assets/audio/ui/nope-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 550ms
+ui/nope-2.wav,assets/audio/ui/nope-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 550ms
+ui/page-clear-1.wav,assets/audio/ui/page-clear-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 750ms
+ui/page-clear-2.wav,assets/audio/ui/page-clear-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 750ms
+ui/paper-place-1.wav,assets/audio/ui/paper-place-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+ui/paper-place-2.wav,assets/audio/ui/paper-place-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+ui/paper-place-3.wav,assets/audio/ui/paper-place-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+ui/photo-drop-1.wav,assets/audio/ui/photo-drop-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/photo-drop-2.wav,assets/audio/ui/photo-drop-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/photo-drop-3.wav,assets/audio/ui/photo-drop-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/slide-1.wav,assets/audio/ui/slide-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/slide-2.wav,assets/audio/ui/slide-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/slide-3.wav,assets/audio/ui/slide-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 450ms
+ui/sparkle-1.wav,assets/audio/ui/sparkle-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 800ms
+ui/sparkle-2.wav,assets/audio/ui/sparkle-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 800ms
+ui/stamp-1.wav,assets/audio/ui/stamp-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/stamp-2.wav,assets/audio/ui/stamp-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/sticky-press-1.wav,assets/audio/ui/sticky-press-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/sticky-press-2.wav,assets/audio/ui/sticky-press-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/sticky-press-3.wav,assets/audio/ui/sticky-press-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 400ms
+ui/tapback-thumbs-up.wav,assets/audio/ui/tapback-thumbs-up.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 497ms
+ui/tape-1.wav,assets/audio/ui/tape-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 540ms
+ui/tape-2.wav,assets/audio/ui/tape-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 540ms
+ui/tape-3.wav,assets/audio/ui/tape-3.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 540ms
+ui/target-ping-1.wav,assets/audio/ui/target-ping-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+ui/target-ping-2.wav,assets/audio/ui/target-ping-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 700ms
+ui/whoosh-1.wav,assets/audio/ui/whoosh-1.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 600ms
+ui/whoosh-2.wav,assets/audio/ui/whoosh-2.wav,supplied,original synthesized pixel sound; original legacy filename preserved; duration 600ms
+app-icon-16.png,assets/compat/app-icon-16.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-32.png,assets/compat/app-icon-32.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-64.png,assets/compat/app-icon-64.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-128.png,assets/compat/app-icon-128.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-256.png,assets/compat/app-icon-256.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-512.png,assets/compat/app-icon-512.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+app-icon-1024.png,assets/compat/app-icon-1024.png,supplied,"Default brand variant, nearest-neighbor png; also alternate variants"
+AppIcon,assets/compat/AppIcon.png,supplied,1024px brand master; source svg and all four variants under app-icons
+tray-template.png,assets/compat/tray-template.png,supplied,black-alpha macOS template; flag isTemplate=true in native UI
+ext-icon-16.png,assets/compat/ext-icon-16.png,supplied,pixel-fidelity browser extension icon
+ext-icon-32.png,assets/compat/ext-icon-32.png,supplied,pixel-fidelity browser extension icon
+ext-icon-48.png,assets/compat/ext-icon-48.png,supplied,pixel-fidelity browser extension icon
+ext-icon-128.png,assets/compat/ext-icon-128.png,supplied,pixel-fidelity browser extension icon
+ext-toolbar-16.png,assets/compat/ext-toolbar-16.png,supplied,matching monochrome toolbar state
+ext-toolbar-16-off.png,assets/compat/ext-toolbar-16-off.png,supplied,matching monochrome toolbar state
+ext-toolbar-32.png,assets/compat/ext-toolbar-32.png,supplied,matching monochrome toolbar state
+ext-toolbar-32-off.png,assets/compat/ext-toolbar-32-off.png,supplied,matching monochrome toolbar state
+heyclicky-logo,assets/brand/mark-white.svg,rebrand-replacement,replace all HeyClicky brand UI with new OpenClicky :) mark
+ClickyCharacters,assets/onboarding/onboarding-01.png,replacement-concept,new original onboarding image; not the same original mascot sprite
+empty-note.png,assets/ui-illustrations/empty-note-256.png,supplied,monochrome original fallback
+connector-placeholder.png,assets/ui-illustrations/connector-placeholder-256.png,supplied,monochrome original fallback
+onboarding-01.png,assets/onboarding/onboarding-01.png,supplied,"original 1280x720 illustrative fallback, not proprietary footage"
+onboarding-02.png,assets/onboarding/onboarding-02.png,supplied,"original 1280x720 illustrative fallback, not proprietary footage"
+onboarding-03.png,assets/onboarding/onboarding-03.png,supplied,"original 1280x720 illustrative fallback, not proprietary footage"
+onboarding-04.png,assets/onboarding/onboarding-04.png,supplied,"original 1280x720 illustrative fallback, not proprietary footage"
+onboarding-05.png,assets/onboarding/onboarding-05.png,supplied,"original 1280x720 illustrative fallback, not proprietary footage"
+wallpaper:01-moonrise,assets/wallpapers/4k/dark/01-moonrise.png,supplied,native 3840x2160 and light/1080p alternates
+wallpaper:02-contour,assets/wallpapers/4k/dark/02-contour.png,supplied,native 3840x2160 and light/1080p alternates
+wallpaper:03-night-city,assets/wallpapers/4k/dark/03-night-city.png,supplied,native 3840x2160 and light/1080p alternates
+wallpaper:04-grid-world,assets/wallpapers/4k/dark/04-grid-world.png,supplied,native 3840x2160 and light/1080p alternates
+pixel-icon:mic,assets/system-icons/svg/mic.svg,supplied,SVG master with PNG exports
+pixel-icon:mic-off,assets/system-icons/svg/mic-off.svg,supplied,SVG master with PNG exports
+pixel-icon:sparkle,assets/system-icons/svg/sparkle.svg,supplied,SVG master with PNG exports
+pixel-icon:focus,assets/system-icons/svg/focus.svg,supplied,SVG master with PNG exports
+pixel-icon:cursor,assets/system-icons/svg/cursor.svg,supplied,SVG master with PNG exports
+pixel-icon:layers,assets/system-icons/svg/layers.svg,supplied,SVG master with PNG exports
+pixel-icon:chat,assets/system-icons/svg/chat.svg,supplied,SVG master with PNG exports
+pixel-icon:waveform,assets/system-icons/svg/waveform.svg,supplied,SVG master with PNG exports
+pixel-icon:settings,assets/system-icons/svg/settings.svg,supplied,SVG master with PNG exports
+pixel-icon:bolt,assets/system-icons/svg/bolt.svg,supplied,SVG master with PNG exports
+pixel-icon:terminal,assets/system-icons/svg/terminal.svg,supplied,SVG master with PNG exports
+pixel-icon:grid,assets/system-icons/svg/grid.svg,supplied,SVG master with PNG exports
+pixel-icon:sliders,assets/system-icons/svg/sliders.svg,supplied,SVG master with PNG exports
+pixel-icon:sync,assets/system-icons/svg/sync.svg,supplied,SVG master with PNG exports
+pixel-icon:check,assets/system-icons/svg/check.svg,supplied,SVG master with PNG exports
+pixel-icon:close,assets/system-icons/svg/close.svg,supplied,SVG master with PNG exports
+pixel-icon:plus,assets/system-icons/svg/plus.svg,supplied,SVG master with PNG exports
+pixel-icon:arrow,assets/system-icons/svg/arrow.svg,supplied,SVG master with PNG exports
+pixel-icon:eye,assets/system-icons/svg/eye.svg,supplied,SVG master with PNG exports
+pixel-icon:speaker,assets/system-icons/svg/speaker.svg,supplied,SVG master with PNG exports
+pixel-icon:pause,assets/system-icons/svg/pause.svg,supplied,SVG master with PNG exports
+pixel-icon:stop,assets/system-icons/svg/stop.svg,supplied,SVG master with PNG exports
+pixel-icon:record,assets/system-icons/svg/record.svg,supplied,SVG master with PNG exports
+pixel-icon:screen,assets/system-icons/svg/screen.svg,supplied,SVG master with PNG exports
+pixel-icon:lock,assets/system-icons/svg/lock.svg,supplied,SVG master with PNG exports
+pixel-icon:keyboard,assets/system-icons/svg/keyboard.svg,supplied,SVG master with PNG exports
+mic-state:idle,assets/microphone-states/svg/idle.svg,supplied,explicit separate microphone state graphic
+mic-state:listening,assets/microphone-states/svg/listening.svg,supplied,explicit separate microphone state graphic
+mic-state:processing,assets/microphone-states/svg/processing.svg,supplied,explicit separate microphone state graphic
+mic-state:muted,assets/microphone-states/svg/muted.svg,supplied,explicit separate microphone state graphic
+add-a-project-in-codex,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+add-a-project-in-codex-from-sidebar,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+codex-app-screenshot,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+codex-home-screen,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+codex-permissions,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+git-tools-prompt,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+inside-the-makesomething-project-folder,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+makesomething-project-folder-in-downloads,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+onboarding-google-unverified-warning,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+onboarding-keychain-allow-prompt,,capture-required,record a true screenshot of your own workflow; do not fabricate the OS/app UI
+airtable-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+apple-notes-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+apple-reminders-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+chatgpt-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+claude-code-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+claude-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+discord-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+excalidraw-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+findmy-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+github-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+gmail-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+google-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+google-meet-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+imessage-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+instagram-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+linear-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+linkedin-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+ms-teams-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+notion-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+obsidian-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+openai-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+polymarket-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+powerpoint-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+reddit-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+spotify-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+tiktok-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+whatsapp-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+word-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+x-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+youtube-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+zoom-logo,assets/ui-illustrations/connector-placeholder-256.png,placeholder-only,"use licensed, official icon of actual connected service in product; not included"
+farza-avatar,,not-included,identity-specific or testimonial photography; use own licensed images or remove
+steve,,not-included,identity-specific or testimonial photography; use own licensed images or remove
+referral-sample-farza,,not-included,identity-specific or testimonial photography; use own licensed images or remove
+referral-sample-kelli,,not-included,identity-specific or testimonial photography; use own licensed images or remove
+referral-sample-nilesh,,not-included,identity-specific or testimonial photography; use own licensed images or remove
+catmode-red-notch-atlas,,deliberately-not-recreated,"old red style incompatible with strict monochrome; if feature retained, design new black/white animation"
+catmode-red-overlay-atlas,,deliberately-not-recreated,"old red style incompatible with strict monochrome; if feature retained, design new black/white animation"
+onboarding-intro-v2.mp4,,production-required,capture original OpenClicky workflows; no proprietary HeyClicky footage included
+paywall-intro-v2.mp4,,production-required,capture original OpenClicky workflows; no proprietary HeyClicky footage included
+clicky-drive-sample.mp4,,production-required,capture original OpenClicky workflows; no proprietary HeyClicky footage included
+clicky-spatial-demo.mp4,,production-required,capture original OpenClicky workflows; no proprietary HeyClicky footage included
+voice-preview-* (13 files),,provider-license-required,generate samples at runtime through user's selected licensed voice/provider; not bundled
+realtime-voice-preview-* (10 files),,provider-license-required,generate samples at runtime through user's selected licensed voice/provider; not bundled
+gemini-voice-preview-* (30 files),,provider-license-required,generate samples at runtime through user's selected licensed voice/provider; not bundled
+Barlow-Regular.ttf,,style-replaced-no-font-files,"new design suggests Press Start 2P, VT323, IBM Plex Mono; obtain fonts from publisher with license"
+Barlow-Medium.ttf,,style-replaced-no-font-files,"new design suggests Press Start 2P, VT323, IBM Plex Mono; obtain fonts from publisher with license"
+Barlow-SemiBold.ttf,,style-replaced-no-font-files,"new design suggests Press Start 2P, VT323, IBM Plex Mono; obtain fonts from publisher with license"
+PatrickHand.ttf,,style-replaced-no-font-files,"new design suggests Press Start 2P, VT323, IBM Plex Mono; obtain fonts from publisher with license"

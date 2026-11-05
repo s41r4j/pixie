@@ -1,7 +1,7 @@
 {
   "name": "@openclicky/desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@crabnebula/tauri-plugin-drag": "^2.1.0",
     "@tauri-apps/api": "^2.12.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

@@ -14,6 +14,13 @@ pub struct Settings {
     /// Typed into Settings; stored locally.
     pub deepseek_key: String,
     pub anthropic_key: String,
+    pub openai_key: String,
+    /// Chosen models per provider id ("claude", "openai", "deepseek").
+    pub models: std::collections::BTreeMap<String, ModelChoice>,
+    /// Price per million tokens by model id (overrides the built-in table).
+    pub prices: std::collections::BTreeMap<String, Price>,
+    /// Settings → Coding.
+    pub coding: openclicky_tools::coders::Prefs,
     /// "", "deepseek" or "claude".
     pub provider: String,
     pub voice_id: String,
@@ -27,8 +34,30 @@ pub struct Settings {
     pub master_volume: f32,
     pub muted: bool,
     pub onboarded: bool,
+    /// Show the buddy pointer next to the cursor.
+    pub buddy: bool,
+    /// Let Pixie click/drag for you (otherwise it only points).
+    pub can_click: bool,
     pub user_name: String,
     pub locale: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ModelChoice {
+    /// Voice turns (fast).
+    pub fast: String,
+    /// Background jobs (deep).
+    pub deep: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Price {
+    /// USD per million input tokens.
+    pub input: f64,
+    /// USD per million output tokens.
+    pub output: f64,
 }
 
 impl Default for Settings {
@@ -36,6 +65,10 @@ impl Default for Settings {
         Self {
             deepseek_key: String::new(),
             anthropic_key: String::new(),
+            openai_key: String::new(),
+            models: Default::default(),
+            prices: Default::default(),
+            coding: Default::default(),
             provider: String::new(),
             voice_id: String::new(),
             speech_rate: 0.52,
@@ -47,6 +80,8 @@ impl Default for Settings {
             master_volume: 1.0,
             muted: false,
             onboarded: false,
+            buddy: true,
+            can_click: true,
             user_name: String::new(),
             locale: String::new(),
         }
@@ -98,15 +133,6 @@ fn env_files(app_data: &Path) -> Vec<PathBuf> {
 /// All variables, earlier sources winning.
 pub fn vars(app_data: &Path, settings: &Settings) -> HashMap<String, String> {
     let mut out: HashMap<String, String> = HashMap::new();
-    if !settings.deepseek_key.trim().is_empty() {
-        out.insert("DEEPSEEK".into(), settings.deepseek_key.clone());
-    }
-    if !settings.anthropic_key.trim().is_empty() {
-        out.insert("ANTHROPIC_API_KEY".into(), settings.anthropic_key.clone());
-    }
-    if !settings.provider.is_empty() {
-        out.insert("OPENCLICKY_PROVIDER".into(), settings.provider.clone());
-    }
     for f in env_files(app_data).iter().rev() {
         if let Ok(src) = std::fs::read_to_string(f) {
             out.extend(parse_dotenv(&src));
@@ -114,16 +140,43 @@ pub fn vars(app_data: &Path, settings: &Settings) -> HashMap<String, String> {
     }
     out.extend(std::env::vars());
     // Settings typed by the user win over files.
-    if !settings.deepseek_key.trim().is_empty() {
-        out.insert("DEEPSEEK".into(), settings.deepseek_key.clone());
+    for (key, val) in [
+        ("DEEPSEEK", &settings.deepseek_key),
+        ("ANTHROPIC_API_KEY", &settings.anthropic_key),
+        ("OPENAI_API_KEY", &settings.openai_key),
+        ("OPENCLICKY_PROVIDER", &settings.provider),
+    ] {
+        if !val.trim().is_empty() {
+            out.insert(key.into(), val.trim().to_string());
+        }
     }
-    if !settings.anthropic_key.trim().is_empty() {
-        out.insert("ANTHROPIC_API_KEY".into(), settings.anthropic_key.clone());
-    }
-    if !settings.provider.is_empty() {
-        out.insert("OPENCLICKY_PROVIDER".into(), settings.provider.clone());
+    for (provider, choice) in &settings.models {
+        let prefix = match provider.as_str() {
+            "claude" => "ANTHROPIC",
+            "openai" => "OPENAI",
+            "deepseek" => "DEEPSEEK",
+            _ => continue,
+        };
+        if !choice.fast.trim().is_empty() {
+            out.insert(format!("{prefix}_FAST_MODEL"), choice.fast.trim().into());
+        }
+        if !choice.deep.trim().is_empty() {
+            out.insert(format!("{prefix}_DEEP_MODEL"), choice.deep.trim().into());
+        }
     }
     out
+}
+
+/// The API key for one provider, wherever it came from.
+pub fn key_for(app_data: &Path, settings: &Settings, provider: &str) -> Option<String> {
+    let v = vars(app_data, settings);
+    let get = |k: &str| v.get(k).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    match provider {
+        "claude" => get("ANTHROPIC_API_KEY"),
+        "openai" => get("OPENAI_API_KEY"),
+        "deepseek" => get("DEEPSEEK").or_else(|| get("DEEPSEEK_API_KEY")),
+        _ => None,
+    }
 }
 
 pub fn provider_config(app_data: &Path, settings: &Settings) -> Option<ProviderConfig> {

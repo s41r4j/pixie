@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>com.openclicky.helper</string>
-  <key>CFBundleName</key><string>openclicky</string>
-  <key>NSMicrophoneUsageDescription</key><string>openclicky listens while you hold ctrl+option.</string>
-  <key>NSSpeechRecognitionUsageDescription</key><string>openclicky turns what you say into text.</string>
+  <key>CFBundleName</key><string>Pixie</string>
+  <key>NSMicrophoneUsageDescription</key><string>Pixie listens while you hold ctrl+option.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Pixie turns what you say into text.</string>
 </dict>
 </plist>

@@ -9,7 +9,7 @@ const STEP = 380;
 function Shape({ op, i }: { op: Op; i: number }) {
   const delay = i * STEP;
   const color = COLOR[op.color ?? "ink"] ?? COLOR.ink;
-  const ink = { stroke: color, fill: "none", strokeWidth: 3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, pathLength: 1, className: "ink", style: { animationDelay: `${delay}ms` } };
+  const ink = { stroke: color, fill: "none", strokeWidth: 3, strokeLinecap: "square" as const, strokeLinejoin: "miter" as const, shapeRendering: "crispEdges" as const, pathLength: 1, className: "ink", style: { animationDelay: `${delay}ms` } };
   const label = (x: number, y: number, anchor: "middle" | "start" = "middle") =>
     op.text ? (
       <text x={x} y={y} textAnchor={anchor} className="board__label" style={{ animationDelay: `${delay + 220}ms` }}>
@@ -23,7 +23,7 @@ function Shape({ op, i }: { op: Op; i: number }) {
     case "box":
       return (
         <g>
-          <rect x={x} y={y} width={w} height={h} rx={12} {...ink} />
+          <rect x={x} y={y} width={w} height={h} {...ink} />
           {label(x + w / 2, y + h / 2 + 7)}
         </g>
       );

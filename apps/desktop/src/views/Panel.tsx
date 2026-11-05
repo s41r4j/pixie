@@ -2,9 +2,9 @@
 // transcript), thinks, answers (spoken words light up as they're said), shows the paper note,
 // takes typed questions, and pops short toasts.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, onEvent, slotUrl, type Job, type NoteDoc, type PanelMode, type ScreenInfo } from "../lib/bridge";
+import { api, onEvent, type Job, type NoteDoc, type PanelMode, type ScreenInfo } from "../lib/bridge";
 import { useHitRects } from "../lib/hits";
-import { Smile } from "../components/Mark";
+import { Glyph, Smile } from "../components/Mark";
 import { NoteView } from "../components/NoteView";
 
 const BARS = 22;
@@ -90,10 +90,10 @@ export function Panel() {
   const [typed, setTyped] = useState("");
   const [dictated, setDictated] = useState("");
   const [bodyH, setBodyH] = useState(0);
-  const [lastAnswer, setLastAnswer] = useState<{ q: string; a: string } | null>(null);
+  const [, setLastAnswer] = useState<{ q: string; a: string } | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clickTalk, setClickTalk] = useState(false);
-  const [drawing, setDrawing] = useState(false);
+  const [, setDrawing] = useState(false);
   const turn = useRef(0);
   const shape = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -231,10 +231,11 @@ export function Panel() {
   const live = mode === "listening" || mode === "dictating";
   const wide = mode === "thinking" || mode === "answer" || mode === "idle" || mode === "typing" || mode === "peek";
   const ear = mode === "toast" ? 170 : live ? 96 : 120;
-  // While marks or the board are up, the notch shrinks to one line so it never covers them.
-  const compact = drawing && (mode === "thinking" || mode === "answer");
-  const width = compact
-    ? Math.max(notchW + 2 * 170, 520)
+  // Voice turns live in the ears only (HeyClicky-style): the notch widens, never drops down.
+  const voice = mode === "listening" || mode === "dictating" || mode === "thinking" || mode === "answer";
+  const compact = false;
+  const width = voice
+    ? Math.max(notchW + 2 * 118, hasNotch ? 0 : 320)
     : mode === "hidden"
       ? Math.max(notchW, 120)
       : mode === "peek"
@@ -242,7 +243,7 @@ export function Panel() {
         : wide
           ? Math.max(notchW + 2 * 150, 540)
           : Math.max(notchW + 2 * ear, hasNotch ? 0 : 300);
-  const showBody = mode !== "hidden" && mode !== "toast" && !(live && !partial && !dictated);
+  const showBody = mode !== "hidden" && mode !== "toast" && !voice;
   const height = mode === "hidden" ? top : top + (showBody ? Math.min(bodyH, 380) : 0);
   const speakingNow = word !== null;
 
@@ -253,28 +254,36 @@ export function Panel() {
   };
 
   const rightEar = () => {
-    if (mode === "listening") return <Waveform levels={levels} live />;
-    if (mode === "dictating")
+    if (error && voice)
       return (
-        <div className="ear__stack">
-          <span className="ear__label">Dictating</span>
-          <Waveform levels={levels.slice(-10)} live />
-        </div>
+        <button className="ear__label ear__label--err" onClick={() => api.showSettings(/key/i.test(error) ? "ai" : "setup")} title={error}>
+          {/key/i.test(error) ? "add a key" : /permission|Microphone|Speech|Screen/i.test(error) ? "permission" : "hmm"}
+        </button>
       );
+    if (empty && voice) return <span className="ear__label">didn't catch that</span>;
+    if (mode === "listening") return <Waveform levels={levels.slice(-12)} live />;
+    if (mode === "dictating") return <Waveform levels={levels.slice(-12)} live />;
+    if (mode === "thinking")
+      return (
+        <span className="ear__dots" aria-label="thinking">
+          <i />
+          <i />
+          <i />
+        </span>
+      );
+    if (mode === "answer") return <Waveform levels={speakingNow ? levels.map((_, i) => 0.25 + 0.55 * Math.abs(Math.sin((Date.now() / 140 + i) * 0.9))).slice(-12) : Array(12).fill(0.08)} live={speakingNow} />;
     if (mode === "toast")
       return (
         <button className={`ear__toast ear__toast--${toast?.kind ?? "info"}`} onClick={() => (toast?.job ? api.openNote(toast.job) : toast?.kind === "needs" ? api.showSettings("setup") : undefined)}>
           {toast?.text}
         </button>
       );
-    if (mode === "thinking") return <span className="ear__label ear__label--think">thinking</span>;
     if (mode === "peek") {
       const running = jobs.filter((j) => j.state === "running").length;
       const needs = jobs.filter((j) => j.state === "waiting_on_user").length;
       return <span className="ear__label">{needs ? `${needs} needs you` : running ? `${running} working` : "ready"}</span>;
     }
-    if (speakingNow) return <Waveform levels={levels.map((_, i) => 0.25 + 0.5 * Math.abs(Math.sin((Date.now() / 160 + i) * 0.9)))} live />;
-    return <span className="ear__label">{mode === "answer" ? "" : "⌃⌥ to talk"}</span>;
+    return <span className="ear__label">⌃⌥ to talk</span>;
   };
 
   return (
@@ -365,19 +374,19 @@ export function Panel() {
                     api.talkStart();
                   }}
                 >
-                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", clickTalk ? "system-waveform" : "system-microphone")})` }} />
+                  <Glyph name={clickTalk ? "waveform" : "mic"} size={24} />
                   <span>Talk</span>
                 </button>
                 <button className="qa" onClick={() => api.panelType()}>
-                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-chat")})` }} />
+                  <Glyph name={"chat"} size={24} />
                   <span>Type</span>
                 </button>
                 <button className="qa" onClick={() => (jobs[0] ? api.openNote(jobs[0].id) : api.panelType())}>
-                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-layers")})` }} />
+                  <Glyph name={"layers"} size={24} />
                   <span>Jobs{jobs.length ? ` · ${jobs.length}` : ""}</span>
                 </button>
                 <button className="qa" onClick={() => api.showSettings()}>
-                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-settings")})` }} />
+                  <Glyph name={"settings"} size={24} />
                   <span>Settings</span>
                 </button>
               </div>
@@ -388,12 +397,6 @@ export function Panel() {
                   <span className="peek__job-status">{j.state === "waiting_on_user" ? "needs you" : j.progress || "working"}</span>
                 </button>
               ))}
-              {lastAnswer?.a && (
-                <div className="peek__last">
-                  <span className="peek__label">Last</span>
-                  <span className="peek__text">{lastAnswer.a}</span>
-                </div>
-              )}
               <div className="peek__hint">
                 hold <kbd>⌃</kbd><kbd>⌥</kbd> to talk · <kbd>fn</kbd><kbd>⌃</kbd> to dictate
               </div>

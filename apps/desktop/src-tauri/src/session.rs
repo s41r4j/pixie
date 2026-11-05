@@ -271,7 +271,7 @@ pub fn show_error(app: &AppHandle, message: &str, from_mic: bool) {
     emit(app, Event::new("turn.error", json!({ "message": message, "mic": from_mic })));
     state(app).play("nope");
     panel::set_mode(app, PanelMode::Answer);
-    schedule_collapse(app, Duration::from_secs(7));
+    schedule_collapse(app, Duration::from_secs(4));
 }
 
 fn environment(app: &AppHandle, cwd: &std::path::Path, capture: Option<&Capture>) -> prompt::Environment {
@@ -290,6 +290,7 @@ fn environment(app: &AppHandle, cwd: &std::path::Path, capture: Option<&Capture>
         skills: st.skills.clone(),
         memory: crate::jobs::memory(&st.data_dir),
         helper: crate::jobs::helper_hint(&st),
+        coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
     }
 }
 
@@ -355,6 +356,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         host: host.clone(),
         cancel: cancel.clone(),
         helper: st.helper.path.clone(),
+        coding: st.settings.lock().map(|s| s.coding.clone()).unwrap_or_default(),
     };
     let mut tools = openclicky_tools::defs::for_mode(mode, crate::browser::connected(&app));
     tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), mode));
@@ -415,7 +417,7 @@ fn finish_turn(app: &AppHandle, n: u64, spoke: bool) {
         }
     }
     if !spoke && !st.session.is_speaking() {
-        schedule_collapse(app, Duration::from_secs(8));
+        schedule_collapse(app, Duration::from_secs(3));
     }
 }
 
@@ -479,7 +481,8 @@ pub fn spawn_event_pump(app: AppHandle) {
                     let all_done = st.session.speaking_ended(&id);
                     emit(&app, Event::new("speech.end", data));
                     if all_done && !st.session.busy() {
-                        schedule_collapse(&app, Duration::from_secs(10));
+                        // Voice-only answers: tuck the notch back soon after the last word.
+                        schedule_collapse(&app, Duration::from_millis(1800));
                         overlay::schedule_clear(&app, Duration::from_secs(6));
                     }
                 }

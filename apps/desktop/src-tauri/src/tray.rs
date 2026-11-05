@@ -12,7 +12,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let ask = MenuItem::with_id(app, "ask", "Type a Question…", true, None::<&str>)?;
     let jobs = MenuItem::with_id(app, "jobs", "Show Jobs", true, None::<&str>)?;
     let setup = MenuItem::with_id(app, "settings", "Settings…", true, Some("cmd+,"))?;
-    let quit = MenuItem::with_id(app, "quit", "Quit openclicky", true, Some("cmd+q"))?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Pixie", true, Some("cmd+q"))?;
     let sep = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&hint, &sep, &ask, &jobs, &setup, &sep2, &quit])?;
@@ -25,7 +25,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .or_else(|| app.default_window_icon().cloned());
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("openclicky")
+        .tooltip("Pixie")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .icon_as_template(true)

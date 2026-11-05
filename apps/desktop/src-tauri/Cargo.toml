@@ -25,12 +25,14 @@ openclicky-mcp.workspace = true
 openclicky-native-host.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-drag = "2"
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
 env_logger = "0.11"
 tokio = { version = "1", features = ["full"] }
 base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 async-trait = "0.1"
 chrono = "0.4"
 rand.workspace = true

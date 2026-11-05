@@ -88,7 +88,7 @@ fn remember(data: &Path, facts: &[String]) {
     if facts.is_empty() {
         return;
     }
-    let mut cur = std::fs::read_to_string(data.join("memory.md")).unwrap_or_else(|_| "# What openclicky knows about you\n\n".into());
+    let mut cur = std::fs::read_to_string(data.join("memory.md")).unwrap_or_else(|_| "# What Pixie knows about you\n\n".into());
     let date = chrono::Local::now().format("%Y-%m-%d");
     for f in facts {
         if !cur.contains(f.as_str()) {
@@ -171,7 +171,7 @@ impl Jobs {
         for mut s in loaded.into_iter().take(30) {
             if matches!(s.view.state, JobState::Running | JobState::WaitingOnUser | JobState::Offered) {
                 s.view.state = JobState::Failed;
-                s.view.error = Some("openclicky was closed while this ran. Send a message to pick it up again.".into());
+                s.view.error = Some("Pixie was closed while this ran. Send a message to pick it up again.".into());
                 s.view.question = None;
             }
             m.insert(s.view.id.clone(), Entry { view: s.view, messages: s.messages, cancel: CancellationToken::new(), answer: None });
@@ -393,6 +393,7 @@ fn drive(app: AppHandle, id: String) {
             host: host.clone(),
             cancel: cancel.clone(),
             helper: st.helper.path.clone(),
+            coding: st.settings.lock().map(|s| s.coding.clone()).unwrap_or_default(),
         };
         let env = prompt::Environment {
             cwd: view.cwd.display().to_string(),
@@ -407,6 +408,7 @@ fn drive(app: AppHandle, id: String) {
             skills: st.skills.clone(),
             memory: memory(&st.data_dir),
             helper: helper_hint(&st),
+            coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
         };
         let task = format!("Title: {}\n\n{}", view.title, view.instructions);
         let system = prompt::assemble(&PromptInput { mode: Mode::Job, env, task });

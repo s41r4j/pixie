@@ -1,6 +1,6 @@
 //! Prompt assembly (BUILD-SPEC §6). Each turn's system prompt is built from named blocks in a
 //! fixed order: identity → mode → policy → environment → plan + note → mode task → final
-//! contract. All wording here is openclicky's own.
+//! contract. All wording here is our own.
 //!
 //! Golden tests snapshot the exact string per mode (`tests/golden/*.txt`); run with
 //! `UPDATE_GOLDEN=1` to accept a deliberate change.
@@ -60,6 +60,9 @@ pub struct Environment {
     pub memory: Vec<String>,
     /// PDF helper etc. available on PATH for bash.
     pub helper: String,
+    /// Local coding agents the `code` tool can use, e.g. "Codex CLI".
+    #[serde(default)]
+    pub coders: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +73,7 @@ pub struct PromptInput {
     pub task: String,
 }
 
-const IDENTITY: &str = "You are openclicky, a small helper that lives in the notch of the user's Mac. \
+const IDENTITY: &str = "You are Pixie, a small helper that lives in the notch of the user's Mac. \
 You were started for one piece of work: hear what they ask, look at what they're looking at, and get it done. \
 You are warm, quick and plain-spoken, like a capable friend sitting next to them. You talk in first person. \
 You never call yourself an AI, an assistant, an agent or a model, and you never describe your own features.";
@@ -86,7 +89,8 @@ They are holding a key and talking to you. Everything you write as plain text is
 - Anything worth reading rather than hearing (a number to copy, a short list, code, an address) goes on the panel's paper with note_answer or note, and you say one line about it.
 - You can see their screen. When they ask where something is, how to do something here, or say \"this\" or \"that\", find it in the on-screen lists below (exact frames) or the screenshot, then point at it with highlight using that item's frame, or circle, underline or arrow it with draw. Say what you're pointing at in a few words while you do.
 - To explain something visually (a concept, a diagram on their screen, how parts connect, steps), sketch it on the board: draw with board=true, a short title and 4 to 12 simple shapes with labels on the 1000×640 canvas, then talk them through it. Keep the spoken part short; the board carries the detail.
-- If they ask you to do something in the app for them, use mac_step one step at a time and say what you did.",
+- You have a buddy pointer that rides next to their cursor. highlight flies it to a thing and labels it; that's how you show the way.
+- If they ask you to do it for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. Ask before anything that sends, buys, deletes or posts.",
         Mode::Takeover => "MODE: TAKE-OVER
 You are walking them through something in another app, one step at a time, out loud.
 - Each turn is ONE step: point at the exact control with highlight, and say one short sentence about what to do with it. Then stop and let them do it.
@@ -134,8 +138,11 @@ fn environment_block(env: &Environment) -> String {
     line("Screenshot attached", if env.screenshot { "yes, of the screen they're on" } else { "no" });
     let apps = if env.connected_apps.is_empty() { "none yet".to_string() } else { env.connected_apps.join(", ") };
     line("Connected apps", &apps);
-    line("Their browser", if env.browser_connected { "connected through the openclicky extension (use the browser tool)" } else { "not connected" });
+    line("Their browser", if env.browser_connected { "connected through the Pixie extension (use the browser tool)" } else { "not connected" });
     line("Helpers", &env.helper);
+    if !env.coders.is_empty() {
+        line("Coding agents (code tool)", &env.coders.join(", "));
+    }
     if !env.skills.is_empty() {
         s.push_str("- Playbooks (read the file before you start on something it covers):\n");
         for sk in &env.skills {
@@ -246,6 +253,7 @@ mod tests {
             skills: vec![Skill { name: "pdf".into(), description: "make PDFs".into(), path: "/skills/pdf.md".into() }],
             memory: vec!["Prefers one-page summaries".into()],
             helper: "openclicky-helper pdf in.html out.pdf".into(),
+            coders: vec!["Codex CLI".into(), "Claude Code".into()],
         }
     }
 
@@ -271,7 +279,7 @@ mod tests {
     fn block_order_is_fixed() {
         let p = assemble(&PromptInput { mode: Mode::Job, env: env(), task: "Do X".into() });
         let at = |s: &str| p.find(s).unwrap_or_else(|| panic!("missing {s}"));
-        assert!(at("You are openclicky") < at("MODE: JOB"));
+        assert!(at("You are Pixie") < at("MODE: JOB"));
         assert!(at("MODE: JOB") < at("POLICY"));
         assert!(at("POLICY") < at("ENVIRONMENT"));
         assert!(at("ENVIRONMENT") < at("PLAN AND NOTE"));

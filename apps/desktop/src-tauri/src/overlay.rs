@@ -78,7 +78,8 @@ pub fn clear(app: &AppHandle) {
     let h = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(450)).await;
-        if SHOWN.load(Ordering::SeqCst) {
+        // The buddy keeps the overlay up; only the marks go.
+        if SHOWN.load(Ordering::SeqCst) || crate::buddy::holds_overlay(&h) {
             return;
         }
         let h2 = h.clone();

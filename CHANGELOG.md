@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1 — 2026-11-05
+- Voice turns stay in the notch's ears (listening, thinking, speaking) and never drop down or show text.
+- The buddy is a round pixel `:)` badge, not a mouse arrow; it draws marks itself like a pencil and drags highlights out as a marching-ants selection.
+- Settings → **Models**: Claude, OpenAI and DeepSeek with live model lists for voice and jobs; OpenAI provider (Chat Completions).
+- Settings → **Usage**: tokens and estimated cost per model and per day, editable prices.
+- Settings → **Coding**: default agent, per-agent model, Codex sandbox, Claude Code permissions, default folder.
+- Menu-bar icon is the pixel `:)` again (the pack's template was a microphone).
+
+## 0.4.0 — 2026-11-05
+- **Pixie**: openclicky is now Pixie, in the monochrome pixel design system (IBM Plex Mono, VT323, Press Start 2P; dithering, hard shadows, chamfered corners).
+- **Buddy pointer**: rides beside the cursor, flies on an arc to what it's talking about, shows what it's saying.
+- **Clicks for you**: `mac_step` click / double_click / right_click / drag through the buddy, with the screen state returned after each step; "pointer only" setting.
+- **Coding with local agents**: new `code` tool for jobs runs Codex CLI, Claude Code or opencode non-interactively.
+- **Drag-me permission guide**: a card with a native draggable app tile for the Accessibility and Screen Recording lists.
+- General settings tab; site rebranded.
+
 ## 0.3.0 — 2026-11-05
 - **Board**: visual explanations are sketched on a clean paper canvas (`draw` with `board: true`) instead of over the screen; the notch shrinks to one line while marks or the board are up.
 - **Hover to peek**: resting the pointer on the notch opens quick actions, running jobs and the last answer (native hover, no click needed).

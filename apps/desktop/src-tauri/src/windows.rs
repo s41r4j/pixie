@@ -19,7 +19,7 @@ pub fn open_note(app: &AppHandle, job_id: &str) {
         }
         let url = WebviewUrl::App(format!("index.html#job={id}").into());
         match WebviewWindowBuilder::new(&handle, NOTE, url)
-            .title("openclicky")
+            .title("Pixie")
             .inner_size(760.0, 880.0)
             .min_inner_size(520.0, 480.0)
             .title_bar_style(TitleBarStyle::Overlay)

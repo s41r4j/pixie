@@ -1,8 +1,9 @@
-# :) openclicky
+# :) Pixie
 
-An open-source, macOS-first companion that lives in your notch. Hold **⌃ control + ⌥ option**
+Pixie (formerly Pixie) is an open-source, macOS-first companion that lives in your notch. Hold **⌃ control + ⌥ option**
 and talk: it hears you, looks at your screen, answers out loud, points at things, draws on the
-screen, does steps in your apps, and hands bigger work to background jobs that write a live
+screen with its own little pointer, clicks for you when you ask, and hands bigger work to
+background jobs (including coding through Codex CLI, Claude Code or opencode) that write a live
 note. Tauri 2 + Rust + React + a small Swift helper. Claude or DeepSeek as the brain.
 
 ## Run it
@@ -20,21 +21,36 @@ Development: `npm run dev` (Vite on :1420 + the app with hot reload).
 
 On first launch a welcome window walks through permissions (Microphone, Speech Recognition,
 Screen Recording, Accessibility) and the model key. Screen Recording only applies to a fresh
-process: after switching it on, use **relaunch openclicky** in the window.
+process: after switching it on, use **relaunch Pixie** in the window.
 
 macOS ties permissions to the app's signature. Default builds are ad-hoc signed, which changes
-every build, so after a rebuild remove the old openclicky rows in System Settings → Privacy &
+every build, so after a rebuild remove the old Pixie rows in System Settings → Privacy &
 Security (the − button) and allow the new one. To keep permissions across rebuilds, create a
 local signing identity once and build with it:
 
 ```bash
 sh scripts/create-signing-identity.sh
-APPLE_SIGNING_IDENTITY="openclicky Local Signing" npm run app:build
+APPLE_SIGNING_IDENTITY="Pixie Local Signing" npm run app:build
 ```
+
+## The pointer
+
+Pixie has a pointer of its own that rides beside your cursor. When it talks about something it
+flies there (on an arc) and labels it. Ask it to *do* something and it clicks, double-clicks,
+right-clicks, types or drags for you, one step at a time, checking the screen after each step.
+Settings → General: **Show Pixie next to my cursor**, **Let Pixie click for me** (off = pointer
+only).
+
+## Coding with local agents
+
+Background jobs can hand code to the coding agents already on your Mac — **Codex CLI**,
+**Claude Code** or **opencode** (whichever is installed; T3 Code users have these underneath).
+Ask for an app, a script or a fix and the job runs the agent in your repo or its output folder,
+streams its progress to the job card, and checks the result.
 
 ## The notch
 
-On a Mac with a notch, openclicky rests invisibly over it. **Hover the notch** to peek: Talk
+On a Mac with a notch, Pixie rests invisibly over it. **Hover the notch** to peek: Talk
 (click to talk, click Done), Type, Jobs and Settings, the jobs that are running or need you,
 and your last answer. Hold ⌃⌥ any time to talk; it opens on whichever screen you're using.
 
@@ -61,6 +77,9 @@ voices and set the speed there; the system voice is the fallback.
 
 ## Keys and models
 
+The app's internal identifier stays `com.openclicky.app` (so permissions and data carry over);
+everything you see says Pixie.
+
 Keys are read from (first wins): Settings → AI, the process environment,
 `~/Library/Application Support/com.openclicky.app/.env`, then the repo `.env` in dev builds.
 `ANTHROPIC_API_KEY` → Claude (`claude-opus-5-5`, the default provider); `DEEPSEEK` /
@@ -82,8 +101,8 @@ takes screenshots). See `.env.example` for model overrides.
 
 Every sound, icon, video and font is loaded by slot name from `resources/manifest.json`
 (see `resources/README.md`). The shipped icons, sounds, mic/system glyphs and brand colours come
-from the OpenClicky Design System v2 in `design/` (see its `reference.md` and
-`REPLACEMENT_MAP.csv`). `npm run assets:local -- --from DIR` builds a private local pack
+from the Pixel Design System v1 in `design/OpenClicky_Pixel_Design_System_v1` (monochrome pixel
+style, IBM Plex Mono / VT323 / Press Start 2P under OFL). `npm run assets:local -- --from DIR` builds a private local pack
 in Application Support that overrides the bundled media on this Mac only; never commit
 third-party media.
 

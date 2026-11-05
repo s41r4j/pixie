@@ -7,10 +7,12 @@
 
 mod anthropic;
 mod config;
+mod openai;
 mod scripted;
 
 pub use anthropic::AnthropicProvider;
 pub use config::{ProviderConfig, ProviderKind};
+pub use openai::OpenAiProvider;
 pub use scripted::ScriptedProvider;
 
 use serde::{Deserialize, Serialize};

@@ -368,9 +368,11 @@ mod tests {
             (ResourceKind::Icon, "ext-128"),
             (ResourceKind::Video, "onboarding-intro"),
             (ResourceKind::Video, "paywall-intro"),
-            (ResourceKind::Font, "barlow-regular"),
-            (ResourceKind::Font, "barlow-medium"),
-            (ResourceKind::Font, "barlow-semibold"),
+            // Pixel design system v1 (OFL): UI, labels, display; handwriting for paper notes.
+            (ResourceKind::Font, "plex-mono-regular"),
+            (ResourceKind::Font, "plex-mono-semibold"),
+            (ResourceKind::Font, "vt323"),
+            (ResourceKind::Font, "press-start"),
             (ResourceKind::Font, "patrick-hand"),
         ] {
             assert!(store.entry(kind, slot).is_some(), "manifest missing {kind}/{slot}");

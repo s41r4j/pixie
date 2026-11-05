@@ -2,6 +2,7 @@
 //! pointing/drawing, background jobs with notes, settings and onboarding.
 
 mod browser;
+mod buddy;
 mod commands;
 mod config;
 mod connectors;
@@ -23,6 +24,7 @@ mod shelf;
 mod skills;
 mod speech;
 mod tray;
+mod usage;
 mod windows;
 
 use openclicky_core::prompt::Skill;
@@ -40,6 +42,7 @@ pub const SHELF: &str = "shelf";
 pub const SETTINGS: &str = "settings";
 pub const NOTE: &str = "note";
 pub const BOARD: &str = "board";
+pub const GUIDE: &str = "guide";
 
 pub struct AppState {
     pub store: Arc<ResourceStore>,
@@ -87,7 +90,7 @@ impl AppState {
 
     pub fn reload_provider(&self) {
         let s = self.settings.lock().unwrap().clone();
-        let p = config::provider_config(&self.data_dir, &s).map(|c| c.build());
+        let p = config::provider_config(&self.data_dir, &s).map(|c| usage::Recorded::wrap(c, &self.data_dir));
         match &p {
             Some(p) => log::info!("model: {}", p.label()),
             None => log::warn!("model: no key configured (DEEPSEEK / ANTHROPIC_API_KEY)"),
@@ -128,6 +131,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             windows::open_settings(app, "");
         }))
+        .plugin(tauri_plugin_drag::init())
         .register_uri_scheme_protocol("slot", resources::slot_protocol)
         .invoke_handler(tauri::generate_handler![
             commands::panel_mode,
@@ -163,7 +167,12 @@ pub fn run() {
             commands::voice_test,
             commands::onboarding_done,
             commands::status,
+            commands::models_available,
+            commands::usage_summary,
+            commands::coders_status,
             commands::board_close,
+            commands::guide_show,
+            commands::guide_hide,
             commands::voice_status,
             commands::voice_install,
             permissions::permissions_status,
@@ -269,7 +278,7 @@ pub fn run() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while building openclicky");
+        .expect("error while building Pixie");
 
     app.run(|_app, event| {
         // Closing the last window must not quit a menu-bar app; only Quit (exit code) does.

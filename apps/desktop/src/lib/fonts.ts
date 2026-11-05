@@ -1,10 +1,12 @@
 import { slotUrl } from "./bridge";
 
-// Load slot fonts at runtime; if a slot is missing the CSS stack falls back to system fonts.
+// Pixel design system v1 fonts (OFL), loaded from slots; CSS stacks fall back to monospace.
 const FACES: [family: string, slot: string, weight: string][] = [
-  ["Barlow", "barlow-regular", "400"],
-  ["Barlow", "barlow-medium", "500"],
-  ["Barlow", "barlow-semibold", "600"],
+  ["IBM Plex Mono", "plex-mono-regular", "400"],
+  ["IBM Plex Mono", "plex-mono-medium", "500"],
+  ["IBM Plex Mono", "plex-mono-semibold", "600"],
+  ["VT323", "vt323", "400"],
+  ["Press Start 2P", "press-start", "400"],
   ["Patrick Hand", "patrick-hand", "400"],
 ];
 
@@ -14,6 +16,6 @@ export function loadSlotFonts(): void {
     face
       .load()
       .then((f) => document.fonts.add(f))
-      .catch(() => console.warn(`font slot ${slot} unavailable; using system font`));
+      .catch(() => console.warn(`font slot ${slot} unavailable; using monospace`));
   }
 }

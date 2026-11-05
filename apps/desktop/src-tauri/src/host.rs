@@ -36,6 +36,12 @@ impl Host for AppHost {
                 }
                 ToolOutput::ok("Said it.")
             }
+            "mac_step" if matches!(s(input, "action"), "click" | "double_click" | "right_click" | "drag") => {
+                if job.is_some() {
+                    return Some(ToolOutput::err("Background jobs don't click around in their apps; ask them, or do it in voice."));
+                }
+                crate::buddy::act(app, s(input, "action"), input).await.into()
+            }
             "mac_step" => {
                 let action = s(input, "action");
                 if job.is_some() && !matches!(action, "open") {

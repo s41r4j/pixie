@@ -389,30 +389,9 @@
         "icons/ext-128.png"
       ]
     },
-    "mic-idle": {
+    "system-arrow": {
       "files": [
-        "icons/mic/mic-idle.svg"
-      ],
-      "gain": 1.0,
-      "category": "ui"
-    },
-    "mic-listening": {
-      "files": [
-        "icons/mic/mic-listening.svg"
-      ],
-      "gain": 1.0,
-      "category": "ui"
-    },
-    "mic-muted": {
-      "files": [
-        "icons/mic/mic-muted.svg"
-      ],
-      "gain": 1.0,
-      "category": "ui"
-    },
-    "mic-processing": {
-      "files": [
-        "icons/mic/mic-processing.svg"
+        "icons/system/arrow.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -431,16 +410,16 @@
       "gain": 1.0,
       "category": "ui"
     },
-    "system-code": {
+    "system-check": {
       "files": [
-        "icons/system/code.svg"
+        "icons/system/check.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "system-cube": {
+    "system-close": {
       "files": [
-        "icons/system/cube.svg"
+        "icons/system/close.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -448,6 +427,13 @@
     "system-cursor": {
       "files": [
         "icons/system/cursor.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-eye": {
+      "files": [
+        "icons/system/eye.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -466,9 +452,23 @@
       "gain": 1.0,
       "category": "ui"
     },
+    "system-keyboard": {
+      "files": [
+        "icons/system/keyboard.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
     "system-layers": {
       "files": [
         "icons/system/layers.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-lock": {
+      "files": [
+        "icons/system/lock.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -480,16 +480,37 @@
       "gain": 1.0,
       "category": "ui"
     },
-    "system-microphone": {
+    "system-mic": {
       "files": [
-        "icons/system/microphone.svg"
+        "icons/system/mic.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "system-refresh": {
+    "system-pause": {
       "files": [
-        "icons/system/refresh.svg"
+        "icons/system/pause.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-plus": {
+      "files": [
+        "icons/system/plus.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-record": {
+      "files": [
+        "icons/system/record.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-screen": {
+      "files": [
+        "icons/system/screen.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -515,6 +536,34 @@
       "gain": 1.0,
       "category": "ui"
     },
+    "system-speaker": {
+      "files": [
+        "icons/system/speaker.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-stop": {
+      "files": [
+        "icons/system/stop.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-sync": {
+      "files": [
+        "icons/system/sync.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-terminal": {
+      "files": [
+        "icons/system/terminal.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
     "system-waveform": {
       "files": [
         "icons/system/waveform.svg"
@@ -522,44 +571,135 @@
       "gain": 1.0,
       "category": "ui"
     },
-    "brand-smile-dark": {
+    "mic-idle": {
       "files": [
-        "icons/brand/smile-dark.svg"
+        "icons/mic/idle.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "brand-smile-ivory": {
+    "mic-listening": {
       "files": [
-        "icons/brand/smile-ivory.svg"
+        "icons/mic/listening.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "brand-smile-white": {
+    "mic-muted": {
       "files": [
-        "icons/brand/smile-white.svg"
+        "icons/mic/muted.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "brand-wordmark-dark": {
+    "mic-processing": {
       "files": [
-        "icons/brand/wordmark-dark.svg"
+        "icons/mic/processing.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "brand-wordmark-light": {
+    "brand-mark-black": {
       "files": [
-        "icons/brand/wordmark-light.svg"
+        "icons/brand/mark-black.svg"
       ],
       "gain": 1.0,
       "category": "ui"
     },
-    "listening-pill": {
+    "brand-mark-white": {
       "files": [
-        "icons/listening-pill.svg"
+        "icons/brand/mark-white.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-wordmark-black": {
+      "files": [
+        "icons/brand/wordmark-black.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-wordmark-white": {
+      "files": [
+        "icons/brand/wordmark-white.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-bayer25-32": {
+      "files": [
+        "icons/pattern/bayer25-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-bayer50-32": {
+      "files": [
+        "icons/pattern/bayer50-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-bayer75-32": {
+      "files": [
+        "icons/pattern/bayer75-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-checker-32": {
+      "files": [
+        "icons/pattern/checker-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-grid-32": {
+      "files": [
+        "icons/pattern/grid-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-scanlines-32": {
+      "files": [
+        "icons/pattern/scanlines-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "pattern-stipple-32": {
+      "files": [
+        "icons/pattern/stipple-32.png"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "ui-connector-placeholder": {
+      "files": [
+        "icons/ui/connector-placeholder.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "ui-empty-note": {
+      "files": [
+        "icons/ui/empty-note.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "ui-permission-shield": {
+      "files": [
+        "icons/ui/permission-shield.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "ui-target-reticle": {
+      "files": [
+        "icons/ui/target-reticle.svg"
       ],
       "gain": 1.0,
       "category": "ui"
@@ -578,25 +718,45 @@
     }
   },
   "fonts": {
-    "barlow-regular": {
-      "files": [
-        "fonts/Barlow-Regular.ttf"
-      ]
-    },
-    "barlow-medium": {
-      "files": [
-        "fonts/Barlow-Medium.ttf"
-      ]
-    },
-    "barlow-semibold": {
-      "files": [
-        "fonts/Barlow-SemiBold.ttf"
-      ]
-    },
     "patrick-hand": {
       "files": [
         "fonts/PatrickHand.ttf"
       ]
+    },
+    "plex-mono-regular": {
+      "files": [
+        "fonts/IBMPlexMono-Regular.ttf"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "plex-mono-medium": {
+      "files": [
+        "fonts/IBMPlexMono-Medium.ttf"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "plex-mono-semibold": {
+      "files": [
+        "fonts/IBMPlexMono-SemiBold.ttf"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "vt323": {
+      "files": [
+        "fonts/VT323-Regular.ttf"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "press-start": {
+      "files": [
+        "fonts/PressStart2P-Regular.ttf"
+      ],
+      "gain": 1.0,
+      "category": "ui"
     }
   }
 }

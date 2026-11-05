@@ -167,6 +167,7 @@ mod tests {
             host: host.clone(),
             cancel: CancellationToken::new(),
             helper: None,
+            coding: Default::default(),
         };
         let provider = ScriptedProvider::new(vec![
             ScriptedProvider::reply(vec![
@@ -213,6 +214,7 @@ mod tests {
             host: Arc::new(crate::NoHost),
             cancel: CancellationToken::new(),
             helper: None,
+            coding: Default::default(),
         };
         ctx.cancel.cancel();
         let provider = ScriptedProvider::new(vec![]);

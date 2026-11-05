@@ -113,9 +113,49 @@ export interface Job {
   steps: number;
 }
 
+export interface ModelChoice {
+  fast: string;
+  deep: string;
+}
+export interface Price {
+  input: number;
+  output: number;
+}
+export interface CodingPrefs {
+  agent: string;
+  models: Record<string, string>;
+  codex_sandbox: string;
+  claude_permission: string;
+  dir: string;
+}
+export interface UsageModel {
+  model: string;
+  provider: string;
+  requests: number;
+  input: number;
+  output: number;
+  voice: number;
+  job: number;
+  cost: number | null;
+  price: Price | null;
+}
+export interface UsageSummary {
+  days: number;
+  requests: number;
+  input: number;
+  output: number;
+  cost: number;
+  unpriced: boolean;
+  models: UsageModel[];
+  by_day: { day: string; tokens: number; cost: number }[];
+}
 export interface Settings {
   deepseek_key: string;
   anthropic_key: string;
+  openai_key: string;
+  models: Record<string, ModelChoice>;
+  prices: Record<string, Price>;
+  coding: CodingPrefs;
   provider: string;
   voice_id: string;
   speech_rate: number;
@@ -127,6 +167,8 @@ export interface Settings {
   master_volume: number;
   muted: boolean;
   onboarded: boolean;
+  buddy: boolean;
+  can_click: boolean;
   user_name: string;
   locale: string;
 }
@@ -195,6 +237,12 @@ export const api = {
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),
   relaunch: () => invoke<void>("relaunch"),
   boardClose: () => invoke<void>("board_close"),
+  modelsAvailable: (provider: string) => invoke<{ models: { id: string; name: string; vision: boolean | null }[] }>("models_available", { provider }),
+  usageSummary: (days: number) => invoke<UsageSummary>("usage_summary", { days }),
+  codersStatus: () =>
+    invoke<{ agents: { id: string; label: string; installed: boolean; path: string | null; version: string | null }[]; t3code: boolean }>("coders_status"),
+  guideShow: (id: string) => invoke<void>("guide_show", { id }),
+  guideHide: () => invoke<void>("guide_hide"),
   resetPermission: (id: string) => invoke<PermissionInfo>("permission_reset", { id }),
 };
 

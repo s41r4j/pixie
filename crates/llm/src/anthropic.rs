@@ -47,6 +47,7 @@ impl AnthropicProvider {
                 };
                 body["output_config"] = json!({ "effort": effort });
             }
+            ProviderKind::OpenAi => {}
             // DeepSeek: thinking off for voice latency, on for jobs.
             ProviderKind::DeepSeek => {
                 if req.effort == Effort::Fast {
@@ -108,6 +109,7 @@ impl Provider for AnthropicProvider {
     fn label(&self) -> String {
         let name = match self.cfg.kind {
             ProviderKind::Claude => "Claude",
+            ProviderKind::OpenAi => "OpenAI",
             ProviderKind::DeepSeek => "DeepSeek",
         };
         format!("{name} · {}", self.cfg.fast_model)

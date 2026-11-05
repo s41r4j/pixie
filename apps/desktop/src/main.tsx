@@ -10,6 +10,7 @@ import { Shelf } from "./views/Shelf";
 import { Settings } from "./views/Settings";
 import { NoteWindow } from "./views/NoteWindow";
 import { Board } from "./views/Board";
+import { Guide } from "./views/Guide";
 import "./styles/base.css";
 import "./styles/panel.css";
 import "./styles/overlay.css";
@@ -17,7 +18,7 @@ import "./styles/shelf.css";
 import "./styles/paper.css";
 import "./styles/windows.css";
 import "./styles/board.css";
-import "./styles/neutral.css";
+import "./styles/pixel.css";
 
 // One bundle, one view per window label.
 installPreview();
@@ -33,6 +34,7 @@ const VIEWS: Record<string, () => React.JSX.Element> = {
   settings: Settings,
   note: NoteWindow,
   board: Board,
+  guide: Guide,
 };
 const View = VIEWS[label] ?? Settings;
 

@@ -12,7 +12,19 @@ use std::sync::Arc;
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     Claude,
+    #[serde(rename = "openai")]
+    OpenAi,
     DeepSeek,
+}
+
+impl ProviderKind {
+    pub fn id(self) -> &'static str {
+        match self {
+            ProviderKind::Claude => "claude",
+            ProviderKind::OpenAi => "openai",
+            ProviderKind::DeepSeek => "deepseek",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +48,17 @@ impl ProviderConfig {
         }
     }
 
+    pub fn openai(api_key: String) -> Self {
+        Self {
+            kind: ProviderKind::OpenAi,
+            base_url: "https://api.openai.com/v1".into(),
+            api_key,
+            // Defaults; pick exact models in Settings → Models.
+            fast_model: "gpt-5-mini".into(),
+            deep_model: "gpt-5".into(),
+        }
+    }
+
     pub fn deepseek(api_key: String) -> Self {
         Self {
             kind: ProviderKind::DeepSeek,
@@ -51,16 +74,20 @@ impl ProviderConfig {
         let get = |k: &str| vars.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let deepseek = get("DEEPSEEK").or_else(|| get("DEEPSEEK_API_KEY"));
         let claude = get("ANTHROPIC_API_KEY");
+        let openai = get("OPENAI_API_KEY");
         let wanted = get("OPENCLICKY_PROVIDER").map(|s| s.to_lowercase());
-        let mut cfg = match (wanted.as_deref(), claude, deepseek) {
-            (Some("deepseek"), _, Some(k)) => Self::deepseek(k),
-            (Some("claude" | "anthropic"), Some(k), _) => Self::claude(k),
-            (_, Some(k), _) => Self::claude(k),
-            (_, None, Some(k)) => Self::deepseek(k),
+        let mut cfg = match (wanted.as_deref(), claude, openai, deepseek) {
+            (Some("deepseek"), _, _, Some(k)) => Self::deepseek(k),
+            (Some("openai"), _, Some(k), _) => Self::openai(k),
+            (Some("claude" | "anthropic"), Some(k), _, _) => Self::claude(k),
+            (_, Some(k), _, _) => Self::claude(k),
+            (_, None, Some(k), _) => Self::openai(k),
+            (_, None, None, Some(k)) => Self::deepseek(k),
             _ => return None,
         };
         let prefix = match cfg.kind {
             ProviderKind::Claude => "ANTHROPIC",
+            ProviderKind::OpenAi => "OPENAI",
             ProviderKind::DeepSeek => "DEEPSEEK",
         };
         if let Some(m) = get(&format!("{prefix}_MODEL")) {
@@ -87,7 +114,10 @@ impl ProviderConfig {
     }
 
     pub fn build(self) -> Arc<dyn Provider> {
-        Arc::new(AnthropicProvider::new(self))
+        match self.kind {
+            ProviderKind::OpenAi => Arc::new(crate::OpenAiProvider::new(self)),
+            _ => Arc::new(AnthropicProvider::new(self)),
+        }
     }
 }
 
@@ -117,6 +147,15 @@ mod tests {
             ("OPENCLICKY_PROVIDER", "deepseek"),
         ]))
         .unwrap();
+        assert_eq!(c.kind, ProviderKind::DeepSeek);
+    }
+
+    #[test]
+    fn openai_key_and_choice() {
+        let c = ProviderConfig::from_vars(&vars(&[("OPENAI_API_KEY", "o"), ("OPENAI_FAST_MODEL", "gpt-x")])).unwrap();
+        assert_eq!(c.kind, ProviderKind::OpenAi);
+        assert_eq!(c.fast_model, "gpt-x");
+        let c = ProviderConfig::from_vars(&vars(&[("OPENAI_API_KEY", "o"), ("DEEPSEEK", "d"), ("OPENCLICKY_PROVIDER", "deepseek")])).unwrap();
         assert_eq!(c.kind, ProviderKind::DeepSeek);
     }
 

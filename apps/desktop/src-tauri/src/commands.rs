@@ -46,6 +46,46 @@ pub fn panel_hover(state: State<'_, AppState>, hovered: bool) {
     state.session.set_hovered(hovered);
 }
 
+/// The running app bundle (what to drag into a Privacy list).
+fn app_bundle() -> std::path::PathBuf {
+    let exe = std::env::current_exe().unwrap_or_default();
+    exe.ancestors()
+        .find(|p| p.extension().map(|e| e == "app").unwrap_or(false))
+        .map(|p| p.to_path_buf())
+        .unwrap_or(exe)
+}
+
+/// HeyClicky-style helper: a card under System Settings with a draggable app tile.
+#[tauri::command]
+pub fn guide_show(app: AppHandle, id: String) {
+    let state = app.state::<AppState>();
+    let icon = state.store.resolve(ResourceKind::Icon, "app-icon-1024").map(|p| p.display().to_string()).unwrap_or_default();
+    let bundle = app_bundle().display().to_string();
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = h.get_webview_window(crate::GUIDE) {
+            let s = crate::macos::screens().into_iter().next().unwrap_or_default();
+            let (gw, gh) = (440.0, 130.0);
+            let frame = Rect { x: s.frame.x + (s.frame.w - gw) / 2.0, y: s.frame.y + s.frame.h - gh - 70.0, w: gw, h: gh };
+            crate::macos::configure_overlay(&w, crate::macos::PANEL_LEVEL);
+            crate::macos::set_frame(&w, frame);
+            crate::macos::order_front_without_focus(&w);
+        }
+    });
+    crate::emit(&app, openclicky_core::Event::new("guide.show", json!({ "perm": id, "app": bundle, "icon": icon })));
+}
+
+#[tauri::command]
+pub fn guide_hide(app: AppHandle) {
+    crate::emit(&app, openclicky_core::Event::new("guide.hide", json!({})));
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = h.get_webview_window(crate::GUIDE) {
+            crate::macos::order_out(&w);
+        }
+    });
+}
+
 #[tauri::command]
 pub fn board_close(app: AppHandle) {
     crate::overlay::board_close(&app);
@@ -226,7 +266,12 @@ pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
     SettingsView {
         provider: state.provider().map(|p| p.label()),
         key_hint: cfg.map(|c| mask(&c.api_key)).unwrap_or_default(),
-        settings: Settings { deepseek_key: mask_if(&settings.deepseek_key), anthropic_key: mask_if(&settings.anthropic_key), ..settings },
+        settings: Settings {
+            deepseek_key: mask_if(&settings.deepseek_key),
+            anthropic_key: mask_if(&settings.anthropic_key),
+            openai_key: mask_if(&settings.openai_key),
+            ..settings
+        },
     }
 }
 
@@ -243,7 +288,7 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
         let mut cur = serde_json::to_value(&*s).map_err(|e| e.to_string())?;
         if let (Some(obj), Some(p)) = (cur.as_object_mut(), patch.as_object()) {
             for (k, v) in p {
-                if (k == "deepseek_key" || k == "anthropic_key") && v.as_str().map(|x| x.contains('•')).unwrap_or(false) {
+                if (k == "deepseek_key" || k == "anthropic_key" || k == "openai_key") && v.as_str().map(|x| x.contains('•')).unwrap_or(false) {
                     continue;
                 }
                 obj.insert(k.clone(), v.clone());
@@ -257,6 +302,73 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
     }
     state.reload_provider();
     Ok(settings_get(state))
+}
+
+/// Live model list for a provider (uses that provider's key).
+#[tauri::command]
+pub async fn models_available(app: AppHandle, provider: String) -> Result<Value, String> {
+    let state = app.state::<AppState>();
+    let settings = state.settings.lock().unwrap().clone();
+    let key = crate::config::key_for(&state.data_dir, &settings, &provider).ok_or("No key for this provider yet.")?;
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
+    let req = match provider.as_str() {
+        "claude" => http.get("https://api.anthropic.com/v1/models?limit=100").header("x-api-key", &key).header("anthropic-version", "2023-06-01"),
+        "openai" => http.get("https://api.openai.com/v1/models").bearer_auth(&key),
+        "deepseek" => http.get("https://api.deepseek.com/models").bearer_auth(&key),
+        _ => return Err("Unknown provider.".into()),
+    };
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("{} answered {}", provider, resp.status()));
+    }
+    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let mut ids: Vec<Value> = v["data"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| {
+            let id = m["id"].as_str()?.to_string();
+            // Chat-capable models only for OpenAI.
+            if provider == "openai" && !(id.starts_with("gpt-") || id.starts_with('o') || id.starts_with("chatgpt")) {
+                return None;
+            }
+            if provider == "openai" && (id.contains("audio") || id.contains("realtime") || id.contains("tts") || id.contains("transcribe") || id.contains("image")) {
+                return None;
+            }
+            Some(json!({ "id": id, "name": m["display_name"].as_str().or(m["name"].as_str()).unwrap_or(""), "vision": m["input_modalities"].as_array().map(|a| a.iter().any(|x| x == "image")) }))
+        })
+        .collect();
+    ids.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    Ok(json!({ "models": ids }))
+}
+
+#[tauri::command]
+pub fn usage_summary(app: AppHandle, days: Option<i64>) -> Value {
+    let state = app.state::<AppState>();
+    let settings = state.settings.lock().unwrap().clone();
+    let lines = crate::usage::read(&state.data_dir);
+    crate::usage::summary(&lines, &settings, days.unwrap_or(30), chrono::Utc::now().timestamp_millis())
+}
+
+#[tauri::command]
+pub fn coders_status() -> Value {
+    let found = openclicky_tools::coders::detect();
+    let agents: Vec<Value> = ["codex", "claude", "opencode"]
+        .iter()
+        .map(|name| {
+            let c = found.iter().find(|c| c.name == *name);
+            json!({
+                "id": name,
+                "label": match *name { "codex" => "Codex CLI", "claude" => "Claude Code", _ => "opencode" },
+                "installed": c.is_some(),
+                "path": c.map(|c| c.path.display().to_string()),
+                "version": c.map(openclicky_tools::coders::version),
+            })
+        })
+        .collect();
+    let t3 = std::path::Path::new("/Applications/T3 Code (Nightly).app").exists() || std::path::Path::new("/Applications/T3 Code.app").exists();
+    json!({ "agents": agents, "t3code": t3 })
 }
 
 /// One tiny request to prove the key works.

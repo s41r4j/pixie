@@ -5,6 +5,7 @@
 //! the browser, connectors) are delegated to the [`Host`].
 
 pub mod agent;
+pub mod coders;
 pub mod defs;
 mod exec;
 pub mod guard;
@@ -60,6 +61,8 @@ pub struct ToolCtx {
     pub cancel: CancellationToken,
     /// `openclicky-helper` (PDF, document text) if available.
     pub helper: Option<PathBuf>,
+    /// Settings → Coding.
+    pub coding: coders::Prefs,
 }
 
 #[async_trait::async_trait]

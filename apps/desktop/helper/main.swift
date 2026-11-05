@@ -495,6 +495,70 @@ enum Keys {
     }
 }
 
+// MARK: - pointer actions (the buddy's hands)
+
+enum Pointer {
+    /// Click at a global point, then put the user's cursor back where it was.
+    static func click(x: Double, y: Double, button: String, count: Int) throws -> [String: Any] {
+        guard AXIsProcessTrusted() else { throw HelperError("Accessibility access is off.") }
+        let src = CGEventSource(stateID: .hidSystemState)
+        let original = CGEvent(source: nil)?.location ?? .zero
+        let p = CGPoint(x: x, y: y)
+        let (downT, upT, btn): (CGEventType, CGEventType, CGMouseButton) =
+            button == "right" ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
+        CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(30_000)
+        for i in 1...max(1, min(count, 3)) {
+            let down = CGEvent(mouseEventSource: src, mouseType: downT, mouseCursorPosition: p, mouseButton: btn)
+            let up = CGEvent(mouseEventSource: src, mouseType: upT, mouseCursorPosition: p, mouseButton: btn)
+            down?.setIntegerValueField(.mouseEventClickState, value: Int64(i))
+            up?.setIntegerValueField(.mouseEventClickState, value: Int64(i))
+            down?.post(tap: .cghidEventTap)
+            usleep(18_000)
+            up?.post(tap: .cghidEventTap)
+            usleep(40_000)
+        }
+        usleep(60_000)
+        CGWarpMouseCursorPosition(original)
+        CGAssociateMouseAndMouseCursorPosition(1)
+        return ["clicked": ["x": Int(x), "y": Int(y)], "button": button, "count": count]
+    }
+
+    static func drag(from a: CGPoint, to b: CGPoint) throws -> [String: Any] {
+        guard AXIsProcessTrusted() else { throw HelperError("Accessibility access is off.") }
+        let src = CGEventSource(stateID: .hidSystemState)
+        let original = CGEvent(source: nil)?.location ?? .zero
+        CGEvent(mouseEventSource: src, mouseType: .leftMouseDown, mouseCursorPosition: a, mouseButton: .left)?.post(tap: .cghidEventTap)
+        let steps = 24
+        for i in 1...steps {
+            let t = Double(i) / Double(steps)
+            let p = CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+            CGEvent(mouseEventSource: src, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+            usleep(12_000)
+        }
+        CGEvent(mouseEventSource: src, mouseType: .leftMouseUp, mouseCursorPosition: b, mouseButton: .left)?.post(tap: .cghidEventTap)
+        usleep(60_000)
+        CGWarpMouseCursorPosition(original)
+        CGAssociateMouseAndMouseCursorPosition(1)
+        return ["dragged": ["from": ["x": Int(a.x), "y": Int(a.y)], "to": ["x": Int(b.x), "y": Int(b.y)]]]
+    }
+
+    /// What changed, for checking an action worked.
+    static func afterState() -> [String: Any] {
+        let app = NSWorkspace.shared.frontmostApplication
+        let ax = AX.snapshot(limit: 60)
+        var focused = ""
+        let sys = AXUIElementCreateSystemWide()
+        if let f = AX.attr(sys, kAXFocusedUIElementAttribute) {
+            let el = f as! AXUIElement
+            let role = AX.string(el, kAXRoleAttribute) ?? ""
+            focused = "\(role.replacingOccurrences(of: "AX", with: "").lowercased()) \(AX.label(el, role: role))"
+        }
+        return ["app": app?.localizedName ?? "", "window": ax["window"] ?? "", "focused": focused,
+                "controls": (ax["elements"] as? [[String: Any]] ?? []).prefix(25).map { "\($0["id"]!) \($0["role"]!) \($0["label"]!)" }]
+    }
+}
+
 // MARK: - screen capture + OCR
 
 enum Screen {
@@ -792,6 +856,19 @@ func handle(_ line: String) {
             reply(id, ["x": Int(p.x), "y": Int(p.y)])
         case "ax_snapshot":
             reply(id, AX.snapshot())
+        case "click_at":
+            var r = try Pointer.click(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0,
+                                      button: str(args, "button") ?? "left", count: args["count"] as? Int ?? 1)
+            let id2 = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                r["after"] = Pointer.afterState()
+                reply(id2, r)
+            }
+        case "drag":
+            var r = try Pointer.drag(from: CGPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0),
+                                     to: CGPoint(x: args["to_x"] as? Double ?? 0, y: args["to_y"] as? Double ?? 0))
+            r["after"] = Pointer.afterState()
+            reply(id, r)
         case "insert_text":
             reply(id, try Keys.insert(str(args, "text") ?? ""))
         case "mac_step":

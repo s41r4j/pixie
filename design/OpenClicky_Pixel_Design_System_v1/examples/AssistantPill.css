@@ -1,0 +1,10 @@
+/* Add the tokens/openclicky.css design system before importing this file. */
+.oc-pill{display:flex;align-items:center;gap:10px;max-width:420px;min-height:48px;padding:0 10px;color:var(--oc-foreground);background:var(--oc-canvas);border:2px solid var(--oc-border-strong);font:13px var(--oc-font-body)}
+.oc-pill__mark{border:0;background:none;color:inherit;font:22px var(--oc-font-ui);min-width:34px;cursor:pointer}
+.oc-pill__microphone{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--oc-border);background:transparent;color:inherit;cursor:pointer}
+.oc-pill__microphone:disabled{opacity:.55;cursor:not-allowed}
+.oc-pill__microphone img{image-rendering:pixelated}
+.oc-pill__status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.oc-pill__shortcut{font-size:10px;color:var(--oc-muted)}
+.oc-pill button:focus-visible{outline:2px dashed var(--oc-foreground);outline-offset:3px}
+@media(max-width:400px){.oc-pill__shortcut{display:none}}

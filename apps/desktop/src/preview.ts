@@ -83,8 +83,8 @@ export function installPreview() {
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "", provider: "", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "DeepSeek · deepseek-flash", key_hint: "sk-1••••abcd" };
-        case "permissions_status": return [
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "", provider: "", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, can_click: true, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "DeepSeek · deepseek-flash", key_hint: "sk-1••••abcd" };
+        case "permissions_status": if (previewView === "guide") return []; return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
           { id: "accessibility", label: "Accessibility", why: "Point at buttons and type into fields for you.", required: true, state: "not_granted", restart_hint: false },
@@ -93,6 +93,15 @@ export function installPreview() {
         ];
         case "voices": return { voices: [{ id: "ava", name: "Ava", language: "en-US", quality: "premium" }, { id: "sam", name: "Samantha", language: "en-US", quality: "default" }], default: "ava" };
         case "status": return { helper: true, provider: "DeepSeek · deepseek-flash", browser: false, connectors: [], data_dir: "/Users/me/Library/Application Support/com.openclicky.app", version: "0.2.0" };
+        case "models_available": return { models: [{ id: "deepseek-flash", name: "DeepSeek-V4.1-Flash", vision: true }, { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro", vision: false }] };
+        case "usage_summary": return { days: 30, requests: 128, input: 1840000, output: 96000, cost: 2.41, unpriced: true, models: [
+          { model: "claude-opus-5-5", provider: "claude", requests: 40, input: 520000, output: 16000, voice: 30, job: 10, cost: 2.4, price: { input: 4, output: 20 } },
+          { model: "deepseek-flash", provider: "deepseek", requests: 88, input: 1320000, output: 80000, voice: 80, job: 8, cost: null, price: null } ],
+          by_day: Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(20 + i).padStart(2, "0")}`, tokens: 20000 + ((i * 7919) % 90000), cost: 0.1 })) };
+        case "coders_status": return { agents: [
+          { id: "codex", label: "Codex CLI", installed: true, path: "/opt/homebrew/bin/codex", version: "codex-cli 0.166.0" },
+          { id: "claude", label: "Claude Code", installed: true, path: "/opt/homebrew/bin/claude", version: "2.1.318 (Claude Code)" },
+          { id: "opencode", label: "opencode", installed: true, path: "/opt/homebrew/bin/opencode", version: "v2.2.5" } ], t3code: true };
         case "voice_status": return { installed: true, ready: true, installing: false, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
         case "resources_report": return { root: "", pack: "local", sounds: 37, missing: [] };
         default: return null;
@@ -128,6 +137,9 @@ export function installPreview() {
   }
   if (previewView === "overlay") {
     ev("overlay.screen", { screen: { frame: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, top_inset: 34, notch_width: 185, scale: 2 }, origin: { x: 0, y: 0, w: window.innerWidth, h: 900 } }, 50);
+    ev("buddy.cursor", { x: 300, y: 200 }, 100);
+    ev("speech.segment", { id: "b1", text: "It's the Share button, top right." }, 150);
+    ev("speech.start", { id: "b1" }, 200);
     ev("overlay.highlight", { rect: { x: 520, y: 260, w: 120, h: 34 }, label: "Share" }, 300);
     ev("overlay.draw", { ops: [{ kind: "circle", x: 200, y: 420, w: 180, h: 50, color: "coral" }, { kind: "underline", x: 520, y: 500, w: 220, h: 20, color: "sky" }, { kind: "arrow", x: 820, y: 600, to_x: 660, to_y: 300, color: "butter" }, { kind: "text", x: 840, y: 640, text: "this one!", color: "coral" }] }, 900);
   }
@@ -144,6 +156,7 @@ export function installPreview() {
       { kind: "underline", x: 410, y: 300, w: 180, h: 20, color: "red" },
     ] }, 200);
   }
+  if (previewView === "guide") ev("guide.show", { perm: "accessibility", app: "/Applications/Pixie.app", icon: "" }, 150);
   if (previewView === "settings" && params.get("tab")) ev("settings.tab", { tab: params.get("tab") }, 300);
   if (previewView === "note") location.hash = "job=a";
   document.documentElement.classList.add("preview");

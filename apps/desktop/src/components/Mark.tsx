@@ -1,31 +1,35 @@
-// The openclicky mark: the `:)` glyph (design-system geometry), drawn in the current text
-// colour. `Mark` puts it on a quiet graphite tile for windows.
+// The Pixie mark: the pixel `:)` from the design system, drawn as a mask so it takes the
+// current text colour. `Mark` puts it in a chamfered black tile with a white frame.
+import { slotUrl } from "../lib/bridge";
 
 export function Smile({ size = 22, live = false, mood = "smile" }: { size?: number; live?: boolean; mood?: "smile" | "think" | "listen" }) {
   return (
-    <svg className={`smile ${live ? "smile--live" : ""} smile--${mood}`} width={size} height={size} viewBox="230 230 600 560" aria-label="openclicky">
-      <g fill="currentColor" className="smile__eyes">
-        <circle cx="408" cy="405" r="56" />
-        <circle cx="408" cy="607" r="56" />
-      </g>
-      <path d="M584 316 C721 408 719 612 578 713" fill="none" stroke="currentColor" strokeWidth="96" strokeLinecap="round" />
-    </svg>
+    <i
+      className={`pmark ${live ? "pmark--live" : ""} pmark--${mood}`}
+      style={{ width: size, height: size, ["--icon" as string]: `url(${slotUrl("icon", "brand-mark-white")})` }}
+      aria-label="Pixie"
+      role="img"
+    />
   );
 }
 
 export function Mark({ size = 30, live = false }: { size?: number; live?: boolean; mood?: "smile" | "think" | "listen" }) {
   return (
-    <span className={`mark ${live ? "mark--live" : ""}`} style={{ width: size, height: size, borderRadius: size * 0.24 }}>
-      <Smile size={size * 0.56} />
+    <span className={`ptile ${live ? "ptile--live" : ""}`} style={{ width: size, height: size }}>
+      <Smile size={size * 0.9} />
     </span>
   );
 }
 
-/** The wordmark: `:)` + name. */
+/** Pixel glyph from the system icon set, tinted with currentColor. */
+export function Glyph({ name, size = 16 }: { name: string; size?: number }) {
+  return <i className="pglyph" style={{ width: size, height: size, ["--icon" as string]: `url(${slotUrl("icon", `system-${name}`)})` }} aria-hidden />;
+}
+
 export function Wordmark() {
   return (
     <span className="wordmark">
-      <Smile size={15} /> openclicky
+      <Smile size={18} /> Pixie
     </span>
   );
 }

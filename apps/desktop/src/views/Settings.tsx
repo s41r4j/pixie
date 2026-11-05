@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, onEvent, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
 import { Mark, Wordmark } from "../components/Mark";
+import { CodingPanel, ModelsPanel, UsagePanel } from "./SettingsModels";
 
-type Tab = "welcome" | "setup" | "ai" | "voice" | "sounds" | "connectors" | "about";
+type Tab = "welcome" | "general" | "setup" | "ai" | "usage" | "coding" | "voice" | "sounds" | "connectors" | "about";
 
 const PILL: Record<PermState, { text: string; tone: "ok" | "warn" | "muted" }> = {
   granted: { text: "Allowed", tone: "ok" },
@@ -29,7 +30,7 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
         <div className="row__why">{p.why}</div>
         {(p.id === "screen" || p.id === "accessibility") && !granted && (
           <div className="row__hint">
-            Turn openclicky on in System Settings
+            Turn Pixie on in System Settings
             {p.restart_hint && (
               <>
                 , then{" "}
@@ -62,6 +63,7 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
                 setBusy(true);
                 try {
                   await api.requestPermission(p.id);
+                  if (p.id === "screen" || p.id === "accessibility") api.guideShow(p.id);
                 } finally {
                   setBusy(false);
                   onChange();
@@ -70,7 +72,13 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
             >
               {p.state === "unchecked" ? "Check" : "Allow"}
             </button>
-            <button className="btn btn--link" onClick={() => api.openPermissionSettings(p.id)}>
+            <button
+              className="btn btn--link"
+              onClick={() => {
+                api.openPermissionSettings(p.id);
+                if (p.id === "screen" || p.id === "accessibility") api.guideShow(p.id);
+              }}
+            >
               Open Settings
             </button>
           </div>
@@ -167,7 +175,7 @@ function AiPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: Se
         </button>
         {test && <span className={test.ok ? "ok-text" : "bad-text"}>{test.text}</span>}
       </div>
-      <p className="muted small">Keys stay on this Mac in openclicky's settings file. Files and screenshots are only sent when a question needs them.</p>
+      <p className="muted small">Keys stay on this Mac in Pixie's settings file. Files and screenshots are only sent when a question needs them.</p>
       <label className="toggle">
         <input type="checkbox" checked={view?.settings.share_screen ?? true} onChange={(e) => api.setSettings({ share_screen: e.target.checked }).then(onSaved)} />
         <span>Look at the screen when I ask something (sends a screenshot with voice questions)</span>
@@ -332,10 +340,10 @@ function ConnectorsPanel() {
       <ol className="steps">
         <li>Open <code>chrome://extensions</code> and switch on Developer mode.</li>
         <li>
-          Click <b>Load unpacked</b> and pick the <code>extension</code> folder in openclicky's support folder.
+          Click <b>Load unpacked</b> and pick the <code>extension</code> folder in Pixie's support folder.
           <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/extension`)}>Show folder</button>
         </li>
-        <li>That's it. openclicky can then read pages, click and type in your browser when you ask.</li>
+        <li>That's it. Pixie can then read pages, click and type in your browser when you ask.</li>
       </ol>
       <div className="banner banner--muted">
         <b>Apps</b> {st?.connectors.length ? `connected: ${st.connectors.join(", ")}` : "— none yet."}
@@ -344,6 +352,45 @@ function ConnectorsPanel() {
         Connect apps (Gmail, Notion, GitHub…) with MCP servers: add them to <code>mcp.json</code> in the support folder and restart openclicky.
         <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/mcp.json`)}>Open mcp.json</button>
       </p>
+    </div>
+  );
+}
+
+function GeneralPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
+  const s = view?.settings;
+  const save = (patch: Partial<SettingsT>) => api.setSettings(patch).then(onSaved);
+  return (
+    <div className="stack-gap">
+      <ul className="rows">
+        <li className="row">
+          <div className="row__text">
+            <div className="row__label">Show Pixie next to my cursor</div>
+            <div className="row__why">A small buddy rides beside your pointer, flies to what it's talking about and shows what it's saying.</div>
+          </div>
+          <input type="checkbox" checked={s?.buddy ?? true} onChange={(e) => save({ buddy: e.target.checked })} />
+        </li>
+        <li className="row">
+          <div className="row__text">
+            <div className="row__label">Let Pixie click for me</div>
+            <div className="row__why">When you ask it to do something, the buddy clicks, types and drags one step at a time. Off: it only points and tells you where.</div>
+          </div>
+          <input type="checkbox" checked={s?.can_click ?? true} onChange={(e) => save({ can_click: e.target.checked })} />
+        </li>
+        <li className="row">
+          <div className="row__text">
+            <div className="row__label">Speak answers out loud</div>
+            <div className="row__why">Off: answers only appear in the notch.</div>
+          </div>
+          <input type="checkbox" checked={s?.speak_answers ?? true} onChange={(e) => save({ speak_answers: e.target.checked })} />
+        </li>
+        <li className="row">
+          <div className="row__text">
+            <div className="row__label">Look at the screen when I ask</div>
+            <div className="row__why">Sends a screenshot with voice questions so Pixie can see and point.</div>
+          </div>
+          <input type="checkbox" checked={s?.share_screen ?? true} onChange={(e) => save({ share_screen: e.target.checked })} />
+        </li>
+      </ul>
     </div>
   );
 }
@@ -439,8 +486,11 @@ function Welcome({ view, onSaved, done }: { view: SettingsView | null; onSaved: 
 }
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "general", label: "General" },
   { id: "setup", label: "Permissions" },
-  { id: "ai", label: "AI" },
+  { id: "ai", label: "Models" },
+  { id: "usage", label: "Usage" },
+  { id: "coding", label: "Coding" },
   { id: "voice", label: "Voice" },
   { id: "sounds", label: "Sounds" },
   { id: "connectors", label: "Connectors" },
@@ -448,7 +498,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export function Settings() {
-  const [tab, setTab] = useState<Tab>("setup");
+  const [tab, setTab] = useState<Tab>("general");
   const [view, setView] = useState<SettingsView | null>(null);
   useEffect(() => {
     api.settings().then((v) => {
@@ -476,7 +526,7 @@ export function Settings() {
       <nav className="settings__nav" data-tauri-drag-region>
         <div className="settings__brand" data-tauri-drag-region>
           <Mark size={28} />
-          <span className="wordmark">openclicky</span>
+          <span className="wordmark">Pixie</span>
         </div>
         {TABS.map((t) => (
           <button key={t.id} className={`navbtn ${tab === t.id ? "is-on" : ""}`} onClick={() => setTab(t.id)}>
@@ -491,8 +541,11 @@ export function Settings() {
           <h1>{TABS.find((t) => t.id === tab)?.label}</h1>
         </header>
         <div className="settings__content">
+          {tab === "general" && <GeneralPanel view={view} onSaved={setView} />}
           {tab === "setup" && <Permissions />}
-          {tab === "ai" && <AiPanel view={view} onSaved={setView} />}
+          {tab === "ai" && <ModelsPanel view={view} onSaved={setView} />}
+          {tab === "usage" && <UsagePanel view={view} onSaved={setView} />}
+          {tab === "coding" && <CodingPanel view={view} onSaved={setView} />}
           {tab === "voice" && <VoicePanel view={view} onSaved={setView} />}
           {tab === "sounds" && <SoundsPanel view={view} onSaved={setView} />}
           {tab === "connectors" && <ConnectorsPanel />}

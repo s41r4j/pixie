@@ -612,6 +612,7 @@ pub async fn execute(ctx: &ToolCtx, name: &str, input: &Value) -> ToolOutput {
         "device_read_file" => device_read_file(ctx, input).await,
         "device_save_file" => device_save_file(ctx, input).await,
         "device_open" => device_open(ctx, input).await,
+        "code" => crate::coders::run(ctx, input).await,
         "note" => note_op(ctx, |_| Ok(format!("{}\n", s(input, "markdown").trim_end()))),
         "note_add" => note_op(ctx, |c| Ok(notes::add(c, &lines_of(input.get("lines").unwrap_or(&Value::Null))))),
         "note_answer" => note_op(ctx, |c| Ok(notes::answer(c, s(input, "line")))),
@@ -648,6 +649,7 @@ mod tests {
             host: Arc::new(NoHost),
             cancel: CancellationToken::new(),
             helper: None,
+            coding: Default::default(),
         }
     }
 

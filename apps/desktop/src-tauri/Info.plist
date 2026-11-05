@@ -6,16 +6,16 @@
   <key>LSUIElement</key>
   <true/>
   <key>NSMicrophoneUsageDescription</key>
-  <string>openclicky listens while you hold Control-Option so you can talk to it.</string>
+  <string>Pixie listens while you hold Control-Option so you can talk to it.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
-  <string>openclicky turns what you say into text on this Mac.</string>
+  <string>Pixie turns what you say into text on this Mac.</string>
   <key>NSDesktopFolderUsageDescription</key>
-  <string>openclicky can find and save files on your Desktop when you ask.</string>
+  <string>Pixie can find and save files on your Desktop when you ask.</string>
   <key>NSDocumentsFolderUsageDescription</key>
-  <string>openclicky can find and save files in Documents when you ask.</string>
+  <string>Pixie can find and save files in Documents when you ask.</string>
   <key>NSDownloadsFolderUsageDescription</key>
-  <string>openclicky can find and save files in Downloads when you ask.</string>
+  <string>Pixie can find and save files in Downloads when you ask.</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>openclicky uses an app's own scripting to do things you ask for.</string>
+  <string>Pixie uses an app's own scripting to do things you ask for.</string>
 </dict>
 </plist>

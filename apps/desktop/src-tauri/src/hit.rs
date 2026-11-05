@@ -110,6 +110,7 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
 pub fn tick(app: &AppHandle) {
     let (cx, cy) = macos::cursor();
     notch_hover(app, cx, cy);
+    crate::buddy::tick(app, cx, cy);
     let changes: Vec<(String, bool)> = {
         let st = app.state::<AppState>();
         let mut m = st.hits.map.lock().unwrap();

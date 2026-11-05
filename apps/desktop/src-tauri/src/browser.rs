@@ -137,7 +137,7 @@ pub fn start(app: AppHandle) {
 pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
     let tx = bridge().tx.lock().unwrap().clone();
     let Some(tx) = tx.filter(|_| connected(app)) else {
-        return Err("Their browser isn't connected. They can install the openclicky extension from Settings → Connectors.".into());
+        return Err("Their browser isn't connected. They can install the Pixie extension from Settings → Connectors.".into());
     };
     let id = bridge().next.fetch_add(1, Ordering::Relaxed);
     let mut req = input.clone();
