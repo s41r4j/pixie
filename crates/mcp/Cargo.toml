@@ -1,8 +1,16 @@
 [package]
 name = "openclicky-mcp"
-description = "MCP connector host (M6)"
+description = "MCP connector host: stdio JSON-RPC client, tools/list, tools/call"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "rt", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "rt-multi-thread", "macros"] }
+tempfile = "3"

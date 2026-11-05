@@ -2626,6 +2626,8 @@ dependencies = [
  "objc2-foundation",
  "openclicky-core",
  "openclicky-llm",
+ "openclicky-mcp",
+ "openclicky-native-host",
  "openclicky-tools",
  "openclicky-voice",
  "rand 0.8.8",
@@ -2654,10 +2656,20 @@ dependencies = [
 [[package]]
 name = "openclicky-mcp"
 version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "openclicky-native-host"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "openclicky-tools"

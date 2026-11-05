@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "openclicky",
+  "short_name": "openclicky",
+  "version": "0.2.0",
+  "description": "Lets openclicky (the :) in your notch) read pages, click and type in Chrome when you ask it to.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr1mJ9C9tEmY+G7OMio+EzFjpMI5+jbVuQCCbWc9OLbOLkuQc0IDtWnSiA/qlQjb+xBbGHZ1OO38v3Ckbngik0oLRlltQlvyCH2l99nk05xl7sXITIAx9xURjmdc32tz5RUEaeEqtm+fXV9h+UjzO+a8rURu8jv5ki4Q5jZSj5N8es0EZA/omCaxPj8olEizy72G32dHXPRCAog5hk0tw6oiRixLS42LIeCgTZkbGIJQKkqXzNxmAkioPW858KTotwl4vCO2Lnyl8y/K20ipMh0He1LsC36nES4jUluwj9Hx1MUTlIDJSGeIr04+rhcTsQOMqu3+Xtw5aDd1R1zefIwIDAQAB",
+  "minimum_chrome_version": "116",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["nativeMessaging", "tabs", "tabGroups", "scripting", "storage", "alarms"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "action": { "default_title": "openclicky", "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" } },
+  "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
+}

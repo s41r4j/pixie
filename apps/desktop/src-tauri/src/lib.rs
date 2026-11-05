@@ -218,7 +218,12 @@ pub fn run() {
                 panel::set_mode(app.handle(), panel::PanelMode::Idle);
             }
             if let Some(q) = std::env::args().skip_while(|a| a != "--ask").nth(1) {
-                session::ask_text(app.handle(), q);
+                let delay = std::env::var("OPENCLICKY_ASK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    session::ask_text(&h, q);
+                });
             }
             Ok(())
         })

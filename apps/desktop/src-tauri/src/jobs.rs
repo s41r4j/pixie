@@ -100,7 +100,7 @@ fn remember(data: &Path, facts: &[String]) {
 
 pub fn helper_hint(st: &AppState) -> String {
     if st.helper.path.is_some() {
-        "`openclicky-helper pdf in.html out.pdf [width]` turns an HTML file into a PDF; `openclicky-helper text file.pdf` extracts text from PDF/Word/RTF. python3 and the usual macOS command-line tools are available.".into()
+        "`openclicky-helper pdf in.html out.pdf [letter|a4]` turns an HTML file into a paginated PDF at real paper size (CSS px = PDF points; design for 612 px wide on Letter, 595 on A4, use your own padding); `openclicky-helper text file.pdf` extracts text from PDF/Word/RTF. python3 and the usual macOS command-line tools are available.".into()
     } else {
         "python3 and the usual macOS command-line tools are available.".into()
     }

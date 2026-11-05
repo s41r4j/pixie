@@ -10,7 +10,9 @@
 // AVSpeechSynthesizer (voice), Accessibility (read UI, press, type) and WebKit (HTML → PDF).
 // macOS attributes privacy permissions to the parent app, so prompts say "openclicky".
 //
-// Also a CLI for the job agent's bash tool:  openclicky-helper pdf in.html out.pdf
+// Also a CLI for the job agent's bash tool:
+//   openclicky-helper pdf in.html out.pdf [letter|a4]   paginated, real paper sizes
+//   openclicky-helper text file.pdf                     text of PDF/Word/RTF/HTML
 
 import AVFoundation
 import AppKit
@@ -605,45 +607,59 @@ enum Screen {
 final class PDFMaker: NSObject, WKNavigationDelegate {
     let web: WKWebView
     let out: URL
+    let page: CGSize
+    let margin: CGFloat = 36
 
-    init(input: URL, output: URL, width: CGFloat) {
-        web = WKWebView(frame: CGRect(x: 0, y: 0, width: width, height: 1100))
+    /// Paper sizes in points; CSS pixels map 1:1 to points in WebKit's PDF output.
+    init(input: URL, output: URL, paper: String) {
+        page = paper.lowercased() == "a4" ? CGSize(width: 595, height: 842) : CGSize(width: 612, height: 792)
+        web = WKWebView(frame: CGRect(x: 0, y: 0, width: page.width, height: page.height))
         out = output
         super.init()
         web.navigationDelegate = self
         web.loadFileURL(input, allowingReadAccessTo: input.deletingLastPathComponent())
     }
 
+    func fail(_ msg: String) -> Never {
+        FileHandle.standardError.write("\(msg)\n".data(using: .utf8)!)
+        exit(1)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Let fonts and images settle, then size the page to the content.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        // Let fonts and images settle, then cut the page into real paper-sized sheets.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") { h, _ in
-                let height = (h as? CGFloat) ?? 1100
-                let cfg = WKPDFConfiguration()
-                cfg.rect = CGRect(x: 0, y: 0, width: webView.frame.width, height: max(height, 200))
-                webView.createPDF(configuration: cfg) { result in
-                    switch result {
-                    case .success(let data):
-                        do {
-                            try data.write(to: self.out)
-                            print(self.out.path)
-                            exit(0)
-                        } catch {
-                            FileHandle.standardError.write("write failed: \(error)\n".data(using: .utf8)!)
-                            exit(1)
+                let height = max((h as? CGFloat) ?? self.page.height, 1)
+                let sheets = Int(ceil(height / self.page.height - 0.02))
+                let doc = PDFDocument()
+                func render(_ i: Int) {
+                    if i >= max(sheets, 1) {
+                        guard doc.write(to: self.out) else { self.fail("write failed") }
+                        print(self.out.path)
+                        print("pages: \(doc.pageCount), size: \(Int(self.page.width))x\(Int(self.page.height)) pt")
+                        exit(0)
+                    }
+                    let cfg = WKPDFConfiguration()
+                    cfg.rect = CGRect(x: 0, y: CGFloat(i) * self.page.height, width: self.page.width, height: self.page.height)
+                    webView.createPDF(configuration: cfg) { result in
+                        switch result {
+                        case .success(let data):
+                            if let part = PDFDocument(data: data), let p = part.page(at: 0) {
+                                doc.insert(p, at: doc.pageCount)
+                            }
+                            render(i + 1)
+                        case .failure(let e):
+                            self.fail("pdf failed: \(e)")
                         }
-                    case .failure(let e):
-                        FileHandle.standardError.write("pdf failed: \(e)\n".data(using: .utf8)!)
-                        exit(1)
                     }
                 }
+                render(0)
             }
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        FileHandle.standardError.write("load failed: \(error)\n".data(using: .utf8)!)
-        exit(1)
+        fail("load failed: \(error)")
     }
 }
 
@@ -766,8 +782,8 @@ let argv = CommandLine.arguments
 if argv.count >= 4 && argv[1] == "pdf" {
     let input = URL(fileURLWithPath: (argv[2] as NSString).expandingTildeInPath)
     let output = URL(fileURLWithPath: (argv[3] as NSString).expandingTildeInPath)
-    let width = argv.count >= 5 ? CGFloat(Double(argv[4]) ?? 816) : 816
-    keep.append(PDFMaker(input: input, output: output, width: width))
+    let paper = argv.count >= 5 ? argv[4] : "letter"
+    keep.append(PDFMaker(input: input, output: output, paper: paper))
     DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
         FileHandle.standardError.write("pdf timed out\n".data(using: .utf8)!)
         exit(1)

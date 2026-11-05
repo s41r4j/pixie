@@ -93,7 +93,9 @@
       "icons/icon.png"
     ],
     "resources": {
-      "../../../resources/": "resources/"
+      "../../../resources/": "resources/",
+      "../../extension/": "extension/",
+      "../../../skills/": "skills/"
     },
     "macOS": {
       "minimumSystemVersion": "14.0",

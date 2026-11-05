@@ -1,8 +1,7 @@
-//! Chrome native messaging host `com.openclicky.browser`.
-//!
-//! TODO(M7): stdio length-prefixed JSON <-> app over 127.0.0.1 HTTP (see work/BROWSER-EXTENSION.md).
-
+//! Standalone native host binary (the app binary also acts as the host; see lib.rs).
 fn main() {
-    eprintln!("openclicky-native-host: not implemented yet (M7)");
-    std::process::exit(1);
+    let socket = std::env::var_os("OPENCLICKY_BROWSER_SOCKET")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(openclicky_native_host::default_socket);
+    std::process::exit(openclicky_native_host::run(socket));
 }
