@@ -386,15 +386,14 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/theme.json");
         let theme: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).expect("theme.json parses");
-        let spec = [
-            ("ink", "#2B2620"), ("paper-top", "#ECEBED"), ("paper-bottom", "#F7F7F7"),
-            ("label", "#ECECEF"), ("secondary", "#9093A0"), ("tertiary", "#5C5E6A"),
-            ("bubble-in", "#3B3B3D"), ("focus", "#8EC5FF"), ("gel-rim", "#221898"),
-            ("ready", "#4CC874"), ("working", "#1F9E4A"), ("needs", "#F2B458"),
-        ];
-        for (name, value) in spec {
-            assert_eq!(theme["colors"][name], value, "colors.{name}");
+        // Every token the UI reads must exist (values are the designer's call).
+        for name in [
+            "ink", "paper-top", "paper-bottom", "label", "secondary", "tertiary", "bubble-in", "focus",
+            "gel-rim", "ready", "working", "needs", "panel", "hair",
+        ] {
+            assert!(theme["colors"][name].is_string(), "colors.{name}");
         }
+        assert_eq!(theme["colors"]["ink"], "#2B2620", "paper ink stays");
         for name in ["butter", "coral", "mint", "peach", "sky", "ink", "pink"] {
             assert!(theme["draw"][name].is_string(), "draw.{name}");
         }

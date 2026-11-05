@@ -102,13 +102,14 @@ pub fn say() -> ToolDef {
 }
 pub fn draw() -> ToolDef {
     let op = obj(json!({
-        "kind": {"type":"string","enum":["circle","underline","arrow","box","check","cross","text"]},
+        "kind": {"type":"string","enum":["circle","underline","arrow","box","check","cross","text","line"]},
         "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"},
-        "to_x": {"type":"number","description":"arrow head x"}, "to_y": {"type":"number"},
-        "text": {"type":"string"}, "color": {"type":"string","enum":["sky","coral","butter","mint","peach","pink","ink"]}
+        "to_x": {"type":"number","description":"arrow/line end x"}, "to_y": {"type":"number"},
+        "text": {"type":"string","description":"handwritten text (kind text), or a label inside a box/circle"},
+        "color": {"type":"string","enum":["ink","blue","red","green","orange","yellow","pink"]}
     }), &["kind", "x", "y"]);
-    def("draw", "Draw on their screen in screen points (top-left origin): circle or box a region (x,y,w,h), underline it, an arrow from (x,y) to (to_x,to_y), a check or cross, or a short handwritten text. Marks fade after a few seconds.",
-        obj(json!({ "ops": {"type":"array","items": op} }), &["ops"]))
+    def("draw", "Draw by hand. On their screen (default): circle, box or underline something that's on screen (x,y,w,h in screen points, use the frame from the lists), an arrow from (x,y) to (to_x,to_y), a check or cross, or short text; marks fade after the answer. With board=true: open a clean paper board and sketch an explanation there instead (a diagram, steps, how things connect) on a 1000×640 canvas, origin top-left; give it a short title. Use the board whenever you explain something visually rather than mark what's on screen.",
+        obj(json!({ "ops": {"type":"array","items": op}, "board": {"type":"boolean"}, "title": {"type":"string"} }), &["ops"]))
 }
 pub fn highlight() -> ToolDef {
     def("highlight", "Point at something on screen: the pointer flies there and rings it. Use the frame (screen points) of an item from the on-screen list. label is a 1-4 word tag shown beside it.",

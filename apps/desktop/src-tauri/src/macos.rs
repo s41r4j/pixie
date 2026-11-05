@@ -171,6 +171,14 @@ pub fn set_frame<R: Runtime>(win: &WebviewWindow<R>, r: Rect) {
     }
 }
 
+/// A window's actual frame in CG space (after any adjustment AppKit made). Main thread.
+pub fn frame<R: Runtime>(win: &WebviewWindow<R>) -> Option<Rect> {
+    let ns = ns_window(win)?;
+    let f: NSRect = unsafe { msg_send![ns, frame] };
+    let ph = primary_height();
+    Some(Rect { x: f.origin.x, y: ph - (f.origin.y + f.size.height), w: f.size.width, h: f.size.height })
+}
+
 pub fn set_ignores_mouse<R: Runtime>(win: &WebviewWindow<R>, ignore: bool) {
     let Some(ns) = ns_window(win) else { return };
     unsafe {

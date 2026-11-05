@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { onEvent, type Rect, type ScreenInfo } from "../lib/bridge";
 
-interface Op {
-  kind: "circle" | "underline" | "arrow" | "box" | "check" | "cross" | "text";
+export interface Op {
+  kind: "circle" | "underline" | "arrow" | "box" | "check" | "cross" | "text" | "line";
   x: number;
   y: number;
   w?: number;
@@ -25,14 +25,20 @@ interface Target {
   label: string;
 }
 
-const COLOR: Record<string, string> = {
-  sky: "var(--draw-sky)",
-  coral: "var(--draw-coral)",
-  butter: "var(--draw-butter)",
-  mint: "var(--draw-mint)",
-  peach: "var(--draw-peach)",
-  pink: "var(--draw-pink)",
-  ink: "var(--draw-ink)",
+export const COLOR: Record<string, string> = {
+  ink: "#1d1d1f",
+  blue: "#0a84ff",
+  red: "#ff453a",
+  green: "#30d158",
+  orange: "#ff9f0a",
+  yellow: "#ffd60a",
+  pink: "#ff375f",
+  // older names
+  sky: "#0a84ff",
+  coral: "#ff453a",
+  butter: "#ffd60a",
+  mint: "#30d158",
+  peach: "#ff9f0a",
 };
 
 /** Slightly wobbly hand-drawn ellipse around a box. */
@@ -51,13 +57,13 @@ function ellipsePath(x: number, y: number, w: number, h: number, seed: number) {
   return `M${pts.join(" L")}`;
 }
 
-function OpShape({ op, ox, oy, seed }: { op: Op; ox: number; oy: number; seed: number }) {
+export function OpShape({ op, ox, oy, seed, delay = 0 }: { op: Op; ox: number; oy: number; seed: number; delay?: number }) {
   const x = op.x - ox;
   const y = op.y - oy;
   const w = op.w ?? 80;
   const h = op.h ?? 30;
-  const color = COLOR[op.color ?? "coral"] ?? COLOR.coral;
-  const common = { stroke: color, fill: "none", strokeWidth: 4, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, pathLength: 1, className: "ink" };
+  const color = COLOR[op.color ?? "red"] ?? COLOR.red;
+  const common = { stroke: color, fill: "none", strokeWidth: 4, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, pathLength: 1, className: "ink", style: { animationDelay: `${delay}ms` } };
   switch (op.kind) {
     case "circle":
       return <path d={ellipsePath(x, y, w, h, seed)} {...common} />;
@@ -79,13 +85,18 @@ function OpShape({ op, ox, oy, seed }: { op: Op; ox: number; oy: number; seed: n
       const a2 = `${tx - 18 * Math.cos(ang + 0.45)},${ty - 18 * Math.sin(ang + 0.45)}`;
       return <path d={`M${x},${y} Q${mx},${my} ${tx},${ty} M${a1} L${tx},${ty} L${a2}`} {...common} />;
     }
+    case "line": {
+      const tx = (op.to_x ?? op.x + 120) - ox;
+      const ty = (op.to_y ?? op.y) - oy;
+      return <path d={`M${x},${y} L${tx},${ty}`} {...common} strokeWidth={3} />;
+    }
     case "check":
       return <path d={`M${x},${y + 14} L${x + 12},${y + 28} L${x + 36},${y - 6}`} {...common} strokeWidth={5} />;
     case "cross":
       return <path d={`M${x},${y} L${x + 28},${y + 28} M${x + 28},${y} L${x},${y + 28}`} {...common} strokeWidth={5} />;
     case "text":
       return (
-        <text x={x} y={y} className="ink-text hand" fill={color}>
+        <text x={x} y={y} className="ink-text hand" fill={color} style={{ animationDelay: `${delay}ms` }}>
           {op.text}
         </text>
       );
@@ -98,6 +109,8 @@ export function Overlay() {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
   const [flying, setFlying] = useState(false);
+  const [win, setWin] = useState<Rect | null>(null);
+  const [fading, setFading] = useState(false);
   const ids = useRef(1);
 
   useEffect(() => {
@@ -106,26 +119,31 @@ export function Overlay() {
       switch (e.kind) {
         case "overlay.screen":
           setScreen(p.screen);
+          setWin(p.window ?? p.screen.frame);
           setNotchOrigin(p.origin);
+          setFading(false);
           break;
         case "overlay.highlight": {
           const id = ids.current++;
           setFlying(false);
           setTarget({ id, rect: p.rect, label: p.label ?? "" });
           setTimeout(() => setFlying(true), 34);
-          setTimeout(() => setTarget((t) => (t?.id === id ? null : t)), 7000);
           break;
         }
         case "overlay.draw": {
           const now = Date.now();
           const fresh: Mark[] = (p.ops as Op[]).map((op) => ({ id: ids.current++, op, born: now }));
           setMarks((m) => [...m, ...fresh]);
-          setTimeout(() => setMarks((m) => m.filter((x) => !fresh.includes(x))), 8000);
           break;
         }
         case "overlay.clear":
-          setMarks([]);
-          setTarget(null);
+          // Rust decides when marks go (after the answer); fade, then drop them.
+          setFading(true);
+          setTimeout(() => {
+            setMarks([]);
+            setTarget(null);
+            setFading(false);
+          }, 420);
           break;
       }
     });
@@ -134,8 +152,9 @@ export function Overlay() {
     };
   }, []);
 
-  const ox = screen?.frame.x ?? 0;
-  const oy = screen?.frame.y ?? 0;
+  // Convert with the window's real frame (in case AppKit adjusted it).
+  const ox = win?.x ?? screen?.frame.x ?? 0;
+  const oy = win?.y ?? screen?.frame.y ?? 0;
   const W = screen?.frame.w ?? window.innerWidth;
   // The pointer starts at the notch (top centre of the screen the panel is on, if it's this one).
   const startX = notchOrigin && notchOrigin.x === ox ? notchOrigin.w / 2 : W / 2;
@@ -147,7 +166,7 @@ export function Overlay() {
   const ty = r ? r.y - oy + Math.min(r.h * 0.78, r.h - 4) : startY;
 
   return (
-    <div className="overlay">
+    <div className={`overlay ${fading ? "overlay--fading" : ""}`}>
       <svg className="overlay__ink" width="100%" height="100%">
         {marks.map((m) => (
           <g key={m.id} className="mark-g">
@@ -180,13 +199,11 @@ export function Overlay() {
             <svg width="34" height="34" viewBox="0 0 34 34">
               <defs>
                 <radialGradient id="gel" cx="35%" cy="30%" r="80%">
-                  <stop offset="0" stopColor="#fff" />
-                  <stop offset="0.25" stopColor="var(--brand-gold)" />
-                  <stop offset="0.6" stopColor="var(--brand-rose)" />
-                  <stop offset="1" stopColor="var(--brand-violet)" />
+                  <stop offset="0" stopColor="#ffffff" />
+                  <stop offset="1" stopColor="#e8e8ed" />
                 </radialGradient>
               </defs>
-              <path d="M3 2 L29 14 L17 17 L12 30 Z" fill="url(#gel)" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
+              <path d="M3 2 L29 14 L17 17 L12 30 Z" fill="url(#gel)" stroke="#1d1d1f" strokeWidth="1.6" strokeLinejoin="round" />
             </svg>
           </div>
         </>

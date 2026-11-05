@@ -27,26 +27,26 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
           {!p.required && <span className="row__opt">optional</span>}
         </div>
         <div className="row__why">{p.why}</div>
-        {p.restart_hint && !granted && (
-          <div className="row__hint">
-            Switch openclicky on in System Settings, then{" "}
-            <button className="btn btn--link btn--inline" onClick={() => api.relaunch()}>
-              relaunch openclicky
-            </button>
-            .
-          </div>
-        )}
         {(p.id === "screen" || p.id === "accessibility") && !granted && (
-          <div className="row__hint row__hint--muted">
-            Already switched on but still “Not allowed”? That switch belongs to an older build.{" "}
+          <div className="row__hint">
+            Turn openclicky on in System Settings
+            {p.restart_hint && (
+              <>
+                , then{" "}
+                <button className="btn--inline" onClick={() => api.relaunch()}>
+                  relaunch
+                </button>
+              </>
+            )}
+            . Still off?{" "}
             <button
-              className="btn btn--link btn--inline"
+              className="btn--inline"
               onClick={async () => {
                 await api.resetPermission(p.id).catch(console.error);
                 onChange();
               }}
             >
-              Reset &amp; ask again
+              Reset
             </button>
           </div>
         )}

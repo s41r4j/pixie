@@ -115,9 +115,11 @@ fn start_listening(app: &AppHandle, kind: Listening) {
         i.turn
     };
     if kind == Listening::Talk {
+        // Clear marks first so they aren't in the screenshot's way (they're excluded anyway).
+        overlay::clear(app);
+        overlay::board_close(app);
         let rx = begin_capture(app, n);
         st.session.inner.lock().unwrap().capture = Some(rx);
-        overlay::clear(app);
     }
     panel::set_mode(app, if kind == Listening::Talk { PanelMode::Listening } else { PanelMode::Dictating });
     emit(app, Event::new("mic.start", json!({ "turn": n, "kind": if kind == Listening::Talk { "talk" } else { "dictate" } })));
@@ -203,6 +205,7 @@ pub fn escape(app: &AppHandle) {
     }
     interrupt(app);
     overlay::clear(app);
+    overlay::board_close(app);
     panel::hide(app);
 }
 
@@ -319,6 +322,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         Some(rx) => tokio::time::timeout(Duration::from_secs(4), rx).await.ok().and_then(Result::ok),
         None => None,
     };
+    *st.last_capture.lock().unwrap() = cap.clone();
     let session_dir = st.data_dir.join("session");
     let _ = std::fs::create_dir_all(&session_dir);
     let note_path = session_dir.join("note.md");
@@ -475,7 +479,8 @@ pub fn spawn_event_pump(app: AppHandle) {
                     let all_done = st.session.speaking_ended(&id);
                     emit(&app, Event::new("speech.end", data));
                     if all_done && !st.session.busy() {
-                        schedule_collapse(&app, Duration::from_secs(7));
+                        schedule_collapse(&app, Duration::from_secs(10));
+                        overlay::schedule_clear(&app, Duration::from_secs(6));
                     }
                 }
                 "restarted" => {

@@ -26,7 +26,8 @@
         "skipTaskbar": true,
         "shadow": false,
         "acceptFirstMouse": true,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled"
       },
       {
         "label": "overlay",
@@ -42,7 +43,8 @@
         "skipTaskbar": true,
         "shadow": false,
         "acceptFirstMouse": true,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled"
       },
       {
         "label": "shelf",
@@ -58,7 +60,8 @@
         "skipTaskbar": true,
         "shadow": false,
         "acceptFirstMouse": true,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled"
       },
       {
         "label": "settings",
@@ -71,7 +74,25 @@
         "resizable": true,
         "center": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "backgroundThrottling": "disabled"
+      },
+      {
+        "label": "board",
+        "title": "openclicky board",
+        "width": 960,
+        "height": 680,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "focus": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "shadow": false,
+        "acceptFirstMouse": true,
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled"
       }
     ],
     "security": {

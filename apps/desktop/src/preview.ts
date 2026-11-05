@@ -131,6 +131,19 @@ export function installPreview() {
     ev("overlay.highlight", { rect: { x: 520, y: 260, w: 120, h: 34 }, label: "Share" }, 300);
     ev("overlay.draw", { ops: [{ kind: "circle", x: 200, y: 420, w: 180, h: 50, color: "coral" }, { kind: "underline", x: 520, y: 500, w: 220, h: 20, color: "sky" }, { kind: "arrow", x: 820, y: 600, to_x: 660, to_y: 300, color: "butter" }, { kind: "text", x: 840, y: 640, text: "this one!", color: "coral" }] }, 900);
   }
+  if (previewView === "board") {
+    ev("board.show", { title: "How a request reaches the server", ops: [
+      { kind: "box", x: 60, y: 240, w: 180, h: 80, text: "Your browser" },
+      { kind: "arrow", x: 250, y: 280, to_x: 400, to_y: 280, text: "HTTPS" },
+      { kind: "box", x: 410, y: 240, w: 180, h: 80, text: "Load balancer", color: "blue" },
+      { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 200 },
+      { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 360 },
+      { kind: "box", x: 760, y: 150, w: 180, h: 80, text: "Server A" },
+      { kind: "box", x: 760, y: 320, w: 180, h: 80, text: "Server B" },
+      { kind: "text", x: 380, y: 470, text: "picks the less busy one", color: "red" },
+      { kind: "underline", x: 410, y: 300, w: 180, h: 20, color: "red" },
+    ] }, 200);
+  }
   if (previewView === "settings" && params.get("tab")) ev("settings.tab", { tab: params.get("tab") }, 300);
   if (previewView === "note") location.hash = "job=a";
   document.documentElement.classList.add("preview");

@@ -545,7 +545,8 @@ enum Screen {
                         "cursor": ["x": Int(mouse.x), "y": Int(mouse.y)],
                     ]
                     if let path {
-                        let (w, h) = write(image, to: path, maxWidth: maxWidth)
+                        // 1 image pixel = 1 screen point, so positions read off the image are exact.
+                        let (w, h) = write(image, to: path, maxWidth: min(maxWidth, Int(display.frame.width)))
                         result["path"] = path
                         result["image"] = ["w": w, "h": h]
                     }

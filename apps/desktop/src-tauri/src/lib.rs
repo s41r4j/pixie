@@ -39,6 +39,7 @@ pub const OVERLAY: &str = "overlay";
 pub const SHELF: &str = "shelf";
 pub const SETTINGS: &str = "settings";
 pub const NOTE: &str = "note";
+pub const BOARD: &str = "board";
 
 pub struct AppState {
     pub store: Arc<ResourceStore>,
@@ -53,6 +54,8 @@ pub struct AppState {
     pub session: session::Session,
     pub jobs: jobs::Jobs,
     pub hits: hit::Hits,
+    /// The screen as of the last turn, for snapping pointers to real controls.
+    pub last_capture: Mutex<Option<screen::Capture>>,
     pub skills: Vec<Skill>,
     pub os_version: String,
     pub full_name: String,
@@ -160,6 +163,7 @@ pub fn run() {
             commands::voice_test,
             commands::onboarding_done,
             commands::status,
+            commands::board_close,
             commands::voice_status,
             commands::voice_install,
             permissions::permissions_status,
@@ -199,6 +203,7 @@ pub fn run() {
                 session: session::Session::default(),
                 jobs: jobs::Jobs::default(),
                 hits: hit::Hits::default(),
+                last_capture: Mutex::new(None),
                 skills,
                 os_version: format!(
                     "macOS {} ({})",

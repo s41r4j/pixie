@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct Frame {
     pub x: f64,
     pub y: f64,
@@ -80,13 +80,20 @@ impl Capture {
         }
         if let Some(img) = &self.image {
             if let (Some(w), true) = (img["w"].as_f64(), d.w > 0.0) {
-                s.push_str(&format!(
-                    "The screenshot is {} px wide; multiply its pixel positions by {:.3} and add the display origin to get screen points.\n",
-                    w,
-                    d.w / w
-                ));
+                if (w - d.w).abs() < 2.0 {
+                    s.push_str(&format!(
+                        "The screenshot is 1:1 with screen points: image pixel (px, py) is screen point (px + {}, py + {}).\n",
+                        d.x, d.y
+                    ));
+                } else {
+                    s.push_str(&format!(
+                        "The screenshot is {} px wide; multiply its pixel positions by {:.4} and add ({}, {}) to get screen points.\n",
+                        w, d.w / w, d.x, d.y
+                    ));
+                }
             }
         }
+        s.push_str("For pointing, prefer the exact frames in the lists below over estimating from the image.\n");
         if !self.app.is_empty() {
             s.push_str(&format!("Frontmost app: {}", self.app));
             if !self.window.is_empty() {
@@ -128,7 +135,7 @@ pub async fn capture(app: &AppHandle, n: u64) -> Capture {
     let path = dir.join(format!("screen-{}.jpg", n % 8));
     let r = state
         .helper
-        .call("capture", json!({ "path": path, "max_width": 1440, "ocr": true }), Duration::from_secs(8))
+        .call("capture", json!({ "path": path, "max_width": 4096, "ocr": true }), Duration::from_secs(8))
         .await;
     match r {
         Ok(v) => {
@@ -139,5 +146,60 @@ pub async fn capture(app: &AppHandle, n: u64) -> Capture {
             c
         }
         Err(e) => Capture { error: Some(e), ..Default::default() },
+    }
+}
+
+/// The best on-screen item (control or text line) for a rectangle the model gave:
+/// highest overlap, else the nearest centre within 40 pt; a matching label wins ties.
+pub fn snap(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<Frame> {
+    let label = label.trim().to_lowercase();
+    let cx = x + w / 2.0;
+    let cy = y + h / 2.0;
+    let mut best: Option<(f64, Frame)> = None;
+    let cands = c
+        .elements
+        .iter()
+        .map(|e| (e.frame.clone(), e.label.to_lowercase()))
+        .chain(c.text.iter().map(|t| (t.frame.clone(), t.text.to_lowercase())));
+    for (f, text) in cands {
+        if f.w <= 0.0 || f.h <= 0.0 || f.w > 900.0 {
+            continue;
+        }
+        let ix = (x + w).min(f.x + f.w) - x.max(f.x);
+        let iy = (y + h).min(f.y + f.h) - y.max(f.y);
+        let inter = ix.max(0.0) * iy.max(0.0);
+        let union = w * h + f.w * f.h - inter;
+        let iou = if union > 0.0 { inter / union } else { 0.0 };
+        let dist = ((f.x + f.w / 2.0 - cx).powi(2) + (f.y + f.h / 2.0 - cy).powi(2)).sqrt();
+        let mut score = if iou > 0.05 { iou } else if dist < 40.0 { 0.05 * (1.0 - dist / 40.0) } else { continue };
+        if !label.is_empty() && (text.contains(&label) || label.contains(text.as_str())) && !text.is_empty() {
+            score += 0.5;
+        }
+        if best.as_ref().map(|(b, _)| score > *b).unwrap_or(true) {
+            best = Some((score, f));
+        }
+    }
+    best.map(|(_, f)| f)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cap() -> Capture {
+        Capture {
+            elements: vec![Element { id: "e1".into(), role: "button".into(), label: "Share".into(), frame: Frame { x: 1500.0, y: 10.0, w: 30.0, h: 24.0 } }],
+            text: vec![TextLine { text: "Total $42".into(), frame: Frame { x: 200.0, y: 600.0, w: 90.0, h: 18.0 } }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn snaps_near_misses_to_real_items() {
+        let f = snap(&cap(), 1495.0, 18.0, 30.0, 24.0, "").unwrap();
+        assert_eq!((f.x, f.y), (1500.0, 10.0));
+        let f = snap(&cap(), 210.0, 590.0, 80.0, 20.0, "total").unwrap();
+        assert_eq!(f.y, 600.0);
+        assert!(snap(&cap(), 900.0, 900.0, 20.0, 20.0, "").is_none());
     }
 }

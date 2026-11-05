@@ -93,7 +93,7 @@ export function Panel() {
   const [lastAnswer, setLastAnswer] = useState<{ q: string; a: string } | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clickTalk, setClickTalk] = useState(false);
-  const leaveT = useRef<number | undefined>(undefined);
+  const [drawing, setDrawing] = useState(false);
   const turn = useRef(0);
   const shape = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -176,6 +176,9 @@ export function Panel() {
               return n;
             });
           break;
+        case "overlay.state":
+          setDrawing(!!p.active);
+          break;
         case "shelf.jobs":
           setJobs(p.jobs);
           break;
@@ -228,8 +231,11 @@ export function Panel() {
   const live = mode === "listening" || mode === "dictating";
   const wide = mode === "thinking" || mode === "answer" || mode === "idle" || mode === "typing" || mode === "peek";
   const ear = mode === "toast" ? 170 : live ? 96 : 120;
-  const width =
-    mode === "hidden"
+  // While marks or the board are up, the notch shrinks to one line so it never covers them.
+  const compact = drawing && (mode === "thinking" || mode === "answer");
+  const width = compact
+    ? Math.max(notchW + 2 * 170, 520)
+    : mode === "hidden"
       ? Math.max(notchW, 120)
       : mode === "peek"
         ? Math.max(notchW + 2 * 150, 500)
@@ -277,15 +283,6 @@ export function Panel() {
         ref={shape}
         className={`notch notch--${mode}`}
         style={{ width, height }}
-        onMouseEnter={() => {
-          clearTimeout(leaveT.current);
-          api.panelHover(true);
-          if (mode === "hidden") api.panelPeek(true);
-        }}
-        onMouseLeave={() => {
-          api.panelHover(false);
-          if (mode === "peek") leaveT.current = window.setTimeout(() => api.panelPeek(false), 320);
-        }}
       >
         <div className="notch__bar" style={{ height: top }}>
           <div className="ear ear--left">
@@ -298,7 +295,12 @@ export function Panel() {
         <div className="notch__body" ref={body}>
           {live && (partial || dictated) && <div className="transcript">{dictated || partial}</div>}
 
-          {(mode === "thinking" || mode === "answer") && (
+          {compact && (
+            <div className="compact-line">
+              {(word && segments.find((x) => x.id === word.id)?.text) || segments[segments.length - 1]?.text || question}
+            </div>
+          )}
+          {(mode === "thinking" || mode === "answer") && !compact && (
             <div className="turn">
               {question && <div className={`turn__q ${mode === "answer" && segments.length ? "turn__q--small" : ""}`}>{question}</div>}
               {empty && <div className="turn__a turn__a--muted">I didn't catch that. Hold ⌃⌥ and talk to me.</div>}
@@ -363,19 +365,19 @@ export function Panel() {
                     api.talkStart();
                   }}
                 >
-                  <img src={slotUrl("icon", clickTalk ? "system-waveform" : "system-microphone")} alt="" />
+                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", clickTalk ? "system-waveform" : "system-microphone")})` }} />
                   <span>Talk</span>
                 </button>
                 <button className="qa" onClick={() => api.panelType()}>
-                  <img src={slotUrl("icon", "system-chat")} alt="" />
+                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-chat")})` }} />
                   <span>Type</span>
                 </button>
                 <button className="qa" onClick={() => (jobs[0] ? api.openNote(jobs[0].id) : api.panelType())}>
-                  <img src={slotUrl("icon", "system-layers")} alt="" />
+                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-layers")})` }} />
                   <span>Jobs{jobs.length ? ` · ${jobs.length}` : ""}</span>
                 </button>
                 <button className="qa" onClick={() => api.showSettings()}>
-                  <img src={slotUrl("icon", "system-settings")} alt="" />
+                  <i className="qa__icon" style={{ ["--icon" as string]: `url(${slotUrl("icon", "system-settings")})` }} />
                   <span>Settings</span>
                 </button>
               </div>

@@ -46,6 +46,11 @@ pub fn panel_hover(state: State<'_, AppState>, hovered: bool) {
     state.session.set_hovered(hovered);
 }
 
+#[tauri::command]
+pub fn board_close(app: AppHandle) {
+    crate::overlay::board_close(&app);
+}
+
 /// Hovering the resting notch opens the peek; leaving closes it.
 #[tauri::command]
 pub fn panel_peek(app: AppHandle, on: bool) {
