@@ -112,7 +112,8 @@ source and publishes a GitHub release; the website's Download buttons point at
 build: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
 `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
 
-The website is one page in `site/` (plus redirects and a 404). `npm run site` builds it into
+The website lives in `site/`: Home (with the interactive demo), Features, Download, Docs and
+Changelog, sharing `site/assets/site.css` and `site/assets/site.js`. `npm run site` builds it into
 `_site/` with `scripts/build-site.sh` and serves it on http://localhost:8000; `pages.yml` deploys the
 same build (Settings → Pages → Source: GitHub Actions).
 
@@ -162,7 +163,7 @@ crates/voice/         sound bus (UI sounds)
 crates/mcp/           MCP stdio client
 crates/native-host/   Chrome native messaging host
 crates/capture/       (capture lives in the Swift helper; see docs/ARCHITECTURE.md)
-site/                 the website (one page + screenshots; built by scripts/build-site.sh)
+site/                 the website (pages, assets, screenshots; built by scripts/build-site.sh)
 resources/  skills/  docs/  scripts/
 ```
 
