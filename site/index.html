@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090909">
+<title>Pixie — a little friend for your Mac</title>
+<meta name="description" content="Pixie lives in your Mac's notch. Ask out loud, see where to click, let it do the clicking, and hand off longer work. Free and open source.">
+<meta property="og:title" content="Pixie — a little friend for your Mac">
+<meta property="og:description" content="Ask out loud. See where to click. Hand off the busywork. Free, open source, bring your own model key.">
+<meta property="og:image" content="https://pixie.s41r4j.in/shots/buddy.png">
+<link rel="icon" href="resources/icons/ext-32.png">
+<link rel="preload" href="resources/fonts/VT323-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<style>
+@font-face{font-family:"IBM Plex Mono";src:url(resources/fonts/IBMPlexMono-Regular.ttf) format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(resources/fonts/IBMPlexMono-SemiBold.ttf) format("truetype");font-weight:600;font-display:swap}
+@font-face{font-family:"Press Start 2P";src:url(resources/fonts/PressStart2P-Regular.ttf) format("truetype");font-display:swap}
+@font-face{font-family:"VT323";src:url(resources/fonts/VT323-Regular.ttf) format("truetype");font-display:swap}
+:root{color-scheme:dark;--bg:#090909;--panel:#111;--panel2:#171717;--ink:#f2f2ed;--muted:#a7a7a1;--faint:#777772;--stroke:#2e2e2e;--stroke2:#575753;
+  --desk:#d6d6d0;--deskink:#111;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--pixel:"Press Start 2P",monospace;--term:"VT323",monospace;--wrap:1240px;--ease:cubic-bezier(.22,1,.36,1)}
+.light{color-scheme:light;--bg:#f0f0e9;--panel:#fff;--panel2:#e6e6df;--ink:#0a0a0a;--muted:#47473f;--faint:#6b6b64;--stroke:#cfcfc6;--stroke2:#a9a99f}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 var(--mono);-webkit-font-smoothing:antialiased;transition:background .3s,color .3s}
+a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer;color:inherit}img{display:block;max-width:100%}
+::selection{background:var(--ink);color:var(--bg)}:focus-visible{outline:2px solid var(--ink);outline-offset:4px}
+.wrap{width:min(var(--wrap),calc(100% - 64px));margin:0 auto}
+.eyebrow{display:inline-flex;align-items:center;gap:11px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.eyebrow::before{content:"";width:7px;height:7px;background:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:12px;min-height:46px;padding:0 20px;border:1px solid var(--ink);font-size:12px;font-weight:600;background:transparent;transition:transform .2s var(--ease),background .2s,color .2s}
+.btn:hover{transform:translateY(-2px)}.btn--solid{background:var(--ink);color:var(--bg)}.btn--sm{min-height:38px;padding:0 14px;font-size:11px}
+.btn .ar{font:22px/0 var(--term)}
+kbd{font:600 11px var(--mono);border:1px solid var(--stroke2);border-bottom-width:3px;padding:1px 6px;color:var(--ink)}
+.mark{display:inline-block;background:currentColor;-webkit-mask:url(resources/icons/brand/mark-white.svg) center/contain no-repeat;mask:url(resources/icons/brand/mark-white.svg) center/contain no-repeat}
+
+/* header */
+.hdr{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--stroke)}
+.hdr .wrap{height:66px;display:flex;align-items:center;gap:20px}
+.brand{display:flex;align-items:center;gap:11px}.brand .face{width:36px;height:36px;border:1px solid var(--ink);display:grid;place-items:center}.brand .face .mark{width:20px;height:20px}
+.brand b{font:16px var(--pixel);letter-spacing:-1px}
+.nav{display:flex;gap:2px;margin-left:auto}.nav a{padding:10px 13px;font-size:12px;color:var(--muted)}.nav a:hover,.nav a.on{color:var(--ink);background:var(--panel2)}
+.sq{width:38px;height:38px;border:1px solid var(--stroke);display:grid;place-items:center;background:transparent;font-size:16px}.sq:hover{background:var(--panel2)}
+.burger{display:none}
+
+/* hero */
+.hero{padding:76px 0 40px}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:32px;align-items:end;margin-top:26px}
+.hero h1{font:clamp(84px,11.5vw,184px)/.72 var(--term);letter-spacing:-.05em;text-transform:uppercase;margin:0}
+.hero h1 span{display:block}.hero h1 .ghost{-webkit-text-stroke:1.5px var(--ink);color:transparent}
+.hero-side{border-left:1px solid var(--stroke2);padding:0 0 10px 32px}
+.hero-side p{color:var(--muted);font-size:14px;line-height:1.85;margin:0 0 26px;max-width:380px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.stamp{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:40px;padding-top:16px;border-top:1px solid var(--stroke);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.stamp span::before{content:"■ ";color:var(--ink)}
+.ver{display:inline-flex;align-items:center;gap:8px;font:16px var(--term);color:var(--muted);border:1px solid var(--stroke);padding:0 10px;margin-bottom:6px}
+.ver i{width:7px;height:7px;background:var(--ink);animation:blink 1s steps(2) infinite}@keyframes blink{50%{opacity:.2}}
+
+/* demo stage */
+.demo{padding:10px 0 0}
+.stage{position:relative;background:var(--desk);color:var(--deskink);border:1px solid #bdbdb6;aspect-ratio:16/9;max-height:720px;width:100%;overflow:hidden;user-select:none}
+.stage::before{content:"";position:absolute;inset:0;opacity:.2;background:radial-gradient(#111 .7px,transparent .8px) 0 0/9px 9px;-webkit-mask:linear-gradient(90deg,#000,transparent 85%);mask:linear-gradient(90deg,#000,transparent 85%);pointer-events:none}
+.mbar{position:absolute;inset:0 0 auto 0;height:5.2%;min-height:22px;display:flex;align-items:center;justify-content:space-between;padding:0 1.6%;font-size:clamp(8px,1vw,12px);border-bottom:1px solid #b4b4ad;background:#dcdcd6;z-index:3}
+.mbar .l{display:flex;gap:2.2em}.mbar b{font-weight:600}
+/* notch */
+.sn{position:absolute;z-index:6;left:50%;top:0;transform:translateX(-50%);background:#050505;color:#fff;border-radius:0 0 14px 14px;height:5.2%;min-height:22px;width:17%;display:flex;align-items:center;justify-content:space-between;padding:0 1.1%;transition:width .45s var(--ease),height .45s var(--ease),border-radius .3s;overflow:hidden}
+.sn .face{width:clamp(10px,1.3vw,18px);height:clamp(10px,1.3vw,18px);flex:none}
+.sn .ear{display:flex;align-items:center;justify-content:flex-end;gap:4px;font:clamp(10px,1.3vw,17px) var(--term);white-space:nowrap}
+.sn[data-s=listen],.sn[data-s=think],.sn[data-s=speak],.sn[data-s=toast]{width:30%}
+.sn[data-s=peek]{width:44%;height:40%;border-radius:0 0 20px 20px;align-items:flex-start;flex-direction:column;justify-content:flex-start;padding:0}
+.sn .row{display:flex;align-items:center;justify-content:space-between;width:100%;height:clamp(22px,5.2cqh,40px);min-height:22px;padding:0 3%;flex:none}
+.wave{display:flex;align-items:center;gap:2px;height:60%}.wave i{width:2px;background:#fff;height:30%;animation:w .5s ease-in-out infinite alternate}
+.wave i:nth-child(2n){animation-delay:.12s}.wave i:nth-child(3n){animation-delay:.24s}.wave i:nth-child(5n){animation-delay:.08s}
+@keyframes w{to{height:100%}}
+.dots{display:flex;gap:3px}.dots i{width:4px;height:4px;background:#fff;animation:blink .9s steps(2) infinite}.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+/* peek panel inside the notch */
+.pk{width:100%;padding:2% 4% 4%;display:none;flex-direction:column;gap:6%;flex:1;min-height:0;font-size:clamp(7px,.95vw,12px)}
+.sn[data-s=peek] .pk{display:flex}
+.pk .tabs{display:flex;border:1px solid #444;align-self:flex-start}.pk .tabs span{padding:.2em .9em;font:clamp(9px,1.2vw,16px) var(--term);color:#aaa}.pk .tabs .on{background:#fff;color:#000}
+.ag{border:1px solid #333;padding:.6em .8em;display:flex;flex-direction:column;gap:.45em}
+.ag .t{display:flex;justify-content:space-between;gap:1em}.ag b{font-weight:600}.ag .st{font-family:var(--term);font-size:1.25em;color:#aaa}
+.ag .pl{display:flex;gap:3px}.ag .pl i{width:12%;height:4px;background:#444;transition:background .3s}.ag .pl i.d{background:#fff}.ag .pl i.a{background:#999}
+.ag .lv{font:1.1em var(--term);background:#fff;color:#000;padding:0 .4em;margin-left:.6em}
+/* desktop app window */
+.win{position:absolute;left:9%;top:14%;width:62%;height:70%;background:#f1f1ec;border:1.5px solid #111;box-shadow:10px 10px 0 #b2b2ab;display:flex;flex-direction:column;z-index:1}
+.win .tb{height:9%;min-height:18px;background:#111;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 2.4%;font-size:clamp(8px,1vw,12px)}
+.win .tools{display:flex;gap:.6em}.win .tools span{border:1px solid #666;padding:.05em .7em;font-size:.95em}
+.win .body{flex:1;display:grid;grid-template-columns:22% 1fr;min-height:0}
+.win .side{border-right:1px solid #c4c4bd;padding:6% 8%;display:flex;flex-direction:column;gap:5%}
+.win .side i{display:block;aspect-ratio:16/10;border:1px solid #999;background:#e3e3dd}.win .side i.on{border:2px solid #111}
+.win .slide{padding:5% 6%;display:flex;flex-direction:column;gap:4%}
+.win .slide h4{margin:0;font:clamp(14px,2.4vw,34px)/1 var(--term);text-transform:uppercase}
+.win .chart{flex:1;display:flex;align-items:flex-end;gap:5%;border-left:1.5px solid #111;border-bottom:1.5px solid #111;padding:0 5%}
+.win .chart i{flex:1;background:#111}.win .chart i:nth-child(odd){background:#777}
+.win .cap{font-size:clamp(7px,.9vw,11px);color:#555}
+/* dialog */
+.dlg{position:absolute;z-index:4;left:24%;top:31%;width:34%;background:#fff;border:1.5px solid #111;box-shadow:8px 8px 0 #0003;padding:2.2%;display:none;flex-direction:column;gap:9%;font-size:clamp(8px,1vw,12px)}
+.dlg.on{display:flex}.dlg b{font:clamp(8px,1vw,12px) var(--pixel)}
+.dlg .in{border:1.5px solid #111;padding:.5em .7em;min-height:2.3em;font-weight:600}.dlg .in::after{content:"";display:inline-block;width:1px;height:1.1em;background:#111;vertical-align:-.2em;animation:blink 1s steps(2) infinite}
+.dlg .bt{display:flex;justify-content:flex-end;gap:.8em}.dlg .bt span{border:1.5px solid #111;padding:.3em 1.2em}.dlg .bt .p{background:#111;color:#fff}
+/* board */
+.brd{position:absolute;z-index:4;left:16%;top:13%;width:68%;height:74%;background:#fff radial-gradient(#d0d0d0 1px,transparent 1px) 0 0/14px 14px;border:2px solid #111;box-shadow:8px 8px 0 #111;display:none}
+.brd.on{display:block}.brd .bt{position:absolute;left:3%;top:4%;font:clamp(7px,.9vw,11px) var(--pixel)}
+.brd svg{position:absolute;inset:0;width:100%;height:100%}
+.brd .s{fill:#fff;stroke:#111;stroke-width:2.5;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .5s steps(8)}
+.brd .s.d{stroke-dashoffset:0}.brd text{font:22px var(--term);fill:#111;opacity:0;transition:opacity .2s steps(2)}.brd text.d{opacity:1}
+/* marks, cursor, buddy, subtitles */
+.ink{position:absolute;inset:0;z-index:5;pointer-events:none;width:100%;height:100%;overflow:visible}
+.ink .c{fill:none;stroke:#fff;stroke-width:4;stroke-dasharray:1;stroke-dashoffset:1;filter:drop-shadow(1px 0 #000) drop-shadow(-1px 0 #000) drop-shadow(0 1px #000) drop-shadow(0 -1px #000);transition:stroke-dashoffset .9s linear}
+.ink .c.d{stroke-dashoffset:0}
+.ink .ants{fill:rgba(255,255,255,.18);stroke:#111;stroke-width:1.5;stroke-dasharray:5 4;animation:ants .6s linear infinite}@keyframes ants{to{stroke-dashoffset:-9}}
+.cur{position:absolute;z-index:8;left:0;top:0;width:clamp(12px,1.5vw,20px);pointer-events:none;will-change:transform}
+.bud{position:absolute;z-index:9;left:0;top:0;width:clamp(14px,1.8vw,24px);height:clamp(14px,1.8vw,24px);border-radius:50%;background:#000;border:1.5px solid #fff;box-shadow:0 0 0 1px #000,2px 2px 0 #0006;display:grid;place-items:center;pointer-events:none;will-change:transform}
+.bud .mark{width:58%;height:58%;color:#fff}
+.rip{position:absolute;z-index:7;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:2px solid #fff;outline:2px solid #000;animation:rip .45s steps(4) forwards;pointer-events:none}@keyframes rip{from{transform:scale(.3)}to{transform:scale(1.8);opacity:0}}
+.sub{position:absolute;z-index:10;left:50%;bottom:5%;transform:translateX(-50%);max-width:74%;text-align:center;background:#0a0a0a;color:#fff;padding:.5em 1em;font-size:clamp(9px,1.15vw,14px);line-height:1.5;opacity:0;transition:opacity .25s}
+.sub.on{opacity:1}.sub em{font-style:normal;color:#9a9a94;font-size:.85em;letter-spacing:.08em;text-transform:uppercase;margin-right:.6em}
+.toast{color:#fff}
+/* demo controls */
+.dctl{display:grid;grid-template-columns:repeat(5,1fr) auto;border:1px solid var(--stroke);border-top:0}
+.dtab{position:relative;text-align:left;padding:14px 16px 16px;background:transparent;border:0;border-right:1px solid var(--stroke);color:var(--muted);display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.dtab b{font:20px/1 var(--term);color:var(--ink);letter-spacing:.02em}.dtab span{font-size:11px}
+.dtab.on{background:var(--panel)}.dtab:hover{background:var(--panel2)}
+.dtab .pg{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--ink)}
+.dplay{width:60px;background:transparent;border:0;font-size:18px}.dplay:hover{background:var(--panel2)}
+.dnote{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);padding:10px 2px 0}
+
+/* sections */
+section.pad{padding:120px 0}
+.head{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:46px}
+.head h2{font-size:clamp(38px,5.4vw,78px);line-height:1.02;letter-spacing:-.07em;margin:18px 0 0;font-weight:600}
+.head p{color:var(--muted);max-width:340px;margin:0;font-size:13.5px}
+.feats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--stroke);border-left:1px solid var(--stroke)}
+.feat{border-right:1px solid var(--stroke);border-bottom:1px solid var(--stroke);padding:28px 26px 30px;min-height:280px;display:flex;flex-direction:column;gap:14px;transition:background .2s}
+.feat:hover{background:var(--panel)}
+.feat .ic{width:44px;height:44px;border:1px solid var(--ink);display:grid;place-items:center}
+.feat .ic i{width:20px;height:20px;background:var(--ink);-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+.feat .n{font-size:10px;color:var(--faint);letter-spacing:.12em}
+.feat h3{margin:0;font-size:23px;letter-spacing:-.05em;line-height:1.15}
+.feat p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.8}
+.feat .go{margin-top:auto;font-size:11px;color:var(--ink);opacity:.0;transform:translateX(-6px);transition:.2s}.feat:hover .go{opacity:1;transform:none}
+
+/* reel */
+.reel-wrap{position:relative}
+.reel{display:flex;gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 0 24px;cursor:grab;scrollbar-width:thin;scrollbar-color:var(--stroke2) transparent}
+.reel.drag{cursor:grabbing;scroll-snap-type:none}.reel.drag *{pointer-events:none}
+.shot{flex:0 0 min(560px,82vw);scroll-snap-align:start;margin:0;border:1px solid var(--stroke);background:#d8d8d2;position:relative}
+.shot img{width:100%;aspect-ratio:16/10;object-fit:contain;background:#0b0b0b;transition:transform .5s var(--ease)}
+.shot:hover img{transform:scale(1.02)}
+.shot figcaption{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;background:var(--panel);color:var(--ink);font-size:11px;border-top:1px solid var(--stroke)}
+.shot figcaption span{color:var(--muted)}
+.reel-ctl{display:flex;gap:8px;justify-content:flex-end;margin-top:-6px}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--stroke);border-left:1px solid var(--stroke)}
+.step{border-right:1px solid var(--stroke);border-bottom:1px solid var(--stroke);padding:28px;min-height:240px;display:flex;flex-direction:column;justify-content:space-between}
+.step .k{font:44px/1 var(--term)}.step h3{margin:0 0 10px;font-size:22px;letter-spacing:-.05em}.step p{margin:0;color:var(--muted);font-size:12.5px}
+
+/* trust band */
+.band{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--stroke)}
+.band div{padding:26px 24px;border-right:1px solid var(--stroke)}.band div:last-child{border-right:0}
+.band b{display:block;font:34px/1 var(--term);margin-bottom:8px}.band span{color:var(--muted);font-size:12px}
+
+/* download */
+.dl{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);gap:20px}
+.dl-main{background:var(--ink);color:var(--bg);padding:44px 40px;min-height:470px;display:flex;flex-direction:column;align-items:flex-start}
+.dl-main .face{width:150px;height:150px;margin:24px 0 22px;color:var(--bg)}
+.dl-main h3{font-size:26px;letter-spacing:-.06em;margin:0 0 8px}.dl-main p{margin:0;font-size:12.5px;opacity:.7;max-width:480px}
+.dl-main .meta{display:flex;gap:20px;font:18px var(--term);opacity:.75;margin-top:10px}
+.dl-main .get{margin-top:auto;display:inline-flex;gap:36px;align-items:center;border:1px solid var(--bg);padding:16px 20px;font-size:12px;font-weight:600;transition:transform .2s}.dl-main .get:hover{transform:translateY(-2px)}
+.dl-side{border:1px solid var(--stroke);padding:28px;display:flex;flex-direction:column;gap:6px}
+.dl-side h3{margin:0 0 8px;font-size:16px;letter-spacing:-.04em}
+.dl-side li{list-style:none;border-bottom:1px solid var(--stroke);padding:11px 0;font-size:12px;color:var(--muted)}.dl-side ul{margin:0;padding:0}
+.note{border-left:2px solid var(--ink);background:var(--panel);padding:13px 16px;font-size:12px;color:var(--muted);margin-top:14px}
+.assets a{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--stroke);font-size:12px;color:var(--muted)}.assets a:hover{color:var(--ink)}
+details.src{margin-top:20px;border:1px solid var(--stroke)}details.src summary{padding:16px 18px;cursor:pointer;font-size:12px;font-weight:600;list-style:none}details.src summary::before{content:"+ ";}details.src[open] summary::before{content:"− "}
+pre{margin:0;padding:18px 20px;background:var(--panel);border-top:1px solid var(--stroke);font:12px/1.9 var(--mono);overflow-x:auto}
+
+/* docs */
+.docs{display:grid;grid-template-columns:240px minmax(0,1fr);gap:56px;align-items:start}
+.dside{position:sticky;top:96px;display:flex;flex-direction:column}
+.dside input{background:transparent;border:1px solid var(--stroke);color:var(--ink);font:12px var(--mono);padding:11px 12px;margin-bottom:16px;outline:none}.dside input:focus{border-color:var(--ink)}
+#dnav{display:flex;flex-direction:column}
+.dside a{font-size:12px;padding:9px 14px;border-left:1px solid var(--stroke);color:var(--muted)}.dside a:hover{color:var(--ink);border-left-color:var(--ink);background:var(--panel)}
+.doc{border-bottom:1px solid var(--stroke);padding:0 0 34px;margin-bottom:34px;scroll-margin-top:96px}
+.doc h3{font-size:24px;letter-spacing:-.05em;margin:0 0 14px}
+.doc p,.doc li,.doc td{color:var(--muted);font-size:13px;line-height:1.9}.doc p{margin:0 0 10px}
+.doc table{width:100%;border-collapse:collapse;margin:10px 0}.doc th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.doc th,.doc td{border-bottom:1px solid var(--stroke);padding:10px 12px 10px 0;vertical-align:top}
+.doc code{font:11.5px var(--mono);background:var(--panel2);border:1px solid var(--stroke);padding:2px 5px;color:var(--ink)}
+.nores{display:none;color:var(--muted)}
+
+/* changelog */
+.rel{display:grid;grid-template-columns:150px 1fr;gap:24px;padding:30px 0;border-bottom:1px solid var(--stroke)}
+.rel .v{font:38px/1 var(--term)}.rel time{display:block;color:var(--muted);font-size:11px;margin-top:10px}
+.rel .tag{display:inline-block;background:var(--ink);color:var(--bg);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:4px 7px;margin-top:10px}
+.rel ul{margin:0;padding-left:18px}.rel li{color:var(--muted);font-size:12.5px;line-height:1.8;margin-bottom:6px}.rel li b{color:var(--ink);font-weight:600}
+.rel code{font:11px var(--mono);background:var(--panel2);padding:1px 4px}
+.rel.old ul{display:none}.rel.old.open ul{display:block}.rel.old .more{display:inline-block}.rel .more{display:none;margin-top:4px;background:none;border:0;padding:0;font-size:11px;text-decoration:underline;color:var(--muted)}
+
+/* end + footer */
+.end{border-top:2px solid var(--ink);padding:80px 0 100px;display:grid;grid-template-columns:1fr auto;gap:30px;align-items:end}
+.end h2{font:clamp(64px,9vw,140px)/.8 var(--term);letter-spacing:-.05em;text-transform:uppercase;margin:22px 0;font-weight:400}
+.end p{color:var(--muted);max-width:520px;font-size:13px}
+footer{border-top:1px solid var(--stroke);padding:50px 0 28px}
+.ft{display:grid;grid-template-columns:2fr 1fr 1fr;gap:50px;padding-bottom:60px}
+.ft h2{font:76px/.8 var(--term);margin:16px 0}.ft p{color:var(--muted);font-size:12px;max-width:400px}
+.ft h4{font-size:10px;color:var(--faint);letter-spacing:.13em;text-transform:uppercase;margin:0 0 18px}.ft a{display:block;padding:6px 0;font-size:12px;color:var(--muted)}.ft a:hover{color:var(--ink)}
+.fb{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--stroke);padding-top:20px;font-size:10px;color:var(--faint);letter-spacing:.06em}
+
+/* the website buddy */
+.wb{position:fixed;left:0;top:0;z-index:999;pointer-events:none;will-change:transform;opacity:0;transition:opacity .25s}
+.wb.on{opacity:1}
+.wb .dot{width:22px;height:22px;border-radius:50%;background:#000;border:1.5px solid #fff;box-shadow:0 0 0 1px #000,2px 2px 0 #0006;display:grid;place-items:center;transition:transform .15s}
+.wb .dot .mark{width:13px;height:13px;color:#fff}
+.wb.tip .dot{transform:scale(1.15)}
+.wb .say{position:absolute;left:30px;top:-4px;width:max-content;max-width:260px;background:var(--ink);color:var(--bg);font-size:11.5px;line-height:1.5;padding:7px 10px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;box-shadow:3px 3px 0 var(--stroke2)}
+.wb.tip .say{opacity:1;transform:none}
+.wb.flip .say{left:auto;right:30px}
+.wb.click .dot{transform:scale(.8)}
+
+/* lightbox */
+dialog.lb{border:1px solid var(--ink);background:var(--bg);padding:0;max-width:min(1200px,94vw);width:100%}
+dialog.lb::backdrop{background:#000c}dialog.lb img{width:100%}
+dialog.lb figcaption{padding:12px 16px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+
+@media (max-width:980px){.feats{grid-template-columns:1fr 1fr}.band{grid-template-columns:1fr 1fr}.band div:nth-child(2){border-right:0}.band div:nth-child(-n+2){border-bottom:1px solid var(--stroke)}
+  .dctl{grid-template-columns:repeat(5,1fr)}.dplay{display:none}.dtab span{display:none}}
+@media (max-width:820px){.wrap{width:calc(100% - 36px)}.nav{display:none}.nav.open{display:flex;position:fixed;top:66px;left:0;right:0;flex-direction:column;background:var(--bg);border-bottom:1px solid var(--stroke);padding:10px 18px}.burger{display:grid}
+  .hero-grid{grid-template-columns:1fr}.hero-side{border:0;border-top:1px solid var(--stroke);padding:22px 0 0}
+  .head{flex-direction:column;align-items:flex-start}.steps,.dl,.docs{grid-template-columns:1fr}.dside{position:static}.end,.ft{grid-template-columns:1fr}.rel{grid-template-columns:1fr;gap:10px}section.pad{padding:80px 0}}
+@media (max-width:560px){.feats{grid-template-columns:1fr}.hdr .btn{display:none}.dtab{padding:10px 8px 12px}.dtab b{font-size:15px}}
+@media (hover:none){.wb{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="#top" data-tip="That's me. Hi!"><span class="face"><i class="mark"></i></span><b>Pixie</b></a>
+  <nav class="nav" id="nav">
+    <a href="#demo">See it</a><a href="#features">Features</a><a href="#download">Download</a><a href="#docs">Docs</a><a href="#changelog">Changelog</a>
+    <a href="https://github.com/s41r4j/pixie" target="_blank" rel="noopener" data-tip="All the code is here. Stars welcome.">GitHub ↗</a>
+  </nav>
+  <button class="sq" id="theme" aria-label="Light or dark" data-tip="Lights on, lights off.">◐</button>
+  <button class="sq burger" id="burger" aria-label="Menu">☰</button>
+  <a class="btn btn--solid btn--sm" data-dl href="https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg" data-tip="Universal .dmg for Apple silicon and Intel.">Get Pixie <span class="ar">↗</span></a>
+</div></header>
+
+<main id="top">
+<section class="hero"><div class="wrap">
+  <span class="ver" data-tip="What changed lately: see the changelog below."><i></i><span data-version>latest</span></span>
+  <div class="hero-grid">
+    <h1><span>Less</span><span>stuck.</span><span class="ghost">More :)</span></h1>
+    <div class="hero-side">
+      <p>Pixie lives in your Mac's notch. Ask out loud, and it shows you where to click, draws on your screen, does the clicking, or takes the whole job off your hands.</p>
+      <div class="cta">
+        <a class="btn btn--solid" data-dl href="https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg" data-tip="Free. No account. Bring your own model key.">Download for Mac <span class="ar">↗</span></a>
+        <a class="btn" href="#demo" data-tip="A 40-second tour. It plays by itself.">Watch it work <span class="ar">↓</span></a>
+      </div>
+    </div>
+  </div>
+  <div class="stamp"><span>Open source · MIT</span><span>No account</span><span>Claude, OpenAI or DeepSeek</span><span>macOS 14+</span></div>
+</div></section>
+
+<!-- interactive, auto-playing demo -->
+<section class="demo" id="demo"><div class="wrap">
+  <div class="stage" id="stage" aria-label="Animated demo of Pixie" data-tip="This is a live demo. Click the tabs below to jump around.">
+    <div class="mbar"><div class="l"><b>●</b><span>Keynote</span><span>File</span><span>Edit</span><span>View</span></div><span id="clock">Thu 10:09</span></div>
+    <div class="sn" id="sn" data-s="rest">
+      <div class="row"><i class="mark face"></i><span class="ear" id="ear"></span></div>
+      <div class="pk" id="pk">
+        <div class="tabs"><span>Chat</span><span class="on">Agents 2</span></div>
+        <div class="ag"><div class="t"><b>CRM comparison</b><span class="st" id="ag1s">Searching the web</span></div><div class="pl" id="ag1p"><i></i><i></i><i></i><i></i></div></div>
+        <div class="ag"><div class="t"><span><b>Rename slides</b><span class="lv">live</span></span><span class="st" id="ag2s">Clicking slide 3</span></div><div class="pl" id="ag2p"><i class="d"></i><i class="a"></i><i></i></div></div>
+      </div>
+    </div>
+    <div class="win" id="win">
+      <div class="tb"><span>▣ Q3 Review</span><span class="tools"><span id="t-play">Play</span><span id="t-share">Share</span><span id="t-export">Export</span></span></div>
+      <div class="body">
+        <div class="side"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="slide"><h4 id="slide-title">Q3 revenue</h4><div class="chart" id="chart"><i style="height:38%"></i><i style="height:52%"></i><i style="height:47%"></i><i style="height:71%"></i><i style="height:86%"></i></div><div class="cap">Jul · Aug · Sep · Oct · Nov</div></div>
+      </div>
+    </div>
+    <div class="dlg" id="dlg"><b>Export</b><div class="in" id="fname"></div><div class="bt"><span>Cancel</span><span class="p" id="d-save">Save</span></div></div>
+    <div class="brd" id="brd"><span class="bt">How the funnel works</span><svg viewBox="0 0 1000 640" id="brdsvg"></svg></div>
+    <svg class="ink" id="ink"></svg>
+    <svg class="cur" id="cur" viewBox="0 0 20 28"><path d="M1 1 L1 22 L6.5 17 L10 26 L13.5 24.5 L10 16 L18 16 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <div class="bud" id="bud"><i class="mark"></i></div>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="dctl" id="dctl"></div>
+  <div class="dnote"><span>Plays on its own · click a step to jump</span><span>Illustration of the real app</span></div>
+</div></section>
+
+<section class="pad" id="features"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">Not another chat window</span><h2>It gets the point.<br>Literally.</h2></div><p>An answer isn't always enough. Pixie lives where you're looking, and shows you.</p></div>
+  <div class="feats">
+    <div class="feat" data-tip="Hold, talk, let go. That's the whole interface."><div class="ic"><i style="--i:url(resources/icons/system/mic.svg)"></i></div><span class="n">01 / VOICE</span><h3>Talk, don't type</h3><p>Hold <kbd>⌃</kbd><kbd>⌥</kbd>, ask, let go. Speech is recognised on your Mac and the answer is spoken back. No text over your work.</p><a class="go" href="#demo" data-scene="0">See it →</a></div>
+    <div class="feat" data-tip="I'm that round thing. I point and draw."><div class="ic"><i style="--i:url(resources/icons/system/cursor.svg)"></i></div><span class="n">02 / BUDDY</span><h3>Points and draws</h3><p>A round <code>:)</code> rides beside your cursor, flies to the exact button and circles, underlines or selects it.</p><a class="go" href="#demo" data-scene="1">See it →</a></div>
+    <div class="feat" data-tip="It asks before anything risky, like sending or deleting."><div class="ic"><i style="--i:url(resources/icons/system/bolt.svg)"></i></div><span class="n">03 / COMPUTER USE</span><h3>Does it for you</h3><p>Clicks, types, uses menus and the clipboard, checking the screen after every step.</p><a class="go" href="#demo" data-scene="2">See it →</a></div>
+    <div class="feat" data-tip="Click anywhere to put the board away."><div class="ic"><i style="--i:url(resources/icons/system/grid.svg)"></i></div><span class="n">04 / BOARD</span><h3>Explains on a clean sheet</h3><p>Diagrams are sketched stroke by stroke on a paper board, never on top of your windows.</p><a class="go" href="#demo" data-scene="3">See it →</a></div>
+    <div class="feat" data-tip="Hover the notch to check on them."><div class="ic"><i style="--i:url(resources/icons/system/layers.svg)"></i></div><span class="n">05 / AGENTS</span><h3>Hands off the long stuff</h3><p>Background agents research and write; live agents work on your screen while explaining. Track both from the notch.</p><a class="go" href="#demo" data-scene="4">See it →</a></div>
+    <div class="feat" data-tip="Codex, Claude Code or opencode. Your pick, your model."><div class="ic"><i style="--i:url(resources/icons/system/terminal.svg)"></i></div><span class="n">06 / CODE</span><h3>Your coding agents</h3><p>Code tasks go to the agent already on your Mac, with the model you choose for each.</p><a class="go" href="#docs-coding">Docs →</a></div>
+  </div>
+</div></section>
+
+<section class="pad" style="padding-top:0" id="tour"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">The real app</span><h2>Small presence.<br>Real utility.</h2></div><p>Drag the strip, or use the arrows. Click any shot to see it full size.</p></div>
+  <div class="reel-wrap">
+    <div class="reel" id="reel" data-tip="Drag me sideways.">
+      <figure class="shot"><img loading="lazy" src="shots/buddy.png" alt="The buddy circling, underlining and pointing"><figcaption>The buddy marks the screen <span>01</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/peek.png" alt="Hovering the notch: the Chat tab"><figcaption>Hover the notch: Chat <span>02</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/agents.png" alt="The Agents tab"><figcaption>Agents, background and live <span>03</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/board.png" alt="A diagram on the board"><figcaption>The board <span>04</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/note.png" alt="A job's live note"><figcaption>A job's live note <span>05</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/models.png" alt="Models settings"><figcaption>Models, newest first, with prices <span>06</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/usage.png" alt="Usage settings"><figcaption>What it costs, per model <span>07</span></figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="shots/coding.png" alt="Coding agents settings"><figcaption>Your coding agents <span>08</span></figcaption></figure>
+    </div>
+    <div class="reel-ctl"><button class="sq" id="rprev" aria-label="Previous">←</button><button class="sq" id="rnext" aria-label="Next">→</button></div>
+  </div>
+</div></section>
+
+<section class="pad" style="padding-top:0"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">How it works</span><h2>Quite simple,<br>actually.</h2></div><p>Pixie stays out of the way until you call.</p></div>
+  <div class="steps">
+    <div class="step"><span class="k">01</span><div><h3>Hold &amp; ask</h3><p>Hold <kbd>⌃</kbd><kbd>⌥</kbd>, say what you're stuck on, let go. Change the keys any time.</p></div></div>
+    <div class="step"><span class="k">02</span><div><h3>It looks</h3><p>Pixie reads your screen and answers out loud, pointing at exactly what it means.</p></div></div>
+    <div class="step"><span class="k">03</span><div><h3>Keep moving</h3><p>Follow the mark, let it do the clicks, or hand it the whole job.</p></div></div>
+  </div>
+  <div class="band" style="margin-top:20px">
+    <div data-tip="Speech, screen reading and the voice run on your Mac."><b>On-device</b><span>speech, OCR and voice</span></div>
+    <div data-tip="Your key, your provider. Nothing in between."><b>Your key</b><span>Claude · OpenAI · DeepSeek</span></div>
+    <div data-tip="Usage is counted locally. Nothing is sent to us."><b>0 telemetry</b><span>no Pixie server at all</span></div>
+    <div data-tip="Read it, fork it, improve it."><b>MIT</b><span>free and open source</span></div>
+  </div>
+</div></section>
+
+<section class="pad" id="download" style="padding-top:0"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">Download</span><h2>Come say hello.</h2></div><p>One universal build, made from source by GitHub Actions on every release.</p></div>
+  <div class="dl">
+    <div class="dl-main">
+      <span class="eyebrow" style="color:inherit">Latest release · macOS</span>
+      <i class="mark face"></i>
+      <h3>Pixie for Mac <span data-version style="opacity:.6"></span></h3>
+      <p>Apple silicon and Intel · macOS 14 Sonoma or later · no account.</p>
+      <div class="meta"><span>released <b data-date>—</b></span><span>size <b data-size>—</b></span></div>
+      <a class="get" data-dl href="https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg" data-tip="Opens a .dmg: drag Pixie to Applications.">Download .dmg <span>↗</span></a>
+    </div>
+    <aside class="dl-side">
+      <h3>Before you start</h3>
+      <ul><li>macOS 14 or newer, Apple silicon or Intel</li><li>A Claude, OpenAI or DeepSeek API key</li><li>Mic, Screen Recording and Accessibility (the welcome window walks you through)</li></ul>
+      <div class="note"><b>First launch:</b> right-click Pixie → Open once. Builds without an Apple Developer ID ask you to confirm.</div>
+      <h3 style="margin-top:20px">Files in this release</h3>
+      <div class="assets" data-assets><a href="https://github.com/s41r4j/pixie/releases"><span>All releases on GitHub</span><span>↗</span></a></div>
+    </aside>
+  </div>
+  <details class="src"><summary>Build it from source</summary><pre>git clone https://github.com/s41r4j/pixie &amp;&amp; cd pixie
+npm ci
+npm run app:build      # target/release/bundle/macos/Pixie.app + .dmg
+npm run app:install    # copy to /Applications and open
+# needs Xcode command-line tools, Rust stable, Node 20+
+# verify a release: shasum -a 256 -c SHA256SUMS.txt</pre></details>
+</div></section>
+
+<section class="pad" id="docs" style="padding-top:0"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">Docs</span><h2>How to Pixie.</h2></div><p>Five minutes to read. Search narrows the list.</p></div>
+  <div class="docs">
+    <aside class="dside"><input id="dsearch" type="search" placeholder="Search the docs" aria-label="Search the docs"><nav id="dnav"></nav></aside>
+    <div id="dmain">
+      <p class="nores" id="nores">Nothing matches. Try a shorter word.</p>
+      <article class="doc" id="docs-install"><h3>Install</h3><p>Download the <code>.dmg</code>, drag Pixie to Applications, then right-click → Open the first time. The <code>:)</code> appears in the menu bar and the welcome window starts: your name, permissions, a model key, a mic test, and the shortcuts. The natural voice downloads in the background while you go.</p></article>
+      <article class="doc" id="docs-permissions"><h3>Permissions</h3><table><tr><th>Permission</th><th>Used for</th></tr><tr><td>Microphone, Speech</td><td>Hearing you, on-device</td></tr><tr><td>Screen Recording</td><td>Seeing the screen when you ask</td></tr><tr><td>Accessibility</td><td>Finding controls precisely, clicking when you allow it</td></tr></table><p>Screen Recording needs a relaunch after you allow it. If a switch is on but Pixie says "not allowed", use Reset in Settings → Permissions.</p></article>
+      <article class="doc" id="docs-keys"><h3>Models and keys</h3><p>Settings → Models: pick a provider, paste its key. Models load live from the provider, newest first, with context size and price. Mark one for <b>voice</b>, one for <b>agents</b>, and optionally one <b>fallback</b> that answers if the main model fails.</p><table><tr><th>Provider</th><th>Key</th></tr><tr><td>Claude</td><td><code>ANTHROPIC_API_KEY</code></td></tr><tr><td>OpenAI</td><td><code>OPENAI_API_KEY</code></td></tr><tr><td>DeepSeek</td><td><code>DEEPSEEK</code></td></tr></table></article>
+      <article class="doc" id="docs-talk"><h3>Shortcuts</h3><table><tr><th>Do this</th><th>What happens</th></tr><tr><td>Hold <kbd>⌃</kbd><kbd>⌥</kbd>, talk, let go</td><td>Pixie listens, thinks and answers out loud</td></tr><tr><td>Tap <kbd>⌃</kbd><kbd>⌥</kbd></td><td>A box to type instead</td></tr><tr><td>Hold <kbd>fn</kbd><kbd>⌃</kbd></td><td>Dictate clean text into any field</td></tr><tr><td>Hover the notch</td><td>Chat and Agents tabs</td></tr><tr><td><kbd>esc</kbd></td><td>Stop everything, including a live agent</td></tr></table><p>Change the keys in Settings → General → Shortcuts.</p></article>
+      <article class="doc" id="docs-buddy"><h3>The buddy</h3><p>The round <code>:)</code> rides just off your pointer. It points at real controls by name, draws circles, underlines and selections, and clicks or types when you ask. Settings → General: <b>Always on</b>, <b>Idle</b> (only while Pixie is busy) or <b>Off</b>; and whether it may click for you.</p></article>
+      <article class="doc" id="docs-agents"><h3>Agents</h3><p><b>Background</b> agents work on their own (research, documents, files, code) and keep a live note. <b>Live</b> agents do the task on your screen and explain each step. Both show in the notch's Agents tab; past jobs and chats are in the Jobs window. Agents never overwrite your files and can't touch <code>.ssh</code>, <code>.aws</code>, keychains or <code>.env</code> files.</p></article>
+      <article class="doc" id="docs-coding"><h3>Coding agents</h3><table><tr><th>Agent</th><th>Install</th></tr><tr><td>Codex CLI</td><td><code>npm i -g @openai/codex</code></td></tr><tr><td>Claude Code</td><td><code>npm i -g @anthropic-ai/claude-code</code></td></tr><tr><td>opencode</td><td><code>npm i -g opencode-ai</code></td></tr></table><p>Pick the default agent, a model per agent, sandbox and permission modes in Settings → Coding.</p></article>
+      <article class="doc" id="docs-voice"><h3>Voice and sounds</h3><p>The natural voice runs offline (about 370 MB, downloaded during setup); the system voice works meanwhile. Settings → Sounds lets you change, quieten or replace every sound with your own file.</p></article>
+      <article class="doc" id="docs-privacy"><h3>Privacy</h3><p>Speech recognition, screen OCR and the natural voice run on your Mac. Screenshots and your words go only to the model provider you chose, with your key. Usage is counted locally. There is no Pixie server.</p></article>
+      <article class="doc" id="docs-trouble"><h3>Troubleshooting</h3><p><b>"Can't be opened"</b>: right-click → Open, or System Settings → Privacy &amp; Security → Open Anyway. <b>Permission not sticking</b>: Settings → Permissions → Reset, allow, relaunch. <b>No answer</b>: check the key in Settings → Models. Still stuck? <a href="https://github.com/s41r4j/pixie/issues" style="text-decoration:underline">Open an issue</a>.</p></article>
+    </div>
+  </div>
+</div></section>
+
+<section class="pad" id="changelog" style="padding-top:0"><div class="wrap">
+  <div class="head"><div><span class="eyebrow">Changelog</span><h2>The little things.</h2></div><p>Every release, newest first.</p></div>
+  <div id="log"><p style="color:var(--muted)">Loading…</p></div>
+</div></section>
+
+<div class="wrap"><div class="end">
+  <div><span class="eyebrow">Open source, always</span><h2>Good software.<br>No strings.</h2><p>Your Mac, your keys, code you can read. A helper that feels like part of your desktop, not another tab.</p></div>
+  <a class="btn btn--solid" data-dl href="https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg" data-tip="See you in the notch.">Get Pixie for macOS <span class="ar">↗</span></a>
+</div></div>
+</main>
+
+<footer><div class="wrap">
+  <div class="ft">
+    <div><span class="eyebrow">A little software with a big smile</span><h2>Pixie :)</h2><p>Made by <a href="https://github.com/s41r4j" style="display:inline;color:var(--ink)">s41r4j</a>. Free and open source under the MIT licence.</p></div>
+    <div><h4>Product</h4><a href="#demo">See it</a><a href="#features">Features</a><a href="#download">Download</a><a href="#docs">Docs</a></div>
+    <div><h4>Elsewhere</h4><a href="https://github.com/s41r4j/pixie" target="_blank" rel="noopener">GitHub ↗</a><a href="https://github.com/s41r4j/pixie/releases" target="_blank" rel="noopener">Releases ↗</a><a href="https://github.com/s41r4j/pixie/issues" target="_blank" rel="noopener">Issues ↗</a><a href="https://x.com/s41r4j" target="_blank" rel="noopener">X ↗</a></div>
+  </div>
+  <div class="fb"><span>© 2026 Pixie · MIT</span><span>Not affiliated with any other assistant app.</span></div>
+</div></footer>
+
+<dialog class="lb" id="lb"><img alt=""><figcaption><span></span><span>esc to close</span></figcaption></dialog>
+<div class="wb" id="wb" aria-hidden="true"><div class="dot"><i class="mark"></i></div><div class="say"></div></div>
+
+<script>
+(() => {
+const REPO = "s41r4j/pixie", DMG = "Pixie-macOS-universal.dmg";
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- theme + menu ---------- */
+const root = document.documentElement;
+if (localStorage.getItem("pixie-theme") === "light") root.classList.add("light");
+$("#theme").onclick = () => { root.classList.toggle("light"); localStorage.setItem("pixie-theme", root.classList.contains("light") ? "light" : "dark"); };
+$("#burger").onclick = () => $("#nav").classList.toggle("open");
+$$("#nav a").forEach(a => a.addEventListener("click", () => $("#nav").classList.remove("open")));
+
+/* ---------- the website buddy: follows the pointer, explains what you hover ---------- */
+const wb = $("#wb"), say = $(".say", wb);
+let mx = -100, my = -100, bx = -100, by = -100, seen = false, greeted = false;
+addEventListener("pointermove", e => {
+  if (e.pointerType !== "mouse") return;
+  mx = e.clientX; my = e.clientY;
+  if (!seen) { seen = true; bx = mx + 26; by = my + 28; wb.classList.add("on"); greet(); }
+}, { passive: true });
+document.addEventListener("pointerleave", () => wb.classList.remove("on"));
+document.addEventListener("pointerenter", () => seen && wb.classList.add("on"));
+addEventListener("pointerdown", () => { wb.classList.add("click"); setTimeout(() => wb.classList.remove("click"), 140); });
+let tipEl = null, tipTimer = 0;
+function show(text) { say.textContent = text; wb.classList.add("tip"); }
+function hide() { wb.classList.remove("tip"); }
+function greet() {
+  if (greeted || sessionStorage.getItem("pixie-hi")) return;
+  greeted = true; sessionStorage.setItem("pixie-hi", "1");
+  setTimeout(() => { if (!tipEl) { show("Hi, I'm Pixie. Hover things and I'll tell you about them."); setTimeout(() => !tipEl && hide(), 3400); } }, 500);
+}
+document.addEventListener("pointerover", e => {
+  const el = e.target.closest("[data-tip]");
+  if (el === tipEl) return;
+  tipEl = el; clearTimeout(tipTimer);
+  if (el) tipTimer = setTimeout(() => show(el.dataset.tip), 260); else hide();
+});
+(function loop() {
+  // Rides down-right of the pointer, with a little space, like in the app.
+  const tx = mx + 26, ty = my + 28;
+  bx += (tx - bx) * (reduce ? 1 : .22); by += (ty - by) * (reduce ? 1 : .22);
+  wb.classList.toggle("flip", bx > innerWidth - 300);
+  wb.style.transform = `translate(${bx - 11}px, ${by - 11}px)`;
+  requestAnimationFrame(loop);
+})();
+
+/* ---------- the demo: five scenes that play like a video ---------- */
+const stage = $("#stage"), sn = $("#sn"), ear = $("#ear"), sub = $("#sub"), cur = $("#cur"), bud = $("#bud"), ink = $("#ink");
+const SCENES = [
+  { t: "Ask", d: "Hold ⌃⌥ and talk", ms: 8200, run: sAsk },
+  { t: "Show", d: "It points and draws", ms: 8200, run: sShow },
+  { t: "Do", d: "It clicks and types", ms: 11000, run: sDo },
+  { t: "Explain", d: "It sketches a board", ms: 9800, run: sExplain },
+  { t: "Delegate", d: "Agents take the job", ms: 13500, run: sDelegate },
+];
+const ctl = $("#dctl");
+SCENES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "dtab"; b.innerHTML = `<b>0${i + 1} ${s.t}</b><span>${s.d}</span><i class="pg"></i>`;
+  b.onclick = () => play(i, true);
+  ctl.append(b);
+});
+const pbtn = document.createElement("button"); pbtn.className = "dplay"; pbtn.textContent = "❚❚"; pbtn.setAttribute("aria-label", "Pause");
+ctl.append(pbtn);
+let gen = 0, idx = 0, auto = true, inView = false, started = false;
+pbtn.onclick = () => { auto = !auto; pbtn.textContent = auto ? "❚❚" : "▶"; if (auto) play(idx); };
+const W = () => stage.clientWidth, H = () => stage.clientHeight;
+const sleep = (ms, g) => new Promise((ok, no) => setTimeout(() => g === gen ? ok() : no("stop"), reduce ? Math.min(ms, 60) : ms));
+// positions are in stage pixels
+let cx = 0, cy = 0, ux = 0, uy = 0, budFree = true;
+function center(el) { const r = el.getBoundingClientRect(), s = stage.getBoundingClientRect(); return { x: r.left - s.left + r.width / 2, y: r.top - s.top + r.height / 2, w: r.width, h: r.height, l: r.left - s.left, t: r.top - s.top }; }
+function place() {
+  cur.style.transform = `translate(${cx}px, ${cy}px)`;
+  if (budFree) { ux += (cx + 24 - ux) * .25; uy += (cy + 26 - uy) * .25; }
+  bud.style.transform = `translate(${ux - bud.offsetWidth / 2}px, ${uy - bud.offsetHeight / 2}px)`;
+}
+(function tick() { place(); requestAnimationFrame(tick); })();
+function tween(ms, g, f) {
+  return new Promise((ok, no) => {
+    const t0 = performance.now();
+    const step = now => { if (g !== gen) return no("stop"); const k = reduce ? 1 : Math.min(1, (now - t0) / ms); f(1 - Math.pow(1 - k, 3)); k < 1 ? requestAnimationFrame(step) : ok(); };
+    requestAnimationFrame(step);
+  });
+}
+const moveCursor = (x, y, ms, g) => { const x0 = cx, y0 = cy; return tween(ms, g, e => { cx = x0 + (x - x0) * e; cy = y0 + (y - y0) * e; }); };
+function flyBuddy(x, y, ms, g) {
+  budFree = false; const x0 = ux, y0 = uy, mx2 = (x0 + x) / 2, my2 = Math.min(y0, y) - H() * .12;
+  return tween(ms, g, e => { const u = 1 - e; ux = u * u * x0 + 2 * u * e * mx2 + e * e * x; uy = u * u * y0 + 2 * u * e * my2 + e * e * y; });
+}
+function ripple(x, y) { const r = document.createElement("i"); r.className = "rip"; r.style.left = x + "px"; r.style.top = y + "px"; stage.append(r); setTimeout(() => r.remove(), 500); }
+function notch(s, html = "") { sn.dataset.s = s; ear.innerHTML = html; }
+const WAVE = `<span class="wave">${"<i></i>".repeat(11)}</span>`, DOTS = `<span class="dots"><i></i><i></i><i></i></span>`;
+function subtitle(who, text) { if (!text) return sub.classList.remove("on"); sub.innerHTML = `<em>${who}</em>${text}`; sub.classList.add("on"); }
+function reset() {
+  notch("rest"); subtitle(); $("#dlg").classList.remove("on"); $("#fname").textContent = ""; $("#brd").classList.remove("on"); ink.innerHTML = "";
+  $("#brdsvg").innerHTML = ""; budFree = true; cx = W() * .78; cy = H() * .62;
+  ["ag1p", "ag2p"].forEach(id => $$("#" + id + " i").forEach(i => i.className = ""));
+}
+async function listen(g, words) {
+  notch("listen", WAVE); subtitle("You", `“${words}”`); await sleep(2100, g);
+  notch("think", DOTS); await sleep(800, g);
+}
+async function sAsk(g) {
+  await moveCursor(W() * .45, H() * .55, 900, g);
+  await listen(g, "What does this chart show?");
+  notch("speak", WAVE); subtitle("Pixie", "“Revenue grew every month, up 18% in November. Mostly new customers.”"); await sleep(3600, g);
+  notch("rest"); subtitle(); await sleep(400, g);
+}
+function circleAround(r, g) {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+  p.setAttribute("cx", r.x); p.setAttribute("cy", r.y); p.setAttribute("rx", r.w / 2 + 14); p.setAttribute("ry", r.h / 2 + 10); p.setAttribute("pathLength", 1); p.setAttribute("class", "c");
+  ink.append(p); requestAnimationFrame(() => requestAnimationFrame(() => g === gen && p.classList.add("d")));
+}
+async function sShow(g) {
+  await moveCursor(W() * .5, H() * .6, 700, g);
+  await listen(g, "Where's the export button?");
+  const e = center($("#t-export"));
+  await flyBuddy(e.x + e.w / 2 + 16, e.y + e.h / 2 + 14, 650, g);
+  circleAround(e, g); notch("speak", WAVE); subtitle("Pixie", "“Top right of the toolbar. I've circled it.”"); await sleep(1500, g);
+  const c = center($("#chart"));
+  const sel = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  Object.entries({ x: c.l + c.w * .58, y: c.t - 4, width: c.w * .42, height: c.h + 8, class: "ants" }).forEach(([k, v]) => sel.setAttribute(k, v));
+  await flyBuddy(c.l + c.w + 12, c.t + c.h + 12, 600, g); ink.append(sel);
+  subtitle("Pixie", "“And these two months are where the jump happened.”"); await sleep(2300, g);
+  notch("rest"); subtitle(); budFree = true; await sleep(300, g);
+}
+async function sDo(g) {
+  await moveCursor(W() * .5, H() * .58, 700, g);
+  await listen(g, "Export this as a PDF called Q3 Review.");
+  notch("speak", WAVE); subtitle("Pixie", "“On it.”");
+  const e = center($("#t-export"));
+  await flyBuddy(e.x, e.y, 650, g); ripple(e.x, e.y); await sleep(350, g);
+  $("#dlg").classList.add("on"); await sleep(400, g);
+  const f = center($("#fname")); await flyBuddy(f.l + 20, f.y, 500, g); ripple(f.l + 20, f.y);
+  const name = "Q3 Review.pdf";
+  for (let i = 1; i <= name.length; i++) { $("#fname").textContent = name.slice(0, i); await sleep(70, g); }
+  const s = center($("#d-save")); await flyBuddy(s.x, s.y, 500, g); ripple(s.x, s.y); await sleep(300, g);
+  $("#dlg").classList.remove("on"); budFree = true; subtitle();
+  notch("toast", `<span class="toast">■ Saved Q3 Review.pdf</span>`); await sleep(2600, g); notch("rest");
+}
+async function sExplain(g) {
+  await moveCursor(W() * .5, H() * .55, 600, g);
+  await listen(g, "How does our sales funnel work?");
+  $("#brd").classList.add("on"); notch("speak", WAVE);
+  subtitle("Pixie", "“Visitors become leads, leads become trials, and about a fifth of trials buy.”");
+  const svg = $("#brdsvg"), NS = "http://www.w3.org/2000/svg";
+  const parts = [["rect", { x: 60, y: 250, width: 200, height: 90 }, "Visitors", 160, 302], ["path", { d: "M275 295 L395 295 M380 284 L395 295 L380 306" }], ["rect", { x: 410, y: 250, width: 200, height: 90 }, "Leads", 510, 302],
+    ["path", { d: "M625 295 L745 295 M730 284 L745 295 L730 306" }], ["rect", { x: 760, y: 250, width: 190, height: 90 }, "Trials", 855, 302], ["path", { d: "M855 355 L855 455 M844 440 L855 455 L866 440" }], ["rect", { x: 760, y: 470, width: 190, height: 90 }, "Customers", 855, 522], ["text", {}, "~20% of trials buy", 600, 520]];
+  for (const [tag, at, label, lx, ly] of parts) {
+    if (tag !== "text") {
+      const el = document.createElementNS(NS, tag); Object.entries(at).forEach(([k, v]) => el.setAttribute(k, v)); el.setAttribute("pathLength", 1); el.setAttribute("class", "s");
+      if (tag === "path") el.style.fill = "none"; svg.append(el); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("d")));
+    }
+    if (label) { const t = document.createElementNS(NS, "text"); t.setAttribute("x", lx); t.setAttribute("y", ly); t.setAttribute("text-anchor", "middle"); t.textContent = label; svg.append(t); setTimeout(() => t.classList.add("d"), 350); }
+    await sleep(560, g);
+  }
+  await sleep(2400, g); subtitle("Click", "anywhere and the board goes away"); ripple(cx, cy); await sleep(500, g);
+  $("#brd").classList.remove("on"); notch("rest"); subtitle(); await sleep(500, g);
+}
+function plan(id, st) { $$("#" + id + " i").forEach((i, k) => i.className = k < st ? "d" : k === st ? "a" : ""); }
+async function sDelegate(g) {
+  await moveCursor(W() * .5, H() * .58, 600, g);
+  await listen(g, "Research three CRMs and write me a comparison.");
+  notch("toast", `<span class="toast">■ Started: CRM comparison</span>`); subtitle("Pixie", "“On it. I'll ping you when it's ready.”"); await sleep(2000, g);
+  subtitle("You", "hover the notch"); await moveCursor(W() * .5, H() * .03, 700, g);
+  notch("peek"); subtitle(); plan("ag1p", 0); plan("ag2p", 1);
+  const steps = [["Reading hubspot.com", 1], ["Comparing prices", 2], ["Writing the note", 3]];
+  for (const [txt, st] of steps) { $("#ag1s").textContent = txt; plan("ag1p", st); $("#ag2s").textContent = st > 1 ? "Checking it worked" : "Clicking slide 3"; if (st > 1) plan("ag2p", 2); await sleep(1500, g); }
+  plan("ag1p", 4); $("#ag1s").textContent = "done"; plan("ag2p", 3); $("#ag2s").textContent = "done"; await sleep(1100, g);
+  await moveCursor(W() * .5, H() * .6, 500, g); notch("toast", `<span class="toast">■ CRM comparison is ready</span>`); await sleep(2000, g); notch("rest");
+}
+function bars(i, ms) {
+  $$(".dtab", ctl).forEach((b, k) => { b.classList.toggle("on", k === i); const p = $(".pg", b); p.style.transition = "none"; p.style.width = k < i ? "100%" : "0"; });
+  const p = $(".pg", $$(".dtab", ctl)[i]); requestAnimationFrame(() => requestAnimationFrame(() => { p.style.transition = `width ${ms}ms linear`; p.style.width = "100%"; }));
+}
+async function play(i, user) {
+  const g = ++gen; idx = i; if (user && !auto) { auto = true; pbtn.textContent = "❚❚"; }
+  reset(); bars(i, SCENES[i].ms); const t0 = performance.now();
+  try {
+    await SCENES[i].run(g);
+    const left = SCENES[i].ms - (performance.now() - t0); if (left > 0) await sleep(left, g);
+    if (g === gen && auto && inView) play((i + 1) % SCENES.length);
+  } catch (_) { /* superseded */ }
+}
+new IntersectionObserver(([e]) => {
+  inView = e.isIntersecting;
+  if (inView && (!started || auto)) { started = true; play(idx); } else if (!inView) gen++;
+}, { threshold: .35 }).observe(stage);
+$$("[data-scene]").forEach(a => a.addEventListener("click", () => setTimeout(() => play(+a.dataset.scene, true), 400)));
+setInterval(() => { const d = new Date(); $("#clock").textContent = d.toLocaleDateString([], { weekday: "short" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }, 10000);
+
+/* ---------- screenshot reel: drag, arrows, gentle auto-scroll, lightbox ---------- */
+const reel = $("#reel");
+let down = false, sx = 0, sl = 0, moved = 0, hover = false;
+reel.addEventListener("pointerdown", e => { down = true; moved = 0; sx = e.clientX; sl = reel.scrollLeft; });
+addEventListener("pointermove", e => { if (!down) return; const dx = e.clientX - sx; moved = Math.max(moved, Math.abs(dx)); if (moved > 4) reel.classList.add("drag"); reel.scrollLeft = sl - dx; });
+addEventListener("pointerup", () => { down = false; setTimeout(() => reel.classList.remove("drag"), 0); });
+reel.addEventListener("pointerenter", () => hover = true); reel.addEventListener("pointerleave", () => hover = false);
+const stepBy = d => reel.scrollBy({ left: d * (reel.querySelector(".shot").offsetWidth + 18), behavior: "smooth" });
+$("#rprev").onclick = () => stepBy(-1); $("#rnext").onclick = () => stepBy(1);
+setInterval(() => { if (hover || down || reduce || document.hidden) return; if (reel.scrollLeft + reel.clientWidth >= reel.scrollWidth - 4) reel.scrollTo({ left: 0, behavior: "smooth" }); else stepBy(1); }, 4200);
+const lb = $("#lb");
+$$(".shot", reel).forEach(f => f.addEventListener("click", () => { if (moved > 4) return; const img = $("img", f); $("img", lb).src = img.src; $("img", lb).alt = img.alt; $("figcaption span", lb).textContent = $("figcaption", f).firstChild.textContent; lb.showModal(); }));
+lb.addEventListener("click", () => lb.close());
+
+/* ---------- docs: nav + search ---------- */
+const dnav = $("#dnav"), docs = $$(".doc");
+docs.forEach(d => { const a = document.createElement("a"); a.href = "#" + d.id; a.textContent = $("h3", d).textContent; dnav.append(a); });
+$("#dsearch").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase(); let n = 0;
+  docs.forEach((d, i) => { const hit = !q || d.textContent.toLowerCase().includes(q); d.hidden = !hit; dnav.children[i].hidden = !hit; n += hit; });
+  $("#nores").style.display = n ? "none" : "block";
+});
+
+/* ---------- live release info ---------- */
+const mb = b => b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1e3) + " KB";
+fetch(`https://api.github.com/repos/${REPO}/releases/latest`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(rel => {
+  const dmg = rel.assets.find(a => a.name === DMG) || rel.assets.find(a => a.name.endsWith(".dmg"));
+  $$("[data-version]").forEach(e => e.textContent = rel.tag_name);
+  $$("[data-date]").forEach(e => e.textContent = new Date(rel.published_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }));
+  if (dmg) { $$("[data-size]").forEach(e => e.textContent = mb(dmg.size)); $$("[data-dl]").forEach(a => a.href = dmg.browser_download_url); }
+  $("[data-assets]").innerHTML = rel.assets.map(a => `<a href="${a.browser_download_url}"><span>${a.name}</span><span>${mb(a.size)}</span></a>`).join("");
+}).catch(() => {});
+
+/* ---------- changelog from CHANGELOG.md ---------- */
+const inl = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+fetch("CHANGELOG.md").then(r => r.text()).then(md => {
+  const parts = md.split(/^## /m).slice(1);
+  $("#log").innerHTML = parts.map((p, i) => {
+    const [head, ...rest] = p.split("\n"); const [v, date] = head.split(/\s+[—-]\s+/);
+    const items = rest.filter(l => l.startsWith("- ")).map(l => `<li>${inl(l.slice(2))}</li>`).join("");
+    return `<article class="rel ${i ? "old" : ""}"><div><div class="v">${v.trim()}</div><time>${date || ""}</time>${i ? "" : '<span class="tag">latest</span>'}</div><div><ul>${items}</ul><button class="more">Show ${rest.filter(l => l.startsWith("- ")).length} changes</button></div></article>`;
+  }).join("");
+  $$("#log .more").forEach(b => b.onclick = () => { b.closest(".rel").classList.add("open"); b.remove(); });
+}).catch(() => { $("#log").innerHTML = `<p style="color:var(--muted)">See <a style="text-decoration:underline" href="https://github.com/${REPO}/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>`; });
+
+/* ---------- nav highlight ---------- */
+const navLinks = $$("#nav a[href^='#']");
+const spy = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) navLinks.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id));
+}), { rootMargin: "-45% 0px -50% 0px" });
+navLinks.forEach(a => { const s = $(a.getAttribute("href")); if (s) spy.observe(s); });
+})();
+</script>
+</body>
+</html>

@@ -17,14 +17,65 @@ struct Follow {
 }
 
 static ON_SCREEN: AtomicBool = AtomicBool::new(false);
+/// A hover tip from one of Pixie's own windows is showing.
+static TIP: AtomicBool = AtomicBool::new(false);
 
 fn follow() -> &'static Mutex<Follow> {
     static F: std::sync::OnceLock<Mutex<Follow>> = std::sync::OnceLock::new();
     F.get_or_init(|| Mutex::new(Follow { last: (-1.0, -1.0), at: Instant::now(), screen: Rect::default() }))
 }
 
+/// When Pixie last did something (idle mode keeps the buddy up a moment after).
+fn last_busy() -> &'static Mutex<Option<Instant>> {
+    static L: std::sync::OnceLock<Mutex<Option<Instant>>> = std::sync::OnceLock::new();
+    L.get_or_init(|| Mutex::new(None))
+}
+
+/// Should the buddy be on screen right now?
 pub fn enabled(app: &AppHandle) -> bool {
-    app.state::<AppState>().settings.lock().map(|s| s.buddy).unwrap_or(true)
+    let st = app.state::<AppState>();
+    let (legacy, mode) = st.settings.lock().map(|s| (s.buddy, s.buddy_mode.clone())).unwrap_or((true, "always".into()));
+    if !legacy {
+        return false;
+    }
+    match mode.as_str() {
+        "off" => false,
+        "idle" => {
+            let busy = st.session.active() || crate::overlay::is_shown() || crate::jobs::live_running(app) || TIP.load(Ordering::SeqCst);
+            let mut l = last_busy().lock().unwrap();
+            if busy {
+                *l = Some(Instant::now());
+            }
+            l.is_some_and(|t| t.elapsed() < Duration::from_millis(1500))
+        }
+        _ => true,
+    }
+}
+
+/// Is the buddy switched off entirely (Settings → General → Buddy: Off)?
+pub fn off(app: &AppHandle) -> bool {
+    app.state::<AppState>().settings.lock().map(|s| !s.buddy || s.buddy_mode == "off").unwrap_or(false)
+}
+
+/// Show (or clear, with "") a hover tip beside the buddy. Ignored when the buddy is off.
+pub fn tip(app: &AppHandle, text: &str) {
+    if off(app) {
+        return;
+    }
+    let text: String = text.trim().chars().take(140).collect();
+    TIP.store(!text.is_empty(), Ordering::SeqCst);
+    if !text.is_empty() {
+        touch();
+        // Make sure the buddy is up on this screen even if the cursor is resting.
+        let (cx, cy) = crate::macos::cursor();
+        tick(app, cx, cy);
+    }
+    emit(app, Event::new("buddy.tip", json!({ "text": text })));
+}
+
+/// Mark the buddy busy now (it's about to point, draw or click).
+pub fn touch() {
+    *last_busy().lock().unwrap() = Some(Instant::now());
 }
 
 /// Keep the overlay on the cursor's screen and stream the cursor to it (~40 Hz, on change).
@@ -109,6 +160,7 @@ async fn resolve(app: &AppHandle, input: &Value) -> Result<(f64, f64, String), S
 }
 
 /// The buddy flies to (x, y); resolves when it has landed.
+/// (Callers in idle mode get the buddy back first: see `touch`.)
 async fn fly(app: &AppHandle, x: f64, y: f64, label: &str, click: bool) {
     emit(app, Event::new("buddy.fly", json!({ "x": x, "y": y, "label": label, "click": click })));
     app.state::<AppState>().play("whoosh");
@@ -117,6 +169,7 @@ async fn fly(app: &AppHandle, x: f64, y: f64, label: &str, click: bool) {
 
 /// mac_step click / double_click / right_click / drag, performed by the buddy.
 pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String, String> {
+    touch();
     let st = app.state::<AppState>();
     if !st.settings.lock().map(|s| s.can_click).unwrap_or(true) {
         return Err("Clicking for them is switched off (Settings → General → Pointer only). Point with highlight and tell them what to click.".into());

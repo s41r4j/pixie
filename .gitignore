@@ -8,6 +8,17 @@ apps/desktop/src-tauri/gen/
 work/
 heyclicky/
 
+# design packs (source material; the app uses the copies in resources/) and experiments
+design/
+scratch/
+*.local.*
+
+# built website (scripts/build-site.sh)
+_site/
+
+# macOS
+.DS_Store
+
 # secrets / captured media
 .env
 .env.*
@@ -17,4 +28,6 @@ captures/
 apps/desktop/src-tauri/binaries/
 !.env.example
 *.pem
-design/*.zip
+
+# build caches
+*.tsbuildinfo

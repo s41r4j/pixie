@@ -98,7 +98,7 @@ impl OpenAiProvider {
         let model = req.model.clone().unwrap_or_else(|| self.cfg.model_for(req.effort).to_string());
         let mut body = json!({
             "model": model,
-            "messages": to_chat(&req.system, &req.messages),
+            "messages": to_chat(&req.system, &crate::repair(&req.messages)),
             "stream": true,
             "stream_options": { "include_usage": true },
             "max_completion_tokens": req.max_tokens,

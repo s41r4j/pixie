@@ -43,6 +43,23 @@ impl Gains {
     }
 }
 
+/// Per-sound choices from Settings → Sounds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SlotPref {
+    /// 0…1.5, multiplies the slot's gain.
+    pub volume: f32,
+    pub muted: bool,
+    /// A file of theirs to play instead (empty = the default sound).
+    pub custom: String,
+}
+
+impl Default for SlotPref {
+    fn default() -> Self {
+        Self { volume: 1.0, muted: false, custom: String::new() }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Bed {
     id: PlaybackId,
@@ -56,6 +73,7 @@ pub struct AudioBus<O: AudioOutput> {
     muted: bool,
     next_id: PlaybackId,
     bed: Option<Bed>,
+    prefs: std::collections::HashMap<String, SlotPref>,
 }
 
 fn clamp(g: f32) -> f32 {
@@ -64,7 +82,7 @@ fn clamp(g: f32) -> f32 {
 
 impl<O: AudioOutput> AudioBus<O> {
     pub fn new(store: Arc<ResourceStore>, out: O) -> Self {
-        Self { store, out, gains: Gains::default(), muted: false, next_id: 1, bed: None }
+        Self { store, out, gains: Gains::default(), muted: false, next_id: 1, bed: None, prefs: Default::default() }
     }
 
     pub fn gains(&self) -> Gains {
@@ -78,7 +96,8 @@ impl<O: AudioOutput> AudioBus<O> {
     /// Slot gain × category gain × master.
     fn effective_gain(&self, slot: &str) -> Option<f32> {
         let e = self.store.entry(ResourceKind::Sound, slot)?;
-        Some(clamp(e.gain * self.gains.category(e.category) * self.gains.master))
+        let v = self.prefs.get(slot).map(|p| p.volume).unwrap_or(1.0);
+        Some(clamp(e.gain * v * self.gains.category(e.category) * self.gains.master))
     }
 
     /// Play a sound slot. Beds loop and replace any other bed; replaying the bed that is
@@ -99,7 +118,15 @@ impl<O: AudioOutput> AudioBus<O> {
                 }
             }
         }
-        let path = self.store.pick(ResourceKind::Sound, slot)?;
+        let pref = self.prefs.get(slot).cloned().unwrap_or_default();
+        if pref.muted {
+            return None;
+        }
+        let custom = Some(std::path::PathBuf::from(&pref.custom)).filter(|p| !pref.custom.is_empty() && p.is_file());
+        let path = match custom {
+            Some(p) => p,
+            None => self.store.pick(ResourceKind::Sound, slot)?,
+        };
         let gain = self.effective_gain(slot)?;
         if is_bed {
             self.stop_bed();
@@ -148,6 +175,11 @@ impl<O: AudioOutput> AudioBus<O> {
                 self.out.set_gain(b.id, g);
             }
         }
+    }
+
+    /// Replace the per-sound choices.
+    pub fn set_prefs(&mut self, prefs: std::collections::HashMap<String, SlotPref>) {
+        self.prefs = prefs;
     }
 
     pub fn set_muted(&mut self, muted: bool) {
@@ -341,6 +373,22 @@ mod tests {
             vec![Call::Play { id, file: "launch.wav".into(), gain: 0.5 * 0.8 * 0.5, looped: false }]
         );
         assert_eq!(bus.current_bed(), None);
+    }
+
+    #[test]
+    fn per_sound_volume_mute_and_custom_file() {
+        let (d, mut bus, out) = bus();
+        bus.set_gains(Gains { master: 1.0, ui: 1.0, agent: 1.0, ambient: 1.0 });
+        let custom = d.path().join("mine.wav");
+        std::fs::write(&custom, b"x").unwrap();
+        let mut p = std::collections::HashMap::new();
+        p.insert("agent-launch".to_string(), SlotPref { volume: 0.5, muted: false, custom: custom.display().to_string() });
+        p.insert("bed-a".to_string(), SlotPref { muted: true, ..Default::default() });
+        bus.set_prefs(p);
+        out.calls();
+        let id = bus.play("agent-launch").unwrap();
+        assert_eq!(out.calls(), vec![Call::Play { id, file: "mine.wav".into(), gain: 0.25, looped: false }]);
+        assert_eq!(bus.play("bed-a"), None);
     }
 
     #[test]

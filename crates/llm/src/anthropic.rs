@@ -31,7 +31,7 @@ impl AnthropicProvider {
             "model": model,
             "max_tokens": req.max_tokens,
             "system": req.system,
-            "messages": req.messages,
+            "messages": crate::repair(&req.messages),
             "stream": true,
         });
         if !req.tools.is_empty() {

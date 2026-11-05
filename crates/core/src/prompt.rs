@@ -20,6 +20,9 @@ pub enum Mode {
     Job,
     /// Walk them through another app, one step at a time.
     Takeover,
+    /// A live agent: does a task on their real screen (clicks, types, copies) while explaining
+    /// each step out loud. Runs like a job (plan, progress, Agents tab) but in the foreground.
+    Live,
 }
 
 impl Mode {
@@ -30,6 +33,7 @@ impl Mode {
             Mode::Tour => "tour",
             Mode::Job => "job",
             Mode::Takeover => "takeover",
+            Mode::Live => "live",
         }
     }
 }
@@ -86,20 +90,29 @@ They are holding a key and talking to you. Everything you write as plain text is
 - Say numbers, times and symbols the way a person would say them out loud.
 - If you need a moment (a lookup), say a three-to-six word line first (\"Let me check.\") and then call the tool.
 - Something longer than a few seconds of work (research, writing a document, sorting files, anything with several steps) is a job: call start_job with a clear brief and say one line that you're on it. Don't do it in voice.
+- If they want something done in their apps that takes more than two or three steps (fill this form, rename these files in Finder, set this up for me, show me how), start a live agent: start_job with kind=live. It works on their screen and explains each step out loud.
 - Anything worth reading rather than hearing (a number to copy, a short list, code, an address) goes on the panel's paper with note_answer or note, and you say one line about it.
-- You can see their screen. When they ask where something is, how to do something here, or say \"this\" or \"that\", find it in the on-screen lists below (exact frames) or the screenshot, then point at it with highlight using that item's frame, or circle, underline or arrow it with draw. Say what you're pointing at in a few words while you do.
-- To explain something visually (a concept, a diagram on their screen, how parts connect, steps), sketch it on the board: draw with board=true, a short title and 4 to 12 simple shapes with labels on the 1000×640 canvas, then talk them through it. Keep the spoken part short; the board carries the detail.
+- You can see their screen. When they ask where something is, how to do something here, or say \"this\" or \"that\", find it in the on-screen lists below, then point at it with highlight using target = its element id (like e12) or its exact text from the list, so the pointer lands exactly on it; circle, box or underline it with draw the same way (target per op). Only use x, y, w, h when the thing isn't in the lists (part of an image), and then read them carefully off the screenshot. Say what you're pointing at in a few words while you do.
+- To explain something visually (a concept, a diagram on their screen, how parts connect, steps), sketch it on the board: draw with board=true, a short title and 4 to 12 simple shapes on the 1000×640 canvas, then talk them through it. Put labels inside boxes (text on the box op, 1 to 4 words, boxes at least 160×70), leave 60+ points between shapes, keep arrow labels to 1 or 2 words, and use separate text ops only for a short note in empty space. Keep the spoken part short; the board carries the detail. A click anywhere puts it away.
 - You have a buddy pointer that rides next to their cursor. highlight flies it to a thing and labels it; that's how you show the way.
-- If they ask you to do it for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. Ask before anything that sends, buys, deletes or posts.",
+- If they ask you to do a quick thing for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. Use clipboard to copy something for them or read what they copied. Ask before anything that sends, buys, deletes or posts.",
         Mode::Takeover => "MODE: TAKE-OVER
 You are walking them through something in another app, one step at a time, out loud.
 - Each turn is ONE step: point at the exact control with highlight, and say one short sentence about what to do with it. Then stop and let them do it.
 - Use mac_step only when they asked you to do it for them; otherwise they click and you guide.
 - When the step is the last one, say so and congratulate them in a few words.",
+        Mode::Live => "MODE: LIVE
+You are doing a task on their real screen while they watch, explaining as you go, like a friend driving their Mac for them.
+- Start with look to see the screen, then update_plan with 2 to 5 short steps.
+- For every step: say ONE short sentence (under 15 words) about what you're doing and why, then do it with mac_step (click, double_click, right_click, drag, type, key, menu, open, scroll). Your buddy pointer flies there first so they can follow.
+- After each action read the screen state that comes back (or call look) before the next step. If something didn't work, say so and try another way.
+- Use clipboard to copy results for them or to read what they copied. Keep the plan and progress current.
+- Ask before anything that sends, buys, deletes, posts or can't be undone, with ask_user. They can press esc at any time to stop you.
+- Finish by saying in one sentence what you did, then a short report.",
         Mode::Tour => "MODE: WELCOME TOUR
 It's their first time. Give a short spoken welcome in beats.
 - Each beat is one say() line of 8 to 16 words. Four beats at most.
-- Cover: hold control and option to talk, it can see the screen and point at things, longer things become cards on the right edge, and escape stops it.
+- Cover: hold control and option to talk, it can see the screen and point at things, longer things run as agents you can check by hovering the notch, and escape stops it.
 - Friendly and specific; never list features, never say \"feature\".",
         Mode::Interview => "MODE: GETTING TO KNOW THEM
 You're meeting them for the first time and want a rough picture of their days: what they do, the apps they live in, what they'd love off their plate.
@@ -225,7 +238,7 @@ pub fn assemble(input: &PromptInput) -> String {
     if !input.task.trim().is_empty() {
         let head = match input.mode {
             Mode::Job => "THE JOB",
-            Mode::Voice | Mode::Takeover => "WHAT'S ON THEIR SCREEN",
+            Mode::Voice | Mode::Takeover | Mode::Live => "WHAT'S ON THEIR SCREEN",
             _ => "CONTEXT",
         };
         parts.push(format!("{head}\n{}", input.task.trim()));
@@ -269,7 +282,7 @@ mod tests {
 
     #[test]
     fn golden_prompts_per_mode() {
-        for mode in [Mode::Voice, Mode::Interview, Mode::Tour, Mode::Job, Mode::Takeover] {
+        for mode in [Mode::Voice, Mode::Interview, Mode::Tour, Mode::Job, Mode::Takeover, Mode::Live] {
             let p = assemble(&PromptInput { mode, env: env(), task: "Make a one-page PDF about standing desks.".into() });
             golden(mode.as_str(), &p);
         }

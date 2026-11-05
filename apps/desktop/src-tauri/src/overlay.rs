@@ -16,6 +16,11 @@ use tauri::{AppHandle, Manager};
 
 static GEN: AtomicU64 = AtomicU64::new(0);
 static SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// Marks or a highlight are on screen.
+pub fn is_shown() -> bool {
+    SHOWN.load(Ordering::SeqCst)
+}
 static BOARD_OPEN: AtomicBool = AtomicBool::new(false);
 /// Upper bound for marks that outlive the answer (speech end clears sooner).
 const LINGER: Duration = Duration::from_secs(20);
@@ -95,21 +100,41 @@ fn num(v: &Value, k: &str) -> f64 {
     v.get(k).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
-fn snapped(app: &AppHandle, r: Rect, label: &str) -> Rect {
+/// Where to point: a named target (id or on-screen text) wins; then coordinates snapped to the
+/// nearest real item; then, if the coordinates hit nothing, the label as a target. Returns None
+/// when nothing on screen backs the request (so the model can try again instead of pointing at
+/// empty space).
+fn locate(app: &AppHandle, input: &Value, label: &str) -> Result<Rect, String> {
     let cap = app.state::<AppState>().last_capture.lock().unwrap().clone();
-    match cap.and_then(|c| screen::snap(&c, r.x, r.y, r.w, r.h, label)) {
-        Some(f) => Rect { x: f.x, y: f.y, w: f.w, h: f.h },
-        None => r,
+    let has_xy = input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some();
+    let raw = Rect { x: num(input, "x"), y: num(input, "y"), w: num(input, "w").max(8.0), h: num(input, "h").max(8.0) };
+    let near = has_xy.then_some((raw.x + raw.w / 2.0, raw.y + raw.h / 2.0));
+    let as_rect = |f: screen::Frame| Rect { x: f.x, y: f.y, w: f.w, h: f.h };
+    if let Some(c) = &cap {
+        if let Some(t) = input.get("target").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
+            if let Some(f) = screen::find(c, t, near) {
+                return Ok(as_rect(f));
+            }
+        }
+        if has_xy {
+            if let Some(f) = screen::snap(c, raw.x, raw.y, raw.w, raw.h, label) {
+                return Ok(as_rect(f));
+            }
+        }
+        if let Some(f) = screen::find(c, label, near) {
+            return Ok(as_rect(f));
+        }
     }
+    if has_xy && (raw.x != 0.0 || raw.y != 0.0) {
+        // Nothing listed there (an image, a canvas): trust the coordinates.
+        return Ok(raw);
+    }
+    Err("I couldn't find that on screen. Give target (an element id like e12 or the exact text from the lists) or the x, y, w, h from the lists.".into())
 }
 
 pub fn highlight(app: &AppHandle, input: &Value) -> Result<String, String> {
     let label = input.get("label").and_then(Value::as_str).unwrap_or("");
-    let raw = Rect { x: num(input, "x"), y: num(input, "y"), w: num(input, "w").max(8.0), h: num(input, "h").max(8.0) };
-    if raw.x == 0.0 && raw.y == 0.0 {
-        return Err("highlight needs the item's x, y, w and h in screen points.".into());
-    }
-    let r = snapped(app, raw, label);
+    let r = locate(app, input, label)?;
     show_at(app, r.x + r.w / 2.0, r.y + r.h / 2.0);
     emit(app, Event::new("overlay.highlight", json!({ "rect": r, "label": label })));
     app.state::<AppState>().play("target-ping");
@@ -124,16 +149,17 @@ pub fn draw(app: &AppHandle, input: &Value) -> Result<String, String> {
     if ops.is_empty() {
         return Err("draw needs at least one op.".into());
     }
-    // Snap marks that are about a thing on screen (not arrows/free text) to that thing.
+    // Marks about a thing on screen (circle/box/underline) go exactly on that thing.
     for op in ops.iter_mut() {
-        let kind = op.get("kind").and_then(Value::as_str).unwrap_or("");
-        if matches!(kind, "circle" | "box" | "underline") && op.get("w").is_some() {
-            let r = Rect { x: num(op, "x"), y: num(op, "y"), w: num(op, "w"), h: num(op, "h").max(8.0) };
-            let s = snapped(app, r, op.get("text").and_then(Value::as_str).unwrap_or(""));
+        let kind = op.get("kind").and_then(Value::as_str).unwrap_or("").to_string();
+        if matches!(kind.as_str(), "circle" | "box" | "underline") && (op.get("target").is_some() || op.get("w").is_some()) {
+            let s = locate(app, op, "")?;
             op["x"] = json!(s.x);
             op["y"] = json!(s.y);
             op["w"] = json!(s.w);
             op["h"] = json!(s.h);
+        } else if op.get("x").is_none() {
+            return Err(format!("{kind} needs x and y."));
         }
     }
     let first = ops[0].clone();
@@ -183,6 +209,10 @@ fn board(app: &AppHandle, input: &Value) -> Result<String, String> {
         }
     });
     Ok(format!("Drew {} things on the board. It stays open until they close it or ask something else.", ops.len()))
+}
+
+pub fn board_open() -> bool {
+    BOARD_OPEN.load(Ordering::SeqCst)
 }
 
 pub fn board_close(app: &AppHandle) {

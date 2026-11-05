@@ -20,6 +20,7 @@ struct CGPoint {
 extern "C" {
     fn CGEventSourceFlagsState(state_id: i32) -> u64;
     fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
+    fn CGEventSourceButtonState(state_id: i32, button: u32) -> bool;
     fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
     fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
 }
@@ -43,6 +44,11 @@ pub fn key_down(keycode: u16) -> bool {
 }
 
 /// Mouse location in CG global points. Safe from any thread.
+/// Is the left mouse button down right now (any app)?
+pub fn mouse_down() -> bool {
+    unsafe { CGEventSourceButtonState(COMBINED_SESSION, 0) }
+}
+
 pub fn cursor() -> (f64, f64) {
     unsafe {
         let ev = CGEventCreate(std::ptr::null());

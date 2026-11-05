@@ -10,6 +10,36 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+/// Copy to / read from the general pasteboard.
+async fn clipboard(action: &str, text: &str) -> ToolOutput {
+    use tokio::io::AsyncWriteExt;
+    match action {
+        "copy" => {
+            let child = tokio::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn();
+            let Ok(mut child) = child else { return ToolOutput::err("Couldn't reach the clipboard.") };
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes()).await;
+            }
+            match child.wait().await {
+                Ok(s) if s.success() => ToolOutput::ok(format!("Copied {} characters; they can paste with ⌘V.", text.chars().count())),
+                _ => ToolOutput::err("Couldn't copy."),
+            }
+        }
+        "read" => match tokio::process::Command::new("/usr/bin/pbpaste").output().await {
+            Ok(o) => {
+                let t = String::from_utf8_lossy(&o.stdout);
+                if t.trim().is_empty() {
+                    ToolOutput::ok("The clipboard has no text.")
+                } else {
+                    ToolOutput::ok(t.chars().take(20_000).collect::<String>())
+                }
+            }
+            Err(_) => ToolOutput::err("Couldn't read the clipboard."),
+        },
+        _ => ToolOutput::err("action must be copy or read."),
+    }
+}
+
 pub struct AppHost {
     pub app: AppHandle,
 }
@@ -37,15 +67,15 @@ impl Host for AppHost {
                 ToolOutput::ok("Said it.")
             }
             "mac_step" if matches!(s(input, "action"), "click" | "double_click" | "right_click" | "drag") => {
-                if job.is_some() {
+                if job.is_some() && ctx.mode != Mode::Live {
                     return Some(ToolOutput::err("Background jobs don't click around in their apps; ask them, or do it in voice."));
                 }
                 crate::buddy::act(app, s(input, "action"), input).await.into()
             }
             "mac_step" => {
                 let action = s(input, "action");
-                if job.is_some() && !matches!(action, "open") {
-                    return Some(ToolOutput::err("Background jobs don't click around in their apps; ask them, or do it in voice."));
+                if job.is_some() && ctx.mode != Mode::Live && !matches!(action, "open") {
+                    return Some(ToolOutput::err("Background jobs don't click around in their apps; start a live agent (start_job kind=live) for that."));
                 }
                 match st.helper.call("mac_step", input.clone(), Duration::from_secs(10)).await {
                     Ok(v) => {
@@ -58,10 +88,24 @@ impl Host for AppHost {
                     Err(e) => ToolOutput::err(e),
                 }
             }
-            "start_job" => match jobs::start(app, s(input, "title"), s(input, "instructions")) {
-                Ok(id) => ToolOutput::ok(format!("Started job {id}. It's on a card at the right edge of the screen; tell them in a few words.")),
+            "start_job" => match jobs::start(app, s(input, "title"), s(input, "instructions"), s(input, "kind")) {
+                Ok(id) if s(input, "kind") == "live" => ToolOutput::ok(format!("Started live agent {id}. It will do it on their screen and explain as it goes; esc stops it. Say one short line, nothing more.")),
+                Ok(id) => ToolOutput::ok(format!("Started job {id}. It's in the notch's Agents tab (hover the notch); tell them in a few words.")),
                 Err(e) => ToolOutput::err(e),
             },
+            "clipboard" => clipboard(s(input, "action"), s(input, "text")).await,
+            "look" => {
+                let cap = crate::screen::capture(app, 0).await;
+                if let Some(e) = &cap.error {
+                    ToolOutput::err(format!("Couldn't see the screen: {e}"))
+                } else {
+                    let mut out = ToolOutput::ok(cap.describe());
+                    if let Some(b64) = cap.image_base64() {
+                        out.images.push(("image/jpeg".into(), b64));
+                    }
+                    out
+                }
+            }
             "update_plan" => match job {
                 Some(id) => jobs::set_plan(app, id, input).into(),
                 None => ToolOutput::err("update_plan only works inside a job."),
@@ -103,7 +147,7 @@ impl Host for AppHost {
     }
 
     fn extra_tools(&self, mode: Mode) -> Vec<ToolDef> {
-        if mode == Mode::Job || mode == Mode::Voice {
+        if matches!(mode, Mode::Job | Mode::Voice | Mode::Live) {
             crate::connectors::tools(&self.app)
         } else {
             vec![]

@@ -110,6 +110,18 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
 pub fn tick(app: &AppHandle) {
     let (cx, cy) = macos::cursor();
     notch_hover(app, cx, cy);
+    // A click anywhere puts the board away (like marks fade): watch for the press edge.
+    {
+        static WAS_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let down = macos::mouse_down();
+        if down && !WAS_DOWN.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            if crate::overlay::board_open() {
+                crate::overlay::board_close(app);
+            }
+        } else if !down {
+            WAS_DOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
     crate::buddy::tick(app, cx, cy);
     let changes: Vec<(String, bool)> = {
         let st = app.state::<AppState>();

@@ -9,10 +9,16 @@ html[data-view="board"], html[data-view="board"] body { background: transparent 
 }
 .board__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 0 22px; }
 .board__title { font: 12px/1.5 "Press Start 2P", monospace; color: #000; }
-.board__close { width: 26px; height: 26px; border-radius: 0; color: #000; font: 22px/1 "VT323", monospace; background: #fff; border: 2px solid #000; }
-.board__close:hover { background: #000; color: #fff; }
+.board { cursor: pointer; }
+.board__hint { font: 16px "VT323", monospace; color: #8a8a8a; }
 .board__canvas { flex: 1; width: 100%; }
 .board__label, .board__text { font-family: "VT323", monospace; opacity: 0; animation: text-in 160ms steps(3, end) forwards; }
 .board__label { fill: #1d1d1f; }
+/* A paper-white halo keeps labels readable where they cross a line. */
+.board__label, .board__text { paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; }
 .board__label { font-size: 26px; }
 .board__text { font-size: 30px; }
+/* Strokes draw themselves in, one after another (delay set per shape). */
+.board__ink { stroke-dasharray: 1; stroke-dashoffset: 1; animation: board-draw 360ms steps(8, end) forwards; }
+@keyframes board-draw { to { stroke-dashoffset: 0; } }
+@keyframes text-in { to { opacity: 1; } }

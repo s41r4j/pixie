@@ -14,6 +14,7 @@
 use crate::panel::{self, PanelMode};
 use crate::session;
 use tauri::Manager;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
@@ -46,16 +47,45 @@ pub struct ChordTracker {
     escape: bool,
 }
 
+const ALL: u64 = FLAG_CONTROL | FLAG_OPTION | FLAG_COMMAND | FLAG_SHIFT | FLAG_FN;
+pub const DEFAULT_TALK: u64 = FLAG_CONTROL | FLAG_OPTION;
+pub const DEFAULT_DICTATE: u64 = FLAG_FN | FLAG_CONTROL;
+
+/// The chords in use (Settings → Shortcuts can change them while running).
+static TALK: AtomicU64 = AtomicU64::new(DEFAULT_TALK);
+static DICTATE: AtomicU64 = AtomicU64::new(DEFAULT_DICTATE);
+
+/// "ctrl+option" / "fn+ctrl" / "cmd+shift" → modifier mask. None when empty or unknown.
+pub fn parse(s: &str) -> Option<u64> {
+    let mut m = 0;
+    for part in s.split('+').map(|p| p.trim().to_lowercase()).filter(|p| !p.is_empty()) {
+        m |= match part.as_str() {
+            "ctrl" | "control" | "⌃" => FLAG_CONTROL,
+            "option" | "opt" | "alt" | "⌥" => FLAG_OPTION,
+            "cmd" | "command" | "⌘" => FLAG_COMMAND,
+            "shift" | "⇧" => FLAG_SHIFT,
+            "fn" | "globe" => FLAG_FN,
+            _ => return None,
+        };
+    }
+    // At least two keys, or fn alone (a single ⌃ or ⇧ would fire while typing).
+    (m != 0 && (m.count_ones() >= 2 || m == FLAG_FN)).then_some(m)
+}
+
+/// Apply the shortcuts from settings (falls back to the defaults; never two equal chords).
+pub fn configure(talk: &str, dictate: &str) {
+    let t = parse(talk).unwrap_or(DEFAULT_TALK);
+    let d = parse(dictate).filter(|d| *d != t).unwrap_or(if t == DEFAULT_DICTATE { FLAG_FN | FLAG_OPTION } else { DEFAULT_DICTATE });
+    TALK.store(t, Ordering::SeqCst);
+    DICTATE.store(d, Ordering::SeqCst);
+}
+
 fn talk_chord(flags: u64) -> bool {
-    flags & FLAG_CONTROL != 0
-        && flags & FLAG_OPTION != 0
-        && flags & (FLAG_COMMAND | FLAG_SHIFT) == 0
+    flags & ALL == TALK.load(Ordering::Relaxed)
 }
 
 fn dictate_chord(flags: u64) -> bool {
-    flags & FLAG_FN != 0
-        && flags & FLAG_CONTROL != 0
-        && flags & (FLAG_OPTION | FLAG_COMMAND | FLAG_SHIFT) == 0
+    flags & ALL == DICTATE.load(Ordering::Relaxed)
 }
 
 impl ChordTracker {
@@ -163,6 +193,15 @@ mod tests {
         let now = Instant::now();
         assert_eq!(t.update(FLAG_FN | FLAG_CONTROL, false, now), vec![HotkeyEvent::DictateDown]);
         assert_eq!(t.update(0, false, now), vec![HotkeyEvent::DictateUp]);
+    }
+
+    #[test]
+    fn parses_chords() {
+        assert_eq!(parse("ctrl+option"), Some(CO));
+        assert_eq!(parse("fn"), Some(FLAG_FN));
+        assert_eq!(parse("cmd + shift"), Some(FLAG_COMMAND | FLAG_SHIFT));
+        assert_eq!(parse("shift"), None);
+        assert_eq!(parse("ctrl+banana"), None);
     }
 
     #[test]

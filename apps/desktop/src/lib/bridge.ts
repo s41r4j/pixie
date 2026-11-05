@@ -96,6 +96,21 @@ export interface Report {
   choices: string[];
   draft: string | null;
 }
+export interface ChatEntry {
+  q: string;
+  a: string;
+  at: number;
+}
+
+export interface ChatSummary {
+  id: string;
+  title: string;
+  started: number;
+  updated: number;
+  count: number;
+  preview: string;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -111,6 +126,8 @@ export interface Job {
   error: string | null;
   unread: boolean;
   steps: number;
+  /** "background" works on its own; "live" works on the screen while explaining. */
+  kind?: string;
 }
 
 export interface ModelChoice {
@@ -148,6 +165,9 @@ export interface UsageSummary {
   unpriced: boolean;
   models: UsageModel[];
   by_day: { day: string; tokens: number; cost: number }[];
+  prices_at?: number;
+  all_time?: { requests: number; tokens: number; cost: number; since: number | null };
+  providers?: string[];
 }
 export interface Settings {
   deepseek_key: string;
@@ -168,6 +188,11 @@ export interface Settings {
   muted: boolean;
   onboarded: boolean;
   buddy: boolean;
+  buddy_mode: "always" | "idle" | "off";
+  fallback: string;
+  shortcut_talk: string;
+  shortcut_dictate: string;
+  sounds: Record<string, { volume: number; muted: boolean; custom: string }>;
   can_click: boolean;
   user_name: string;
   locale: string;
@@ -176,6 +201,8 @@ export interface SettingsView {
   settings: Settings;
   provider: string | null;
   key_hint: string;
+  active?: string | null;
+  effective?: Record<string, ModelChoice>;
 }
 export interface Voice {
   id: string;
@@ -202,8 +229,14 @@ export const api = {
   panelType: () => invoke<void>("panel_type"),
   panelPeek: (on: boolean) => invoke<void>("panel_peek", { on }),
   talkStart: () => invoke<void>("talk_start"),
+  chatLog: () => invoke<ChatEntry[]>("chat_log"),
+  chatClear: () => invoke<void>("chat_clear"),
+  chatsList: () => invoke<ChatSummary[]>("chats_list"),
+  chatGet: (id: string) => invoke<{ id: string; title: string; started: number; updated: number; entries: ChatEntry[] } | null>("chat_get", { id }),
+  chatDelete: (id: string) => invoke<void>("chat_delete", { id }),
+  openChats: (id?: string) => invoke<void>("open_chats", { id }),
   talkStop: () => invoke<void>("talk_stop"),
-  voiceStatus: () => invoke<{ installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[] }>("voice_status"),
+  voiceStatus: () => invoke<{ installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[]; done: number; total: number }>("voice_status"),
   voiceInstall: () => invoke<void>("voice_install"),
   ask: (text: string) => invoke<void>("ask", { text }),
   sessionNote: () => invoke<NoteDoc | null>("session_note"),
@@ -237,8 +270,13 @@ export const api = {
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),
   relaunch: () => invoke<void>("relaunch"),
   boardClose: () => invoke<void>("board_close"),
-  modelsAvailable: (provider: string) => invoke<{ models: { id: string; name: string; vision: boolean | null }[] }>("models_available", { provider }),
-  usageSummary: (days: number) => invoke<UsageSummary>("usage_summary", { days }),
+  modelsAvailable: (provider: string) =>
+    invoke<{ models: { id: string; name: string; vision: boolean | null; created: number | null; price: { input: number; output: number } | null; context: number | null }[]; prices_at: number }>("models_available", { provider }),
+  pricesRefresh: () => invoke<{ models: number; fetched_at: number }>("prices_refresh"),
+  usageSummary: (days: number, provider = "", kind = "") => invoke<UsageSummary>("usage_summary", { days, provider, kind }),
+  soundCustom: (slot: string, name: string, data: string) => invoke<SettingsView>("sound_custom", { slot, name, data }),
+  micTestStart: () => invoke<void>("mic_test_start"),
+  micTestStop: () => invoke<string>("mic_test_stop"),
   codersStatus: () =>
     invoke<{ agents: { id: string; label: string; installed: boolean; path: string | null; version: string | null }[]; t3code: boolean }>("coders_status"),
   guideShow: (id: string) => invoke<void>("guide_show", { id }),

@@ -65,7 +65,12 @@ const JOBS: Job[] = [
   {
     id: "c", title: "Inbox sweep", state: "waiting_on_user", instructions: "", cwd: "/tmp/c", created_at: now - 10_000, updated_at: now, steps: 3,
     plan: [{ label: "Read inbox", status: "done" }, { label: "Draft replies", status: "in_progress" }, { label: "Send", status: "pending" }],
-    progress: "", question: { question: "Should I reply to the landlord as you or as the household?", choices: ["As me", "As the household"] }, error: null, unread: true, report: null,
+    progress: "", question: { question: "Should I reply to the landlord as you or as the household?", choices: ["As me", "As the household"] }, error: null, unread: true, report: null, kind: "background",
+  },
+  {
+    id: "d", title: "Rename slides", state: "running", instructions: "", cwd: "/tmp/d", created_at: now - 5_000, updated_at: now, steps: 2,
+    plan: [{ label: "Open Keynote", status: "done" }, { label: "Rename each slide", status: "in_progress" }, { label: "Check", status: "pending" }],
+    progress: "Clicking slide 3", question: null, error: null, unread: true, report: null, kind: "live",
   },
 ];
 
@@ -80,10 +85,25 @@ export function installPreview() {
         case "panel_screen": return { frame: { x: 0, y: 0, w: 1710, h: 1107 }, top_inset: 34, notch_width: 185, scale: 2 };
         case "theme": return null;
         case "jobs_list": return JOBS;
+        case "chats_list": return [
+          { id: "c3", title: "What's a good name for this deck?", started: now - 300_000, updated: now - 30_000, count: 3, preview: "Try “Tea, Briefly”." },
+          { id: "c2", title: "How do I export this as a PDF?", started: now - 86_400_000, updated: now - 86_000_000, count: 2, preview: "File, then Export To, then PDF." },
+          { id: "c1", title: "Summarise this page", started: now - 3 * 86_400_000, updated: now - 3 * 86_000_000, count: 4, preview: "It's a review of standing desks." },
+        ];
+        case "chat_get": return { id: "c3", title: "What's a good name for this deck?", started: now - 300_000, updated: now - 30_000, entries: [
+          { q: "Where's the share button in Keynote?", a: "Top right of the toolbar, the square with the arrow. I circled it.", at: now - 300_000 },
+          { q: "Can you copy the slide titles for me?", a: "Done, all nine titles are on your clipboard.", at: now - 120_000 },
+          { q: "What's a good name for this deck?", a: "Try “Tea, Briefly”. Short and it says what it is.", at: now - 30_000 },
+        ] };
+        case "chat_log": return [
+          { q: "Where's the share button in Keynote?", a: "Top right of the toolbar, the square with the arrow. I circled it.", at: now - 300_000 },
+          { q: "Can you copy the slide titles for me?", a: "Done, all nine titles are on your clipboard.", at: now - 120_000 },
+          { q: "What's a good name for this deck?", a: "Try “Tea, Briefly”. Short and it says what it is.", at: now - 30_000 },
+        ];
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "", provider: "", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, can_click: true, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "DeepSeek · deepseek-flash", key_hint: "sk-1••••abcd" };
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } } };
         case "permissions_status": if (previewView === "guide") return []; return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
@@ -93,16 +113,24 @@ export function installPreview() {
         ];
         case "voices": return { voices: [{ id: "ava", name: "Ava", language: "en-US", quality: "premium" }, { id: "sam", name: "Samantha", language: "en-US", quality: "default" }], default: "ava" };
         case "status": return { helper: true, provider: "DeepSeek · deepseek-flash", browser: false, connectors: [], data_dir: "/Users/me/Library/Application Support/com.openclicky.app", version: "0.2.0" };
-        case "models_available": return { models: [{ id: "deepseek-flash", name: "DeepSeek-V4.1-Flash", vision: true }, { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro", vision: false }] };
+        case "models_available": return { prices_at: now - 3_600_000, models: [
+          { id: "claude-opus-5-5", name: "Claude Opus 5.5", vision: true, created: now - 9e8, price: { input: 4, output: 20 }, context: 1000000 },
+          { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vision: true, created: now - 9.5e8, price: { input: 2, output: 10 }, context: 1000000 },
+          { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", vision: true, created: now - 1e9, price: { input: 0.1, output: 0.5 }, context: 1000000 },
+          { id: "claude-fable-5-1", name: "Claude Fable 5.1", vision: true, created: now - 2e9, price: { input: 10, output: 50 }, context: 1000000 },
+          { id: "claude-opus-5", name: "Claude Opus 5", vision: true, created: now - 5e9, price: { input: 5, output: 25 }, context: 1000000 },
+        ] };
+        case "prices_refresh": return { models: 120, fetched_at: now };
         case "usage_summary": return { days: 30, requests: 128, input: 1840000, output: 96000, cost: 2.41, unpriced: true, models: [
           { model: "claude-opus-5-5", provider: "claude", requests: 40, input: 520000, output: 16000, voice: 30, job: 10, cost: 2.4, price: { input: 4, output: 20 } },
-          { model: "deepseek-flash", provider: "deepseek", requests: 88, input: 1320000, output: 80000, voice: 80, job: 8, cost: null, price: null } ],
-          by_day: Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(20 + i).padStart(2, "0")}`, tokens: 20000 + ((i * 7919) % 90000), cost: 0.1 })) };
+          { model: "deepseek-flash", provider: "deepseek", requests: 88, input: 1320000, output: 80000, voice: 80, job: 8, cost: 0.1, price: { input: 0.045, output: 0.5 } } ],
+          prices_at: now - 3_600_000, providers: ["claude", "deepseek"], all_time: { requests: 412, tokens: 6_420_000, cost: 7.83, since: now - 12 * 86_400_000 },
+          by_day: [{ day: new Date().toISOString().slice(0, 10), tokens: 198600, cost: 0.04 }, { day: new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10), tokens: 52000, cost: 0.01 }] };
         case "coders_status": return { agents: [
           { id: "codex", label: "Codex CLI", installed: true, path: "/opt/homebrew/bin/codex", version: "codex-cli 0.166.0" },
           { id: "claude", label: "Claude Code", installed: true, path: "/opt/homebrew/bin/claude", version: "2.1.318 (Claude Code)" },
           { id: "opencode", label: "opencode", installed: true, path: "/opt/homebrew/bin/opencode", version: "v2.2.5" } ], t3code: true };
-        case "voice_status": return { installed: true, ready: true, installing: false, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
+        case "voice_status": return { installed: params.get("voice") !== "dl", ready: true, installing: params.get("voice") === "dl", done: 128_000_000, total: 372_000_000, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
         case "resources_report": return { root: "", pack: "local", sounds: 37, missing: [] };
         default: return null;
       }
@@ -136,29 +164,28 @@ export function installPreview() {
     if (mode === "toast") ev("toast", { text: "Desk Pick is ready", kind: "done", job: "a" }, 100);
   }
   if (previewView === "overlay") {
-    ev("overlay.screen", { screen: { frame: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, top_inset: 34, notch_width: 185, scale: 2 }, origin: { x: 0, y: 0, w: window.innerWidth, h: 900 } }, 50);
+    ev("overlay.screen", { screen: { frame: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, top_inset: 34, notch_width: 185, scale: 2 }, window: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, origin: { x: 0, y: 0, w: window.innerWidth, h: 900 } }, 50);
     ev("buddy.cursor", { x: 300, y: 200 }, 100);
-    ev("speech.segment", { id: "b1", text: "It's the Share button, top right." }, 150);
     ev("speech.start", { id: "b1" }, 200);
-    ev("overlay.highlight", { rect: { x: 520, y: 260, w: 120, h: 34 }, label: "Share" }, 300);
-    ev("overlay.draw", { ops: [{ kind: "circle", x: 200, y: 420, w: 180, h: 50, color: "coral" }, { kind: "underline", x: 520, y: 500, w: 220, h: 20, color: "sky" }, { kind: "arrow", x: 820, y: 600, to_x: 660, to_y: 300, color: "butter" }, { kind: "text", x: 840, y: 640, text: "this one!", color: "coral" }] }, 900);
+    ev("overlay.highlight", { rect: { x: 560, y: 120, w: 150, h: 36 } }, 300);
+    ev("overlay.draw", { ops: [{ kind: "circle", x: 140, y: 330, w: 200, h: 48 }, { kind: "underline", x: 520, y: 420, w: 260, h: 20 }, { kind: "arrow", x: 860, y: 480, to_x: 720, to_y: 180 }] }, 500);
   }
   if (previewView === "board") {
     ev("board.show", { title: "How a request reaches the server", ops: [
-      { kind: "box", x: 60, y: 240, w: 180, h: 80, text: "Your browser" },
+      { kind: "box", x: 60, y: 240, w: 140, h: 60, text: "Your web browser on the laptop" },
       { kind: "arrow", x: 250, y: 280, to_x: 400, to_y: 280, text: "HTTPS" },
       { kind: "box", x: 410, y: 240, w: 180, h: 80, text: "Load balancer", color: "blue" },
       { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 200 },
       { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 360 },
       { kind: "box", x: 760, y: 150, w: 180, h: 80, text: "Server A" },
       { kind: "box", x: 760, y: 320, w: 180, h: 80, text: "Server B" },
-      { kind: "text", x: 380, y: 470, text: "picks the less busy one", color: "red" },
+      { kind: "text", x: 380, y: 300, text: "the load balancer picks whichever server is less busy right now", color: "red" },
       { kind: "underline", x: 410, y: 300, w: 180, h: 20, color: "red" },
     ] }, 200);
   }
   if (previewView === "guide") ev("guide.show", { perm: "accessibility", app: "/Applications/Pixie.app", icon: "" }, 150);
   if (previewView === "settings" && params.get("tab")) ev("settings.tab", { tab: params.get("tab") }, 300);
-  if (previewView === "note") location.hash = "job=a";
+  if (previewView === "note") location.hash = params.get("side") === "chats" ? "job=chats:c3" : "job=a";
   document.documentElement.classList.add("preview");
   if (params.get("static")) document.documentElement.classList.add("static");
 }

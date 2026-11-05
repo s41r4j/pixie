@@ -78,7 +78,11 @@ interface Mark {
 
 type Mood = "idle" | "listening" | "thinking" | "speaking";
 
-const FOLLOW = { x: 18, y: 20 };
+// The buddy sits down-right of the pointer with clear space between them (centre offset).
+const FOLLOW = { x: 30, y: 32 };
+// Browser preview with ?static=1: jump animations to their end (headless can't run rAF).
+const instant = () => typeof document !== "undefined" && document.documentElement.classList.contains("static");
+const SIZE = 22;
 
 export function Overlay() {
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
@@ -86,6 +90,8 @@ export function Overlay() {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [fading, setFading] = useState(false);
   const [buddyOn, setBuddyOn] = useState(true);
+  const [tip, setTip] = useState("");
+  const onRef = useRef(true);
   const [mood, setMood] = useState<Mood>("idle");
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
   const ids = useRef(1);
@@ -105,6 +111,7 @@ export function Overlay() {
     t0: 0,
   });
 
+  const tipLeft = !!tip && b.current.cursor.x - (win?.x ?? 0) > (win?.w ?? 1440) - 300;
   const ox = win?.x ?? screen?.frame.x ?? 0;
   const oy = win?.y ?? screen?.frame.y ?? 0;
   origin.current = { x: ox, y: oy };
@@ -128,7 +135,7 @@ export function Overlay() {
         s.pos = { x: s.from.x + (follow.x - s.from.x) * e, y: s.from.y + (follow.y - s.from.y) * e };
         if (t >= 1) s.mode = "follow";
       }
-      if (buddyEl.current) buddyEl.current.style.transform = `translate(${s.pos.x - 15}px, ${s.pos.y - 15}px)`;
+      if (buddyEl.current) buddyEl.current.style.transform = `translate(${s.pos.x - SIZE / 2}px, ${s.pos.y - SIZE / 2}px)`;
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -140,6 +147,11 @@ export function Overlay() {
     new Promise<void>((done) => {
       const s = b.current;
       s.mode = "manual";
+      if (instant()) {
+        s.pos = { ...p };
+        if (buddyEl.current) buddyEl.current.style.transform = `translate(${p.x - SIZE / 2}px, ${p.y - SIZE / 2}px)`;
+        return done();
+      }
       const from = { ...s.pos };
       const dist = Math.hypot(p.x - from.x, p.y - from.y);
       const ctrl = { x: (from.x + p.x) / 2, y: (from.y + p.y) / 2 - Math.min(dist * 0.2, 80) };
@@ -163,6 +175,10 @@ export function Overlay() {
       if (!el || !probe || !m.d) return done();
       probe.setAttribute("d", m.d);
       const len = probe.getTotalLength();
+      if (instant()) {
+        el.style.strokeDashoffset = "0";
+        return done();
+      }
       const ms = Math.min(620, 220 + len * 0.6);
       const t0 = performance.now();
       const s = b.current;
@@ -187,6 +203,15 @@ export function Overlay() {
       const ants = document.getElementById(`ants-${m.id}`);
       const s = b.current;
       s.mode = "manual";
+      if (instant()) {
+        for (const el of [fill, ants]) {
+          el?.setAttribute("width", `${r.w + 12}`);
+          el?.setAttribute("height", `${r.h + 12}`);
+        }
+        s.pos = { x: r.x + r.w + 6, y: r.y + r.h + 6 };
+        if (buddyEl.current) buddyEl.current.style.transform = `translate(${s.pos.x + 10}px, ${s.pos.y + 10}px)`;
+        return done();
+      }
       const t0 = performance.now();
       const ms = 360;
       const step = (now: number) => {
@@ -209,7 +234,7 @@ export function Overlay() {
     busy.current = true;
     while (queue.current.length) {
       const m = queue.current.shift()!;
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      if (!instant()) await new Promise((r) => requestAnimationFrame(() => r(null)));
       if (m.op.kind === "select") {
         await flyTo({ x: m.op.x - origin.current.x - 6, y: m.op.y - origin.current.y - 6 }, 380);
         await marquee(m);
@@ -224,7 +249,7 @@ export function Overlay() {
         if (el) el.style.opacity = "1";
       }
     }
-    b.current.mode = "hold";
+    b.current.mode = instant() ? "manual" : "hold";
     b.current.holdUntil = performance.now() + 1600;
     busy.current = false;
   };
@@ -248,10 +273,19 @@ export function Overlay() {
           origin.current = { x: (p.window ?? p.screen.frame).x, y: (p.window ?? p.screen.frame).y };
           break;
         case "buddy.cursor":
+          if (!onRef.current && b.current.mode === "follow") {
+            // Appearing (idle mode): start right at the pointer instead of flying in.
+            b.current.pos = { x: p.x - origin.current.x + FOLLOW.x, y: p.y - origin.current.y + FOLLOW.y };
+          }
+          onRef.current = true;
           setBuddyOn(true);
           b.current.cursor = { x: p.x, y: p.y };
           break;
+        case "buddy.tip":
+          setTip(p.text ?? "");
+          break;
         case "buddy.hide":
+          onRef.current = false;
           setBuddyOn(false);
           break;
         case "buddy.fly":
@@ -347,9 +381,10 @@ export function Overlay() {
           <i className="click-ripple" />
         </div>
       ))}
-      <div ref={buddyEl} className={`buddy buddy--${mood}`} style={{ display: buddyOn ? "block" : "none" }}>
+      <div ref={buddyEl} className={`buddy buddy--${mood} ${buddyOn ? "" : "buddy--away"}`}>
         <span className="buddy__ring" />
         <span className="buddy__face" style={{ ["--icon" as string]: `url(${slotUrl("icon", "brand-mark-white")})` }} />
+        <span className={`buddy__say ${tip ? "buddy__say--on" : ""} ${tipLeft ? "buddy__say--left" : ""}`}>{tip}</span>
       </div>
     </div>
   );

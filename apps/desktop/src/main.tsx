@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { installPreview } from "./preview";
 import { loadSlotFonts } from "./lib/fonts";
 import { loadTheme } from "./lib/theme";
+import { installTips } from "./lib/tips";
 import { Panel } from "./views/Panel";
 import { Overlay } from "./views/Overlay";
 import { Shelf } from "./views/Shelf";
@@ -26,6 +27,8 @@ const label = getCurrentWindow().label;
 document.documentElement.dataset.view = label;
 loadTheme();
 loadSlotFonts();
+// The buddy explains things you hover in Pixie's own windows.
+if (["panel", "settings", "note", "guide"].includes(label) && !new URLSearchParams(location.search).get("preview")) installTips();
 
 const VIEWS: Record<string, () => React.JSX.Element> = {
   panel: Panel,

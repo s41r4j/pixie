@@ -6,6 +6,6 @@
 
 pub mod bus;
 
-pub use bus::{AudioBus, AudioOutput, Gains, PlaybackId};
+pub use bus::{AudioBus, AudioOutput, Gains, PlaybackId, SlotPref};
 #[cfg(feature = "rodio")]
 pub use bus::RodioOutput;

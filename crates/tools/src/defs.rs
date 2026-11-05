@@ -103,17 +103,18 @@ pub fn say() -> ToolDef {
 pub fn draw() -> ToolDef {
     let op = obj(json!({
         "kind": {"type":"string","enum":["circle","underline","arrow","box","check","cross","text","line"]},
+        "target": {"type":"string","description":"on screen: element id (e12) or exact on-screen text to circle/box/underline; its exact frame is used"},
         "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"},
         "to_x": {"type":"number","description":"arrow/line end x"}, "to_y": {"type":"number"},
         "text": {"type":"string","description":"handwritten text (kind text), or a label inside a box/circle"},
         "color": {"type":"string","enum":["ink","blue","red","green","orange","yellow","pink"]}
-    }), &["kind", "x", "y"]);
+    }), &["kind"]);
     def("draw", "Draw by hand. On their screen (default): circle, box or underline something that's on screen (x,y,w,h in screen points, use the frame from the lists), an arrow from (x,y) to (to_x,to_y), a check or cross, or short text; marks fade after the answer. With board=true: open a clean paper board and sketch an explanation there instead (a diagram, steps, how things connect) on a 1000×640 canvas, origin top-left; give it a short title. Use the board whenever you explain something visually rather than mark what's on screen.",
         obj(json!({ "ops": {"type":"array","items": op}, "board": {"type":"boolean"}, "title": {"type":"string"} }), &["ops"]))
 }
 pub fn highlight() -> ToolDef {
-    def("highlight", "Point at something on screen: the pointer flies there and rings it. Use the frame (screen points) of an item from the on-screen list. label is a 1-4 word tag shown beside it.",
-        obj(json!({ "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"}, "label": {"type":"string"} }), &["x", "y", "w", "h"]))
+    def("highlight", "Point at something on screen: the pointer flies there and rings it. Best: give target, the element id from the controls list (e.g. e12) or the exact text of a line from the text list; its exact frame is used. Otherwise give x, y, w, h in screen points copied from those lists (never estimate from the image when the item is listed). label is a 1-4 word tag shown beside it.",
+        obj(json!({ "target": {"type":"string","description":"element id like e12, or exact on-screen text"}, "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"}, "label": {"type":"string"} }), &[]))
 }
 pub fn mac_step() -> ToolDef {
     def("mac_step", "Do one step in their apps. Your buddy pointer flies there first so they see it. action: click / double_click / right_click (target = a label, an element id like e12, or give x and y in screen points), drag (x,y → to_x,to_y), press (a button by label/id through Accessibility), menu (a path like \"File > Export…\"), type (put text into the focused field), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without acting). Each click returns what the screen looks like after; check it before the next step.",
@@ -124,6 +125,14 @@ pub fn mac_step() -> ToolDef {
             "to_x": {"type":"number"}, "to_y": {"type":"number"}
         }), &["action"]))
 }
+pub fn clipboard() -> ToolDef {
+    def("clipboard", "Their clipboard. action: copy (put text on it so they can paste it), read (what they last copied).",
+        obj(json!({ "action": {"type":"string","enum":["copy","read"]}, "text": {"type":"string"} }), &["action"]))
+}
+pub fn look() -> ToolDef {
+    def("look", "See their screen now: a screenshot plus the visible controls and text with exact frames (screen points) to use with mac_step, highlight and draw.",
+        obj(json!({}), &[]))
+}
 pub fn code() -> ToolDef {
     // Not in §5's table: delegation to the user's local coding agents. TODO: fold into the spec.
     def("code", "Hand a coding task to a local coding agent on their Mac (Codex CLI, Claude Code or opencode, whichever is installed; see the environment). It edits files in dir (a repo on their Mac, or output/ by default) and returns its summary. Write the task as a complete brief: goal, files, constraints, how to check. Use it for real code changes, apps, scripts and fixes; review its summary and check the result.",
@@ -133,8 +142,8 @@ pub fn code() -> ToolDef {
 pub fn start_job() -> ToolDef {
     // Not in §5's list: the voice loop needs a way to hand work to a background job. TODO: fold into
     // the spec's tool table.
-    def("start_job", "Hand longer work to a background job (research, documents, files, several steps). It shows as a card on the screen edge with a plan and a note. Write the brief as a complete instruction with every detail they gave.",
-        obj(json!({ "title": {"type":"string","description":"2-4 words"}, "instructions": {"type":"string"} }), &["title", "instructions"]))
+    def("start_job", "Hand longer work to an agent. kind=background (default): works on its own in the background (research, documents, files, code) with a plan and a note. kind=live: does it on their real screen while explaining each step out loud (clicking, typing and copying in their apps; use it when they want you to do something in their apps that takes several steps, or to show them how). Both show in the notch's Agents tab. Write the brief as a complete instruction with every detail they gave.",
+        obj(json!({ "title": {"type":"string","description":"2-4 words"}, "instructions": {"type":"string"}, "kind": {"type":"string","enum":["background","live"]} }), &["title", "instructions"]))
 }
 pub fn browser() -> ToolDef {
     def("browser", "Use their Chrome through the Pixie extension. operation: tabs, open {url}, snapshot {tabId?} (numbered elements + text), click {ref}, type {ref, text, submit?}, scroll {direction}, navigate {url}, back, screenshot, batch {steps:[...]} (up to 20 operations). Re-snapshot after actions that change the page.",
@@ -145,19 +154,23 @@ pub fn browser() -> ToolDef {
 pub fn for_mode(mode: Mode, browser_connected: bool) -> Vec<ToolDef> {
     let mut v = match mode {
         Mode::Voice | Mode::Takeover => vec![
-            highlight(), draw(), mac_step(), note(), note_answer(), start_job(), web_search(), fetch_url(),
+            highlight(), draw(), mac_step(), clipboard(), note(), note_answer(), start_job(), web_search(), fetch_url(),
             device_open(), device_find_files(), device_list_folder(), device_read_file(),
+        ],
+        Mode::Live => vec![
+            look(), mac_step(), highlight(), draw(), say(), clipboard(), update_plan(), progress(), ask_user(),
+            web_search(), fetch_url(), device_open(), device_find_files(), device_read_file(), note(), note_answer(),
         ],
         Mode::Tour => vec![say(), highlight()],
         Mode::Interview => vec![note_answer()],
         Mode::Job => vec![
             bash(), read(), write(), edit(), grep(), find(), view_image(), fetch_url(), web_search(),
             device_list_folder(), device_find_files(), device_read_file(), device_save_file(), device_open(),
-            update_plan(), progress(), ask_user(), code(),
+            update_plan(), progress(), ask_user(), code(), clipboard(),
             note(), note_add(), note_answer(), note_replace(), note_remove(), note_tick(), say(),
         ],
     };
-    if browser_connected && matches!(mode, Mode::Voice | Mode::Takeover | Mode::Job) {
+    if browser_connected && matches!(mode, Mode::Voice | Mode::Takeover | Mode::Job | Mode::Live) {
         v.push(browser());
     }
     v

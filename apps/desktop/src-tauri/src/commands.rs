@@ -101,6 +101,88 @@ pub fn panel_peek(app: AppHandle, on: bool) {
     }
 }
 
+/// The Chat tab's log of this conversation.
+#[tauri::command]
+pub fn chat_log(state: State<'_, AppState>) -> Vec<crate::session::ChatEntry> {
+    state.session.chat_log()
+}
+
+/// "New chat": forget the conversation.
+#[tauri::command]
+pub fn chat_clear(app: AppHandle, state: State<'_, AppState>) {
+    state.session.chat_clear();
+    crate::emit(&app, openclicky_core::Event::new("chat.updated", serde_json::json!({ "log": [] })));
+}
+
+/// Use a file of theirs for a sound slot (bytes come from the file picker in Settings).
+/// Empty data = back to the default sound.
+#[tauri::command]
+pub fn sound_custom(app: AppHandle, slot: String, name: String, data: String) -> Result<SettingsView, String> {
+    use base64::Engine;
+    let state = app.state::<AppState>();
+    if !slot.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || slot.is_empty() {
+        return Err("Unknown sound.".into());
+    }
+    let dir = state.data_dir.join("custom-sounds");
+    // Remove an earlier custom file for this slot.
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            if e.path().file_stem().and_then(|s| s.to_str()) == Some(slot.as_str()) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let custom = if data.is_empty() {
+        String::new()
+    } else {
+        let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+        if !["wav", "mp3", "flac", "ogg"].contains(&ext.as_str()) {
+            return Err("Use a .wav, .mp3, .flac or .ogg file.".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| e.to_string())?;
+        if bytes.len() > 5 * 1024 * 1024 {
+            return Err("Keep sounds under 5 MB.".into());
+        }
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let path = dir.join(format!("{slot}.{ext}"));
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        path.display().to_string()
+    };
+    {
+        let mut s = state.settings.lock().unwrap();
+        s.sounds.entry(slot.clone()).or_default().custom = custom;
+        s.save(&state.data_dir);
+        if let Ok(mut bus) = state.audio.lock() {
+            crate::config::apply_audio(&mut bus, &s);
+        }
+    }
+    state.play(&slot);
+    Ok(settings_get(state))
+}
+
+/// Hover tips from Pixie's own windows, shown beside the buddy.
+#[tauri::command]
+pub async fn buddy_tip(app: AppHandle, text: String) {
+    crate::buddy::tip(&app, &text);
+}
+
+/// Past conversations, newest first.
+#[tauri::command]
+pub fn chats_list(state: State<'_, AppState>) -> Vec<crate::chats::ChatSummary> {
+    crate::chats::list(&state.data_dir)
+}
+
+#[tauri::command]
+pub fn chat_get(state: State<'_, AppState>, id: String) -> Option<crate::chats::Chat> {
+    crate::chats::get(&state.data_dir, &id)
+}
+
+#[tauri::command]
+pub fn chat_delete(app: AppHandle, state: State<'_, AppState>, id: String) {
+    crate::chats::delete(&state.data_dir, &id);
+    crate::emit(&app, openclicky_core::Event::new("chats.changed", serde_json::json!({})));
+}
+
 /// Click-to-talk from the peek (same as holding ⌃⌥).
 #[tauri::command]
 pub fn talk_start(app: AppHandle) {
@@ -201,8 +283,8 @@ pub fn job_note(app: AppHandle, id: String) -> Option<Value> {
 }
 
 #[tauri::command]
-pub fn job_start(app: AppHandle, title: String, instructions: String) -> Result<String, String> {
-    jobs::start(&app, &title, &instructions)
+pub fn job_start(app: AppHandle, title: String, instructions: String, kind: Option<String>) -> Result<String, String> {
+    jobs::start(&app, &title, &instructions, kind.as_deref().unwrap_or("background"))
 }
 
 #[tauri::command]
@@ -231,6 +313,12 @@ pub fn open_note(app: AppHandle, id: String) {
     windows::open_note(&app, &id);
 }
 
+/// The Jobs window on its Chats side (optionally a given conversation).
+#[tauri::command]
+pub fn open_chats(app: AppHandle, id: Option<String>) {
+    windows::open_note(&app, &format!("chats:{}", id.unwrap_or_default()));
+}
+
 /// Open an artifact (path or URL) the way Finder would.
 #[tauri::command]
 pub fn open_target(target: String, reveal: Option<bool>) -> Result<(), String> {
@@ -250,6 +338,10 @@ pub struct SettingsView {
     provider: Option<String>,
     /// Where the key came from (masked), for the UI.
     key_hint: String,
+    /// The provider answering now ("claude" / "openai" / "deepseek").
+    active: Option<String>,
+    /// The models each provider would use (choices, else env, else built-in defaults).
+    effective: std::collections::BTreeMap<String, crate::config::ModelChoice>,
 }
 
 fn mask(k: &str) -> String {
@@ -265,6 +357,8 @@ pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
     let cfg = crate::config::provider_config(&state.data_dir, &settings);
     SettingsView {
         provider: state.provider().map(|p| p.label()),
+        active: cfg.as_ref().map(|c| c.kind.id().to_string()),
+        effective: crate::config::effective_models(&state.data_dir, &settings),
         key_hint: cfg.map(|c| mask(&c.api_key)).unwrap_or_default(),
         settings: Settings {
             deepseek_key: mask_if(&settings.deepseek_key),
@@ -297,58 +391,42 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
         *s = serde_json::from_value(cur).map_err(|e| e.to_string())?;
         s.save(&state.data_dir);
         if let Ok(mut bus) = state.audio.lock() {
-            bus.set_muted(s.muted);
+            crate::config::apply_audio(&mut bus, &s);
         }
+        crate::hotkey::configure(&s.shortcut_talk, &s.shortcut_dictate);
     }
     state.reload_provider();
+    crate::emit(&app, openclicky_core::Event::new("settings.changed", json!({})));
     Ok(settings_get(state))
 }
 
-/// Live model list for a provider (uses that provider's key).
+/// Live model list for a provider, from its official endpoint (uses that provider's key).
 #[tauri::command]
 pub async fn models_available(app: AppHandle, provider: String) -> Result<Value, String> {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
-    let key = crate::config::key_for(&state.data_dir, &settings, &provider).ok_or("No key for this provider yet.")?;
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
-    let req = match provider.as_str() {
-        "claude" => http.get("https://api.anthropic.com/v1/models?limit=100").header("x-api-key", &key).header("anthropic-version", "2023-06-01"),
-        "openai" => http.get("https://api.openai.com/v1/models").bearer_auth(&key),
-        "deepseek" => http.get("https://api.deepseek.com/models").bearer_auth(&key),
-        _ => return Err("Unknown provider.".into()),
-    };
-    let resp = req.send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("{} answered {}", provider, resp.status()));
-    }
-    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
-    let mut ids: Vec<Value> = v["data"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|m| {
-            let id = m["id"].as_str()?.to_string();
-            // Chat-capable models only for OpenAI.
-            if provider == "openai" && !(id.starts_with("gpt-") || id.starts_with('o') || id.starts_with("chatgpt")) {
-                return None;
-            }
-            if provider == "openai" && (id.contains("audio") || id.contains("realtime") || id.contains("tts") || id.contains("transcribe") || id.contains("image")) {
-                return None;
-            }
-            Some(json!({ "id": id, "name": m["display_name"].as_str().or(m["name"].as_str()).unwrap_or(""), "vision": m["input_modalities"].as_array().map(|a| a.iter().any(|x| x == "image")) }))
-        })
-        .collect();
-    ids.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
-    Ok(json!({ "models": ids }))
+    let models = crate::usage::fetch_models(&state.data_dir, &settings, &provider).await?;
+    let at = crate::usage::catalog().lock().map(|c| c.fetched_at).unwrap_or(0);
+    Ok(json!({ "models": models, "prices_at": at }))
+}
+
+/// Fetch the live price list now.
+#[tauri::command]
+pub async fn prices_refresh(app: AppHandle) -> Result<Value, String> {
+    let data = app.state::<AppState>().data_dir.clone();
+    let n = crate::usage::refresh_catalog(&data).await?;
+    Ok(json!({ "models": n, "fetched_at": crate::usage::catalog().lock().map(|c| c.fetched_at).unwrap_or(0) }))
 }
 
 #[tauri::command]
-pub fn usage_summary(app: AppHandle, days: Option<i64>) -> Value {
+pub fn usage_summary(app: AppHandle, days: Option<i64>, provider: Option<String>, kind: Option<String>) -> Value {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
     let lines = crate::usage::read(&state.data_dir);
-    crate::usage::summary(&lines, &settings, days.unwrap_or(30), chrono::Utc::now().timestamp_millis())
+    let f = crate::usage::Filter { days: days.unwrap_or(30), provider: provider.unwrap_or_default(), kind: kind.unwrap_or_default() };
+    let mut v = crate::usage::summary_with(&lines, &settings, &f, chrono::Utc::now().timestamp_millis());
+    v["prices_at"] = json!(crate::usage::catalog().lock().map(|c| c.fetched_at).unwrap_or(0));
+    v
 }
 
 #[tauri::command]
@@ -405,6 +483,21 @@ pub fn voice_status(app: AppHandle) -> crate::kokoro::Status {
 #[tauri::command]
 pub fn voice_install(app: AppHandle) -> Result<(), String> {
     crate::kokoro::install(app)
+}
+
+/// Onboarding mic check: listen without starting a turn (levels and words stream as events).
+#[tauri::command]
+pub async fn mic_test_start(app: AppHandle) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let locale = st.settings.lock().map(|s| s.locale.clone()).unwrap_or_default();
+    st.helper.call("listen_start", json!({ "locale": locale, "on_device": true }), Duration::from_secs(15)).await.map(|_| ())
+}
+
+#[tauri::command]
+pub async fn mic_test_stop(app: AppHandle) -> Result<String, String> {
+    let st = app.state::<AppState>();
+    let v = st.helper.call("listen_stop", json!({}), Duration::from_secs(5)).await?;
+    Ok(v["text"].as_str().unwrap_or("").trim().to_string())
 }
 
 #[tauri::command]

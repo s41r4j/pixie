@@ -22,19 +22,32 @@
 @keyframes ripple { from { transform: scale(.35); opacity: 1; } to { transform: scale(1.9); opacity: 0; } }
 
 /* The buddy: a round badge with the pixel :) — clearly not a mouse pointer. */
-.buddy { position: absolute; left: 0; top: 0; width: 30px; height: 30px; will-change: transform; }
+.buddy { position: absolute; left: 0; top: 0; width: 22px; height: 22px; will-change: transform; }
 .buddy__face {
-  position: absolute; inset: 0; border-radius: 50%; background: #000; border: 2px solid #fff;
-  box-shadow: 0 0 0 1.5px #000, 3px 3px 0 rgba(0, 0, 0, .55);
+  position: absolute; inset: 0; border-radius: 50%; background: #000; border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px #000, 2px 2px 0 rgba(0, 0, 0, .5);
 }
 .buddy__face::after {
-  content: ""; position: absolute; inset: 4px 4px 4px 5px; background: #fff;
+  content: ""; position: absolute; inset: 3px 3px 3px 4px; background: #fff;
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
 }
-.buddy__ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid transparent; }
+.buddy__ring { position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid transparent; }
 .buddy--listening .buddy__ring { border-color: #fff; box-shadow: 0 0 0 1.5px #000; animation: ring-pulse .7s steps(3, end) infinite alternate; }
 .buddy--thinking .buddy__ring { border: 2px dashed #fff; animation: ring-spin 1.1s linear infinite; }
 .buddy--speaking .buddy__face { animation: talk .32s steps(2, end) infinite alternate; }
 @keyframes ring-pulse { from { transform: scale(.9); opacity: .5; } to { transform: scale(1.12); opacity: 1; } }
 @keyframes ring-spin { to { transform: rotate(360deg); } }
 @keyframes talk { to { transform: scale(1.08); } }
+/* Idle mode: the buddy pops in when Pixie is busy and fades away when it isn't. */
+.buddy__face, .buddy__ring { transition: opacity 180ms steps(3, end), transform 180ms steps(3, end); }
+.buddy--away .buddy__face, .buddy--away .buddy__ring { opacity: 0; transform: scale(.4); }
+/* Hover tips: a little speech card beside the buddy. */
+.buddy__say {
+  position: absolute; left: 30px; top: -3px; width: max-content; max-width: 260px; padding: 6px 9px;
+  background: #fff; color: #000; border: 2px solid #000; box-shadow: 3px 3px 0 rgba(0,0,0,.45);
+  font: 12px/1.45 "IBM Plex Mono", ui-monospace, monospace; opacity: 0; transform: translateX(-4px);
+  transition: opacity 120ms steps(2, end), transform 120ms steps(2, end); pointer-events: none;
+}
+.buddy__say--on { opacity: 1; transform: none; }
+.buddy__say--left { left: auto; right: 30px; }
+.buddy--away .buddy__say { opacity: 0; }

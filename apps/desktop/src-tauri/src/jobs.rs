@@ -45,6 +45,13 @@ pub struct JobView {
     pub error: Option<String>,
     pub unread: bool,
     pub steps: usize,
+    /// "background" works on its own; "live" works on their screen while explaining.
+    #[serde(default = "background")]
+    pub kind: String,
+}
+
+fn background() -> String {
+    "background".into()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -185,8 +192,12 @@ fn new_id() -> String {
 }
 
 /// Start a job; returns its id. The note is never blank: it starts with the title.
-pub fn start(app: &AppHandle, title: &str, instructions: &str) -> Result<String, String> {
+pub fn start(app: &AppHandle, title: &str, instructions: &str, kind: &str) -> Result<String, String> {
     let st = app.state::<AppState>();
+    let kind = if kind == "live" { "live" } else { "background" };
+    if kind == "live" && st.jobs.list().iter().any(|j| j.kind == "live" && matches!(j.state, JobState::Running | JobState::WaitingOnUser)) {
+        return Err("A live agent is already using the screen; wait for it or stop it first.".into());
+    }
     let id = new_id();
     let cwd = jobs_dir(&st.data_dir).join(&id);
     for sub in ["output", "tmp", "inbox"] {
@@ -213,6 +224,7 @@ pub fn start(app: &AppHandle, title: &str, instructions: &str) -> Result<String,
         error: None,
         unread: true,
         steps: 0,
+        kind: kind.to_string(),
     };
     st.jobs.map.lock().unwrap().insert(
         id.clone(),
@@ -370,6 +382,24 @@ fn friendly_progress(name: &str, input: &Value) -> Option<String> {
     })
 }
 
+/// Is a live agent working on the screen?
+pub fn live_running(app: &AppHandle) -> bool {
+    let st = app.state::<AppState>();
+    let m = st.jobs.map.lock().unwrap();
+    m.values().any(|e| e.view.kind == "live" && e.view.state == JobState::Running)
+}
+
+/// Stop every live agent (esc).
+pub fn cancel_live(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let m = st.jobs.map.lock().unwrap();
+    for e in m.values() {
+        if e.view.kind == "live" && matches!(e.view.state, JobState::Running | JobState::WaitingOnUser) {
+            e.cancel.cancel();
+        }
+    }
+}
+
 /// Run (or continue) the job's loop in the background.
 fn drive(app: AppHandle, id: String) {
     tauri::async_runtime::spawn(async move {
@@ -385,8 +415,9 @@ fn drive(app: AppHandle, id: String) {
             return;
         };
         let host = Arc::new(AppHost { app: app.clone() });
+        let mode = if view.kind == "live" { Mode::Live } else { Mode::Job };
         let ctx = ToolCtx {
-            mode: Mode::Job,
+            mode,
             cwd: view.cwd.clone(),
             note_path: view.cwd.join("note.md"),
             job_id: Some(id.clone()),
@@ -411,10 +442,15 @@ fn drive(app: AppHandle, id: String) {
             coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
         };
         let task = format!("Title: {}\n\n{}", view.title, view.instructions);
-        let system = prompt::assemble(&PromptInput { mode: Mode::Job, env, task });
-        let mut tools = openclicky_tools::defs::for_mode(Mode::Job, crate::browser::connected(&app));
-        tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), Mode::Job));
-        let opts = AgentOptions { max_steps: 60, effort: Effort::Deep, max_tokens: 16_000 };
+        let system = prompt::assemble(&PromptInput { mode, env, task });
+        let mut tools = openclicky_tools::defs::for_mode(mode, crate::browser::connected(&app));
+        tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), mode));
+        // Live agents are watched: quicker model calls, fewer steps.
+        let opts = if mode == Mode::Live {
+            AgentOptions { max_steps: 40, effort: Effort::Balanced, max_tokens: 4_000 }
+        } else {
+            AgentOptions { max_steps: 60, effort: Effort::Deep, max_tokens: 16_000 }
+        };
 
         let app_ev = app.clone();
         let id_ev = id.clone();

@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
-pub const RUNTIME_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-osx-arm64-shared.tar.bz2";
+pub const RUNTIME_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-osx-universal2-shared.tar.bz2";
 pub const MODEL_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2";
 
 /// The voices worth offering (speaker IDs in kokoro-multi-lang-v1_0).
@@ -76,6 +76,26 @@ pub struct Status {
     ready: bool,
     installing: bool,
     voices: Vec<serde_json::Value>,
+    /// Bytes downloaded / total across both files while installing.
+    done: u64,
+    total: u64,
+}
+
+/// (downloaded, total) for the install in progress.
+fn progress() -> &'static Mutex<(u64, u64)> {
+    static P: std::sync::OnceLock<Mutex<(u64, u64)>> = std::sync::OnceLock::new();
+    P.get_or_init(|| Mutex::new((0, 0)))
+}
+
+/// Size of a download (follows redirects); 0 when unknown.
+fn remote_size(url: &str) -> u64 {
+    Command::new("/usr/bin/curl")
+        .args(["-sIL", url])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .and_then(|h| h.lines().filter_map(|l| l.to_lowercase().strip_prefix("content-length:").and_then(|v| v.trim().parse::<u64>().ok())).next_back())
+        .unwrap_or(0)
 }
 
 pub fn status(app: &AppHandle) -> Status {
@@ -85,6 +105,8 @@ pub fn status(app: &AppHandle) -> Status {
         ready: ready(),
         installing: engine().installing.load(Ordering::SeqCst),
         voices: VOICES.iter().map(|(id, n, d)| json!({ "id": id, "name": n, "description": d })).collect(),
+        done: progress().lock().map(|p| p.0).unwrap_or(0),
+        total: progress().lock().map(|p| p.1).unwrap_or(0),
     }
 }
 
@@ -194,8 +216,12 @@ pub fn install(app: AppHandle) -> Result<(), String> {
     std::thread::spawn(move || {
         let v = voices_dir(&data);
         let r = (|| -> Result<(), String> {
+            let files = [(RUNTIME_URL, "runtime"), (MODEL_URL, "kokoro")];
+            let total: u64 = files.iter().filter(|(_, d)| !v.join(d).exists()).map(|(u, _)| remote_size(u)).sum();
+            *progress().lock().unwrap() = (0, total);
+            let mut before = 0u64;
             for (url, dest, inner) in [
-                (RUNTIME_URL, "runtime", "sherpa-onnx-v2.0.1-osx-arm64-shared"),
+                (RUNTIME_URL, "runtime", "sherpa-onnx-v2.0.1-osx-universal2-shared"),
                 (MODEL_URL, "kokoro", "kokoro-multi-lang-v1_0"),
             ] {
                 if v.join(dest).exists() {
@@ -205,10 +231,26 @@ pub fn install(app: AppHandle) -> Result<(), String> {
                 let stage = v.join(format!("dl-{dest}"));
                 let _ = std::fs::remove_dir_all(&stage);
                 std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
-                let ok = Command::new("/usr/bin/curl").args(["-fsSL", "-o", "pkg.tar.bz2", url]).current_dir(&stage).status().map_err(|e| e.to_string())?;
+                let mut child = Command::new("/usr/bin/curl").args(["-fsSL", "-o", "pkg.tar.bz2", url]).current_dir(&stage).spawn().map_err(|e| e.to_string())?;
+                let file = stage.join("pkg.tar.bz2");
+                let mut last_emit = std::time::Instant::now();
+                let ok = loop {
+                    if let Some(st) = child.try_wait().map_err(|e| e.to_string())? {
+                        break st;
+                    }
+                    let now_bytes = before + std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+                    progress().lock().unwrap().0 = now_bytes;
+                    if last_emit.elapsed() > std::time::Duration::from_millis(400) {
+                        last_emit = std::time::Instant::now();
+                        crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": dest, "done": now_bytes, "total": total })));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                };
                 if !ok.success() {
                     return Err(format!("download failed: {url}"));
                 }
+                before += std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+                crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "unpack", "done": before, "total": total })));
                 let ok = Command::new("/usr/bin/tar").args(["xjf", "pkg.tar.bz2"]).current_dir(&stage).status().map_err(|e| e.to_string())?;
                 if !ok.success() {
                     return Err("couldn't unpack".into());

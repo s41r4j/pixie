@@ -29,17 +29,21 @@ if (!fs.existsSync(app)) {
   console.error(`no app at ${app}`);
   process.exit(1);
 }
-// Inner executables first, then the bundle (which seals them).
-sign(path.join(app, "Contents/MacOS/openclicky-helper"), "com.openclicky.helper");
-sign(path.join(app, "Contents/MacOS/openclicky-voice"), "com.openclicky.voice");
-sign(app, "com.openclicky.app");
+// Inner executables first, then the bundle (which seals them). With a real Developer ID the
+// Tauri bundler has already signed (and notarized) the app; re-signing would undo that.
+if (identity === "-") {
+  sign(path.join(app, "Contents/MacOS/openclicky-helper"), "com.openclicky.helper");
+  sign(path.join(app, "Contents/MacOS/openclicky-voice"), "com.openclicky.voice");
+  sign(app, "com.openclicky.app");
+}
 execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" });
 const req = execFileSync("codesign", ["-d", "-r-", app], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 console.log(req.trim().split("\n").pop());
 
 const dmgDir = path.join(bundleDir, "dmg");
 fs.mkdirSync(dmgDir, { recursive: true });
-const dmg = path.join(dmgDir, `Pixie_${version}_${process.arch === "arm64" ? "aarch64" : "x64"}.dmg`);
+const arch = target.includes("universal") ? "universal" : process.arch === "arm64" ? "aarch64" : "x64";
+const dmg = path.join(dmgDir, `Pixie_${version}_${arch}.dmg`);
 fs.rmSync(dmg, { force: true });
 const stage = fs.mkdtempSync(path.join(dmgDir, "stage-"));
 execFileSync("ditto", [app, path.join(stage, "Pixie.app")]);

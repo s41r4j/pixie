@@ -81,18 +81,27 @@ pub async fn run(
         let uses = resp.tool_uses();
         messages.push(Message::assistant(resp.content.clone()));
 
-        if uses.is_empty() || resp.stop_reason != StopReason::ToolUse {
-            if resp.stop_reason == StopReason::MaxTokens && uses.is_empty() && step < opts.max_steps {
+        // Any tool call gets answered, whatever the stop reason says (some providers report
+        // end_turn alongside calls). Leaving one unanswered breaks the next request.
+        if uses.is_empty() {
+            if resp.stop_reason == StopReason::MaxTokens && step < opts.max_steps {
                 messages.push(Message::user_text("Continue exactly where you stopped."));
                 continue;
             }
             return Ok(AgentOutcome { final_text: resp.text(), messages, steps: step, hit_limit });
         }
+        let truncated = resp.stop_reason == StopReason::MaxTokens;
+        let n_uses = uses.len();
 
         let mut results = Vec::with_capacity(uses.len());
-        for (id, name, input) in uses {
+        for (k, (id, name, input)) in uses.into_iter().enumerate() {
             if ctx.cancel.is_cancelled() {
                 return Err(LlmError::Cancelled);
+            }
+            if truncated && k == n_uses - 1 {
+                // The reply was cut off while writing this call's input; don't run half a command.
+                results.push(Content::tool_result(id, "Not run: your reply hit the length limit while writing this call. Send it again, smaller (split big files into several writes).", true));
+                continue;
             }
             on_event(AgentEvent::ToolStart { name: name.clone(), input: input.clone() });
             let out = execute(ctx, &name, &input).await;

@@ -3,6 +3,7 @@
 
 mod browser;
 mod buddy;
+mod chats;
 mod commands;
 mod config;
 mod connectors;
@@ -90,7 +91,14 @@ impl AppState {
 
     pub fn reload_provider(&self) {
         let s = self.settings.lock().unwrap().clone();
-        let p = config::provider_config(&self.data_dir, &s).map(|c| usage::Recorded::wrap(c, &self.data_dir));
+        let primary = config::provider_config(&self.data_dir, &s);
+        let backup = config::fallback_config(&self.data_dir, &s).filter(|b| primary.as_ref().map(|p| p.kind != b.kind || p.fast_model != b.fast_model).unwrap_or(true));
+        let p = match (primary, backup) {
+            (Some(p), Some(b)) => Some(Arc::new(openclicky_llm::Fallback { primary: usage::Recorded::wrap(p, &self.data_dir), backup: usage::Recorded::wrap(b, &self.data_dir) }) as Arc<dyn Provider>),
+            (Some(p), None) => Some(usage::Recorded::wrap(p, &self.data_dir)),
+            (None, Some(b)) => Some(usage::Recorded::wrap(b, &self.data_dir)),
+            (None, None) => None,
+        };
         match &p {
             Some(p) => log::info!("model: {}", p.label()),
             None => log::warn!("model: no key configured (DEEPSEEK / ANTHROPIC_API_KEY)"),
@@ -141,6 +149,17 @@ pub fn run() {
             commands::panel_hover,
             commands::panel_type,
             commands::panel_peek,
+            commands::chat_log,
+            commands::chat_clear,
+            commands::chats_list,
+            commands::chat_get,
+            commands::chat_delete,
+            commands::open_chats,
+            commands::sound_custom,
+            commands::mic_test_start,
+            commands::mic_test_stop,
+            commands::buddy_tip,
+            commands::prices_refresh,
             commands::talk_start,
             commands::talk_stop,
             commands::ask,
@@ -197,7 +216,8 @@ pub fn run() {
             let theme = resources::load_theme(store.root());
             let store = Arc::new(store);
             let mut audio = AudioBus::new(store.clone(), RodioOutput::spawn());
-            audio.set_muted(settings.muted);
+            config::apply_audio(&mut audio, &settings);
+            hotkey::configure(&settings.shortcut_talk, &settings.shortcut_dictate);
             let skills = skills::load(app.handle());
             let state = AppState {
                 store,
@@ -237,6 +257,12 @@ pub fn run() {
             browser::start(app.handle().clone());
             kokoro::start(app.handle().clone());
             shelf::refresh(app.handle());
+            {
+                // Live model prices for Settings → Usage (cached; refreshed once a day).
+                let data = app.state::<AppState>().data_dir.clone();
+                let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+                tauri::async_runtime::spawn(async move { usage::warm(&data, &settings).await });
+            }
 
             // The welcome shows once; after that a missing permission is a gentle notch toast,
             // never a window that keeps coming back.

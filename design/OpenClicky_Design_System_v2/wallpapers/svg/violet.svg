@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160"><defs>
- <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop stop-color="#130622"/><stop offset=".54" stop-color="#2B0F49"/><stop offset="1" stop-color="#130622"/></linearGradient>
- <linearGradient id="wave" x1="0%" y1="30%" x2="100%" y2="70%"><stop stop-color="#5E24C1"/><stop offset=".38" stop-color="#AE52E6"/><stop offset=".61" stop-color="#E3A5FF"/><stop offset="1" stop-color="#5E24C1"/></linearGradient>
- <radialGradient id="haze" cx="86%" cy="25%" r="65%"><stop stop-color="#AE52E6" stop-opacity=".58"/><stop offset="1" stop-color="#2B0F49" stop-opacity="0"/></radialGradient>
- <radialGradient id="warm" cx="68%" cy="76%" r="70%"><stop stop-color="#E3A5FF" stop-opacity=".22"/><stop offset="1" stop-color="#130622" stop-opacity="0"/></radialGradient>
- </defs><rect width="3840" height="2160" fill="url(#bg)"/><rect width="3840" height="2160" fill="url(#warm)"/><path d="M-130 1730 C490 1510 750 2040 1410 1690 C1980 1370 2520 350 4040 90 L4040 595 C2930 610 2390 1630 1740 1900 C900 2380 570 1750 -120 2050Z" fill="url(#wave)" opacity=".9"/>
- <path d="M-110 1880 C580 1590 1090 2170 1520 1760 C2290 1280 2610 460 3980 290" fill="none" stroke="#E2A3FF" stroke-width="9" opacity=".8"/>
- <path d="M0 980 C860 1420 1140 1020 1540 940 C2340 770 2590 100 3910 -50" fill="none" stroke="#A65DE9" stroke-width="160" opacity=".32"/>
- <path d="M-200 2140 C700 1760 1040 2150 1760 1870 C2400 1580 2710 1800 3960 1300 L3960 2280Z" fill="url(#haze)" opacity=".7"/></svg>

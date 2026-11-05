@@ -5,7 +5,7 @@
 
 use openclicky_llm::ProviderConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,10 +32,21 @@ pub struct Settings {
     pub speak_answers: bool,
     pub share_screen: bool,
     pub master_volume: f32,
+    /// Per-sound volume, mute and custom file (Settings → Sounds).
+    pub sounds: BTreeMap<String, openclicky_voice::SlotPref>,
     pub muted: bool,
     pub onboarded: bool,
-    /// Show the buddy pointer next to the cursor.
+    /// Show the buddy pointer next to the cursor (legacy switch; see `buddy_mode`).
     pub buddy: bool,
+    /// Hold-to-talk and dictation chords, e.g. "ctrl+option", "fn+ctrl".
+    pub shortcut_talk: String,
+    pub shortcut_dictate: String,
+    /// One backup model, "provider:model" (e.g. "claude:claude-haiku-5-5"); used when the main
+    /// model fails before answering. Empty = none.
+    pub fallback: String,
+    /// "always" (rides with the cursor), "idle" (only while Pixie is listening, thinking,
+    /// talking or doing something) or "off".
+    pub buddy_mode: String,
     /// Let Pixie click/drag for you (otherwise it only points).
     pub can_click: bool,
     pub user_name: String,
@@ -78,9 +89,14 @@ impl Default for Settings {
             speak_answers: true,
             share_screen: true,
             master_volume: 1.0,
+            sounds: BTreeMap::new(),
             muted: false,
             onboarded: false,
             buddy: true,
+            buddy_mode: "always".into(),
+            fallback: String::new(),
+            shortcut_talk: "ctrl+option".into(),
+            shortcut_dictate: "fn+ctrl".into(),
             can_click: true,
             user_name: String::new(),
             locale: String::new(),
@@ -179,8 +195,50 @@ pub fn key_for(app_data: &Path, settings: &Settings, provider: &str) -> Option<S
     }
 }
 
+/// Apply sound settings (master volume, mute, per-sound choices) to the bus.
+pub fn apply_audio<O: openclicky_voice::AudioOutput>(bus: &mut openclicky_voice::AudioBus<O>, s: &Settings) {
+    let mut g = bus.gains();
+    g.master = s.master_volume.clamp(0.0, 1.5);
+    bus.set_gains(g);
+    bus.set_prefs(s.sounds.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+    bus.set_muted(s.muted);
+}
+
 pub fn provider_config(app_data: &Path, settings: &Settings) -> Option<ProviderConfig> {
     ProviderConfig::from_vars(&vars(app_data, settings))
+}
+
+/// For each provider, the voice ("fast") and agent ("deep") models it would use right now.
+pub fn effective_models(app_data: &Path, settings: &Settings) -> BTreeMap<String, ModelChoice> {
+    let base = vars(app_data, settings);
+    [("claude", "ANTHROPIC_API_KEY"), ("openai", "OPENAI_API_KEY"), ("deepseek", "DEEPSEEK")]
+        .into_iter()
+        .filter_map(|(p, key)| {
+            let mut v = base.clone();
+            v.insert("OPENCLICKY_PROVIDER".into(), p.into());
+            v.entry(key.into()).or_insert_with(|| "x".into());
+            let c = ProviderConfig::from_vars(&v)?;
+            Some((p.to_string(), ModelChoice { fast: c.fast_model, deep: c.deep_model }))
+        })
+        .collect()
+}
+
+/// The backup model's config, when one is set and has a key.
+pub fn fallback_config(app_data: &Path, settings: &Settings) -> Option<ProviderConfig> {
+    let (provider, model) = settings.fallback.split_once(':')?;
+    let mut v = vars(app_data, settings);
+    v.insert("OPENCLICKY_PROVIDER".into(), provider.to_string());
+    let prefix = match provider {
+        "claude" => "ANTHROPIC",
+        "openai" => "OPENAI",
+        "deepseek" => "DEEPSEEK",
+        _ => return None,
+    };
+    for k in ["MODEL", "FAST_MODEL", "DEEP_MODEL"] {
+        v.insert(format!("{prefix}_{k}"), model.to_string());
+    }
+    let c = ProviderConfig::from_vars(&v)?;
+    (c.kind.id() == provider).then_some(c)
 }
 
 #[cfg(test)]

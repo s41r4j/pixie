@@ -2,10 +2,11 @@
 // transcript), thinks, answers (spoken words light up as they're said), shows the paper note,
 // takes typed questions, and pops short toasts.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, onEvent, type Job, type NoteDoc, type PanelMode, type ScreenInfo } from "../lib/bridge";
+import { api, onEvent, type ChatEntry, type Job, type NoteDoc, type PanelMode, type ScreenInfo } from "../lib/bridge";
 import { useHitRects } from "../lib/hits";
 import { Glyph, Smile } from "../components/Mark";
 import { NoteView } from "../components/NoteView";
+import { chordLabel, Kbd, useShortcuts } from "../lib/keys";
 
 const BARS = 22;
 
@@ -77,7 +78,7 @@ export function Panel() {
   const [mode, setMode] = useState<PanelMode>("hidden");
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
   const [levels, setLevels] = useState<number[]>(() => Array(BARS).fill(0));
-  const [partial, setPartial] = useState("");
+  const [, setPartial] = useState("");
   const [question, setQuestion] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [word, setWord] = useState<{ id: string; at: number; len: number } | null>(null);
@@ -88,12 +89,16 @@ export function Panel() {
   const [note, setNote] = useState<NoteDoc | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [typed, setTyped] = useState("");
-  const [dictated, setDictated] = useState("");
+  const [, setDictated] = useState("");
   const [bodyH, setBodyH] = useState(0);
   const [, setLastAnswer] = useState<{ q: string; a: string } | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clickTalk, setClickTalk] = useState(false);
+  const [tab, setTab] = useState<"chat" | "agents">(() => (new URLSearchParams(location.search).get("ptab") === "agents" ? "agents" : "chat"));
+  const [log, setLog] = useState<ChatEntry[]>([]);
+  const logEnd = useRef<HTMLDivElement>(null);
   const [, setDrawing] = useState(false);
+  const keys = useShortcuts();
   const turn = useRef(0);
   const shape = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -114,6 +119,7 @@ export function Panel() {
   useEffect(() => {
     api.panelMode().then(setMode).catch(() => {});
     api.jobs().then(setJobs).catch(() => {});
+    api.chatLog().then(setLog).catch(() => {});
     api.panelScreen().then(setScreen).catch(() => {});
     const un = onEvent((e) => {
       const p = e.payload;
@@ -182,6 +188,9 @@ export function Panel() {
         case "shelf.jobs":
           setJobs(p.jobs);
           break;
+        case "chat.updated":
+          setLog(p.log ?? []);
+          break;
         case "turn.error":
           setError(p.message);
           break;
@@ -224,6 +233,9 @@ export function Panel() {
   }, [mode, segments.length, note, error, chips.length]);
 
   useHitRects("panel", [shape], [mode, bodyH]);
+  useEffect(() => {
+    if (mode === "peek" && tab === "chat") logEnd.current?.scrollIntoView({ block: "end" });
+  }, [mode, tab, log.length]);
 
   const notchW = screen?.notch_width ?? 0;
   const top = Math.round(screen?.top_inset ?? 32);
@@ -239,13 +251,15 @@ export function Panel() {
     : mode === "hidden"
       ? Math.max(notchW, 120)
       : mode === "peek"
-        ? Math.max(notchW + 2 * 150, 500)
+        ? Math.max(notchW + 2 * 170, 560)
         : wide
           ? Math.max(notchW + 2 * 150, 540)
           : Math.max(notchW + 2 * ear, hasNotch ? 0 : 300);
   const showBody = mode !== "hidden" && mode !== "toast" && !voice;
-  const height = mode === "hidden" ? top : top + (showBody ? Math.min(bodyH, 380) : 0);
+  const height = mode === "hidden" ? top : top + (showBody ? Math.min(bodyH, 420) : 0);
   const speakingNow = word !== null;
+  const activeJobs = jobs.filter((j) => j.state === "running" || j.state === "waiting_on_user");
+  const needsYou = jobs.some((j) => j.state === "waiting_on_user");
 
   const ask = (text: string) => {
     if (!text.trim()) return;
@@ -261,6 +275,13 @@ export function Panel() {
         </button>
       );
     if (empty && voice) return <span className="ear__label">didn't catch that</span>;
+    if (mode === "listening" && clickTalk)
+      return (
+        <button className="ear__stop" title="Done talking" onClick={() => api.talkStop()}>
+          <Waveform levels={levels.slice(-10)} live />
+          <i />
+        </button>
+      );
     if (mode === "listening") return <Waveform levels={levels.slice(-12)} live />;
     if (mode === "dictating") return <Waveform levels={levels.slice(-12)} live />;
     if (mode === "thinking")
@@ -283,7 +304,7 @@ export function Panel() {
       const needs = jobs.filter((j) => j.state === "waiting_on_user").length;
       return <span className="ear__label">{needs ? `${needs} needs you` : running ? `${running} working` : "ready"}</span>;
     }
-    return <span className="ear__label">⌃⌥ to talk</span>;
+    return <span className="ear__label">{chordLabel(keys.talk)} to talk</span>;
   };
 
   return (
@@ -301,18 +322,17 @@ export function Panel() {
           <div className="ear ear--right">{rightEar()}</div>
         </div>
 
-        <div className="notch__body" ref={body}>
-          {live && (partial || dictated) && <div className="transcript">{dictated || partial}</div>}
+        <div className="notch__body" ref={body} style={voice ? { height: 0, padding: 0 } : undefined}>
 
           {compact && (
             <div className="compact-line">
               {(word && segments.find((x) => x.id === word.id)?.text) || segments[segments.length - 1]?.text || question}
             </div>
           )}
-          {(mode === "thinking" || mode === "answer") && !compact && (
+          {(mode === "thinking" || mode === "answer") && !compact && !voice && (
             <div className="turn">
               {question && <div className={`turn__q ${mode === "answer" && segments.length ? "turn__q--small" : ""}`}>{question}</div>}
-              {empty && <div className="turn__a turn__a--muted">I didn't catch that. Hold ⌃⌥ and talk to me.</div>}
+              {empty && <div className="turn__a turn__a--muted">I didn't catch that. Hold {chordLabel(keys.talk)} and talk to me.</div>}
               {segments.length > 0 && (
                 <div className="turn__a">
                   {segments.map((s) => (
@@ -357,7 +377,7 @@ export function Panel() {
                     Ask a follow-up
                   </button>
                   <span>
-                    hold <kbd>⌃⌥</kbd> to talk · <kbd>esc</kbd>
+                    hold <Kbd chord={keys.talk} /> to talk · <kbd>esc</kbd>
                   </span>
                 </div>
               )}
@@ -366,51 +386,114 @@ export function Panel() {
 
           {mode === "peek" && (
             <div className="peek">
-              <div className="peek__actions">
-                <button
-                  className={`qa ${clickTalk ? "qa--live" : ""}`}
-                  onClick={() => {
-                    setClickTalk(true);
-                    api.talkStart();
-                  }}
-                >
-                  <Glyph name={clickTalk ? "waveform" : "mic"} size={24} />
-                  <span>Talk</span>
-                </button>
-                <button className="qa" onClick={() => api.panelType()}>
-                  <Glyph name={"chat"} size={24} />
-                  <span>Type</span>
-                </button>
-                <button className="qa" onClick={() => (jobs[0] ? api.openNote(jobs[0].id) : api.panelType())}>
-                  <Glyph name={"layers"} size={24} />
-                  <span>Jobs{jobs.length ? ` · ${jobs.length}` : ""}</span>
-                </button>
-                <button className="qa" onClick={() => api.showSettings()}>
-                  <Glyph name={"settings"} size={24} />
-                  <span>Settings</span>
-                </button>
+              <div className="peek__head">
+                <div className="tabs" role="tablist">
+                  <button data-tip="This conversation. Type a follow-up or start fresh." role="tab" aria-selected={tab === "chat"} className={`tab ${tab === "chat" ? "tab--on" : ""}`} onClick={() => setTab("chat")}>
+                    <Glyph name="chat" size={14} /> Chat
+                  </button>
+                  <button data-tip="Work running in the background or live on your screen." role="tab" aria-selected={tab === "agents"} className={`tab ${tab === "agents" ? "tab--on" : ""}`} onClick={() => setTab("agents")}>
+                    <Glyph name="layers" size={14} /> Agents
+                    {activeJobs.length > 0 && <span className={`tab__count ${needsYou ? "tab__count--needs" : ""}`}>{activeJobs.length}</span>}
+                  </button>
+                </div>
+                <div className="peek__tools">
+                  <button className="icon-btn" title={`Talk (or hold ${chordLabel(keys.talk)})`} onClick={() => { setClickTalk(true); api.talkStart(); }}>
+                    <Glyph name="mic" size={16} />
+                  </button>
+                  <button className="icon-btn" title="Settings" onClick={() => api.showSettings()}>
+                    <Glyph name="settings" size={16} />
+                  </button>
+                </div>
               </div>
-              {jobs.filter((j) => j.state === "running" || j.state === "waiting_on_user").slice(0, 2).map((j) => (
-                <button key={j.id} className="peek__job" onClick={() => api.openNote(j.id)}>
-                  <span className={`dot dot--${j.state}`} />
-                  <span className="peek__job-title">{j.title}</span>
-                  <span className="peek__job-status">{j.state === "waiting_on_user" ? "needs you" : j.progress || "working"}</span>
-                </button>
+
+              {tab === "chat" ? (
+                <>
+                  <div className="chatlog">
+                    {log.length === 0 && <div className="chatlog__empty">Nothing yet. Hold <Kbd chord={keys.talk} /> and ask about anything on your screen.</div>}
+                    {log.slice(-12).map((m) => (
+                      <div key={m.at} className="chatlog__turn">
+                        <div className="chatlog__q">{m.q}</div>
+                        <div className="chatlog__a">{m.a}</div>
+                      </div>
+                    ))}
+                    <div ref={logEnd} />
+                  </div>
+                  <div className="peek__foot">
+                    <button className="peek__type" onClick={() => api.panelType()}>
+                      <span>Type a message…</span>
+                      <kbd>↵</kbd>
+                    </button>
+                    {log.length > 0 && (
+                      <button className="link" onClick={() => api.chatClear()}>
+                        New chat
+                      </button>
+                    )}
+                    <button className="link" onClick={() => api.openChats()}>
+                      History
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="agents">
+                  {jobs.length === 0 && <div className="chatlog__empty">No agents yet. Ask for something big ("research…", "build me…") and it runs here in the background.</div>}
+                  {jobs.slice(0, 8).map((j) => {
+                    const done = j.plan.filter((s) => s.status === "done").length;
+                    const status =
+                      j.state === "waiting_on_user" ? "needs you" : j.state === "running" ? j.progress || "working" : j.state === "done" ? "done" : j.state === "failed" ? (j.error === "Stopped." ? "stopped" : "problem") : j.state;
+                    return (
+                      <div key={j.id} className={`agent agent--${j.state}`}>
+                        <button className="agent__main" data-tip="Open its note and history" onClick={() => api.openNote(j.id)}>
+                          <span className={`dot dot--${j.state}`} />
+                          <span className="agent__title">{j.title}</span>
+                          {j.kind === "live" && <span className="agent__live">live</span>}
+                          <span className="agent__status">{status}</span>
+                        </button>
+                        {j.plan.length > 0 && j.state === "running" && (
+                          <div className="agent__plan" aria-label={`${done} of ${j.plan.length} steps`}>
+                            {j.plan.map((s, i) => (
+                              <i key={i} className={`agent__step agent__step--${s.status}`} />
+                            ))}
+                          </div>
+                        )}
+                        {j.question && (
+                          <div className="agent__ask">
+                            <div>{j.question.question}</div>
+                            <div className="agent__choices">
+                              {j.question.choices.slice(0, 3).map((c) => (
+                                <button key={c} className="chip-btn" onClick={() => api.jobAnswer(j.id, c)}>
+                                  {c}
+                                </button>
+                              ))}
+                              <button className="chip-btn chip-btn--ghost" onClick={() => api.openNote(j.id)}>
+                                Reply…
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {j.state === "running" && (
+                          <button className="agent__stop" title="Stop" onClick={() => api.jobCancel(j.id)}>
+                            ■
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {(mode === "idle" || mode === "typing") && log.length > 0 && (
+            <div className="chatlog chatlog--typing">
+              {log.slice(-4).map((m) => (
+                <div key={m.at} className="chatlog__turn">
+                  <div className="chatlog__q">{m.q}</div>
+                  <div className="chatlog__a">{m.a}</div>
+                </div>
               ))}
-              <div className="peek__hint">
-                hold <kbd>⌃</kbd><kbd>⌥</kbd> to talk · <kbd>fn</kbd><kbd>⌃</kbd> to dictate
-              </div>
             </div>
           )}
-
-          {live && clickTalk && (
-            <div className="clicktalk">
-              <button className="clicktalk__stop" onClick={() => api.talkStop()}>
-                Done talking
-              </button>
-            </div>
-          )}
-
           {(mode === "idle" || mode === "typing") && (
             <div className="composer">
               <form
@@ -434,12 +517,10 @@ export function Panel() {
               </form>
               <div className="composer__hint">
                 <span>
-                  or hold <kbd>⌃</kbd>
-                  <kbd>⌥</kbd> and just say it
+                  or hold <Kbd chord={keys.talk} /> and just say it
                 </span>
                 <span>
-                  <kbd>fn</kbd>
-                  <kbd>⌃</kbd> dictates · <kbd>esc</kbd> closes
+                  <Kbd chord={keys.dictate} /> dictates · <kbd>esc</kbd> closes
                 </span>
               </div>
             </div>

@@ -16,10 +16,10 @@ All media is loaded by **slot name** through `manifest.json`; code never hardcod
 ## Replacing media
 
 Drop a file at the same path (or point the manifest at a new one). No code changes.
-Sounds and icons come from the OpenClicky Design System v2 (`design/OpenClicky_Design_System_v2`,
-original work; `REPLACEMENT_MAP.csv` maps each slot). Videos are still placeholders from
+Sounds and icons come from Pixie's own design packs (original work; the source packs are kept
+outside the repo). Videos are still placeholders from
 `npm run placeholders` (`scripts/gen-placeholders.mjs`). The script never overwrites existing files. Fonts are the upstream OFL releases
-(Barlow, Patrick Hand) from github.com/google/fonts, licences in `fonts/OFL-*.txt`.
+(IBM Plex Mono, VT323, Press Start 2P, Patrick Hand) from github.com/google/fonts, licences in `fonts/OFL-*.txt`.
 
 Do not copy media from other products into this folder; use originals or CC0 sources.
 

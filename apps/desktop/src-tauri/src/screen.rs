@@ -151,6 +151,39 @@ pub async fn capture(app: &AppHandle, n: u64) -> Capture {
 
 /// The best on-screen item (control or text line) for a rectangle the model gave:
 /// highest overlap, else the nearest centre within 40 pt; a matching label wins ties.
+/// Find an item by element id ("e12") or by its text/label: exact match first, then the
+/// shortest line that contains it. Ties go to the one nearest `near` (if given).
+pub fn find(c: &Capture, target: &str, near: Option<(f64, f64)>) -> Option<Frame> {
+    let t = target.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(e) = c.elements.iter().find(|e| e.id.eq_ignore_ascii_case(t)) {
+        return Some(e.frame.clone());
+    }
+    let tl = t.to_lowercase();
+    let cands: Vec<(Frame, String)> = c
+        .elements
+        .iter()
+        .map(|e| (e.frame.clone(), e.label.to_lowercase()))
+        .chain(c.text.iter().map(|x| (x.frame.clone(), x.text.to_lowercase())))
+        .filter(|(f, s)| f.w > 0.0 && f.h > 0.0 && !s.trim().is_empty())
+        .collect();
+    let dist = |f: &Frame| near.map(|(x, y)| ((f.x + f.w / 2.0 - x).powi(2) + (f.y + f.h / 2.0 - y).powi(2)).sqrt()).unwrap_or(0.0);
+    let pick = |v: Vec<&(Frame, String)>| v.into_iter().min_by(|a, b| dist(&a.0).total_cmp(&dist(&b.0)).then(a.1.len().cmp(&b.1.len()))).map(|x| x.0.clone());
+    let exact: Vec<_> = cands.iter().filter(|(_, s)| s.trim() == tl).collect();
+    if !exact.is_empty() {
+        return pick(exact);
+    }
+    let contains: Vec<_> = cands.iter().filter(|(_, s)| s.contains(&tl)).collect();
+    if !contains.is_empty() {
+        // Prefer the tightest match: shortest text containing it, then nearest.
+        let min_len = contains.iter().map(|(_, s)| s.len()).min().unwrap_or(0);
+        return pick(contains.into_iter().filter(|(_, s)| s.len() <= min_len + 12).collect());
+    }
+    None
+}
+
 pub fn snap(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<Frame> {
     let label = label.trim().to_lowercase();
     let cx = x + w / 2.0;
@@ -201,5 +234,13 @@ mod tests {
         let f = snap(&cap(), 210.0, 590.0, 80.0, 20.0, "total").unwrap();
         assert_eq!(f.y, 600.0);
         assert!(snap(&cap(), 900.0, 900.0, 20.0, 20.0, "").is_none());
+    }
+
+    #[test]
+    fn finds_by_id_and_text() {
+        assert_eq!(find(&cap(), "e1", None).unwrap().x, 1500.0);
+        assert_eq!(find(&cap(), "share", None).unwrap().x, 1500.0);
+        assert_eq!(find(&cap(), "Total", None).unwrap().y, 600.0);
+        assert!(find(&cap(), "nowhere", None).is_none());
     }
 }

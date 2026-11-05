@@ -42,7 +42,20 @@ struct Inner {
     /// Generation for the auto-collapse timer.
     collapse_gen: u64,
     hovered: bool,
+    /// What the Chat tab shows (questions and answers, newest last).
+    log: Vec<ChatEntry>,
+    /// The saved conversation the log belongs to.
+    chat_id: Option<String>,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChatEntry {
+    pub q: String,
+    pub a: String,
+    pub at: i64,
+}
+
+const LOG_MAX: usize = 40;
 
 #[derive(Default)]
 pub struct Session {
@@ -70,6 +83,21 @@ impl Session {
     }
     pub fn set_hovered(&self, h: bool) {
         self.inner.lock().unwrap().hovered = h;
+    }
+    /// Listening, thinking, answering or speaking.
+    pub fn active(&self) -> bool {
+        let i = self.inner.lock().unwrap();
+        i.listening.is_some() || i.answering || !i.speaking.is_empty()
+    }
+    pub fn chat_log(&self) -> Vec<ChatEntry> {
+        self.inner.lock().unwrap().log.clone()
+    }
+    /// Start a new conversation: forget the context and the log.
+    pub fn chat_clear(&self) {
+        let mut i = self.inner.lock().unwrap();
+        i.log.clear();
+        i.history.clear();
+        i.chat_id = None;
     }
 }
 
@@ -204,6 +232,7 @@ pub fn escape(app: &AppHandle) {
         state(app).helper.send("listen_cancel", json!({}));
     }
     interrupt(app);
+    crate::jobs::cancel_live(app);
     overlay::clear(app);
     overlay::board_close(app);
     panel::hide(app);
@@ -306,7 +335,10 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         i.cancel = Some(cancel.clone());
         i.answering = true;
         if i.last_turn.map(|t| t.elapsed() > HISTORY_TTL).unwrap_or(false) {
+            // Ten quiet minutes: a new conversation (the old one stays in Chats).
             i.history.clear();
+            i.log.clear();
+            i.chat_id = None;
         }
         i.last_turn = Some(Instant::now());
     }
@@ -389,11 +421,18 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         Ok(out) => {
             {
                 let mut i = st.session.inner.lock().unwrap();
-                i.history.push(Message::user_text(text));
+                i.history.push(Message::user_text(text.clone()));
                 let reply = if out.final_text.trim().is_empty() { "(pointed it out on screen)".to_string() } else { out.final_text.clone() };
                 i.history.push(Message::assistant(vec![Content::text(reply)]));
                 let excess = i.history.len().saturating_sub(HISTORY_MAX);
                 i.history.drain(..excess);
+                let a = if out.final_text.trim().is_empty() { "(showed it on screen)".to_string() } else { out.final_text.trim().to_string() };
+                i.log.push(ChatEntry { q: text.clone(), a, at: chrono::Utc::now().timestamp_millis() });
+                let excess = i.log.len().saturating_sub(LOG_MAX);
+                i.log.drain(..excess);
+                let id = i.chat_id.get_or_insert_with(crate::chats::new_id).clone();
+                crate::chats::save(&st.data_dir, &id, &i.log);
+                emit(&app, Event::new("chat.updated", json!({ "log": i.log, "id": id })));
             }
             emit(&app, Event::new("turn.done", json!({ "turn": n, "text": out.final_text })));
             panel::set_mode(&app, PanelMode::Answer);

@@ -7,12 +7,16 @@
 
 mod anthropic;
 mod config;
+mod fallback;
 mod openai;
+mod repair;
 mod scripted;
 
 pub use anthropic::AnthropicProvider;
 pub use config::{ProviderConfig, ProviderKind};
+pub use fallback::Fallback;
 pub use openai::OpenAiProvider;
+pub use repair::repair;
 pub use scripted::ScriptedProvider;
 
 use serde::{Deserialize, Serialize};

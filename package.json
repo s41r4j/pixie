@@ -14,6 +14,7 @@
     "check": "cargo check --workspace && npm run build",
     "test": "cargo test --workspace",
     "assets:local": "node scripts/local-assets.mjs",
-    "app:install": "sh scripts/install-app.sh"
+    "app:install": "sh scripts/install-app.sh",
+    "site": "sh scripts/build-site.sh && cd _site && python3 -m http.server 8000"
   }
 }
