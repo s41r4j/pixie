@@ -194,6 +194,7 @@ export const api = {
   requestPermission: (id: string) => invoke<PermissionInfo>("permission_request", { id }),
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),
   relaunch: () => invoke<void>("relaunch"),
+  resetPermission: (id: string) => invoke<PermissionInfo>("permission_reset", { id }),
 };
 
 export function onEvent(cb: (e: CoreEvent) => void): Promise<UnlistenFn> {

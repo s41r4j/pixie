@@ -8,11 +8,12 @@
     "dev": "npm run tauri -w apps/desktop -- dev",
     "build": "npm run build -w apps/desktop",
     "tauri": "npm run tauri -w apps/desktop --",
-    "app:build": "npm run tauri -w apps/desktop -- build",
-    "app:build:universal": "npm run tauri -w apps/desktop -- build --target universal-apple-darwin",
+    "app:build": "npm run tauri -w apps/desktop -- build --bundles app && node scripts/finalize-app.mjs",
+    "app:build:universal": "npm run tauri -w apps/desktop -- build --bundles app --target universal-apple-darwin && node scripts/finalize-app.mjs target/universal-apple-darwin/release/bundle",
     "placeholders": "node scripts/gen-placeholders.mjs",
     "check": "cargo check --workspace && npm run build",
     "test": "cargo test --workspace",
-    "assets:local": "node scripts/local-assets.mjs"
+    "assets:local": "node scripts/local-assets.mjs",
+    "app:install": "sh scripts/install-app.sh"
   }
 }

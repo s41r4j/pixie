@@ -108,3 +108,4 @@ html[data-view="settings"] body, html[data-view="note"] body { background: radia
 .voice:hover { background: rgba(255,255,255,.07); }
 .voice.is-on { border-color: var(--brand-violet); background: rgba(167,105,222,.14); box-shadow: 0 0 16px rgba(167,105,222,.25); }
 .btn--inline { padding: 0; color: var(--brand-rose); text-decoration: underline; font-size: inherit; }
+.row__hint--muted { color: var(--secondary); }

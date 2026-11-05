@@ -182,6 +182,42 @@ pub async fn permissions_status(app: tauri::AppHandle) -> Vec<PermissionInfo> {
         .collect()
 }
 
+/// Clear openclicky's own stale grant for Screen Recording or Accessibility (a switch that's
+/// on for an older build of the app) and ask again. Touches only com.openclicky.app.
+#[tauri::command]
+pub async fn permission_reset(id: String) -> Result<PermissionInfo, String> {
+    let pid = PermId::parse(&id).ok_or_else(|| format!("unknown permission `{id}`"))?;
+    let service = match pid {
+        PermId::Screen => "ScreenCapture",
+        PermId::Accessibility => "Accessibility",
+        _ => return Err("Only Screen Recording and Accessibility can be reset here.".into()),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let ok = std::process::Command::new("/usr/bin/tccutil")
+            .args(["reset", service, "com.openclicky.app"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            log::warn!("tccutil reset {service} failed");
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Ask fresh so openclicky reappears in the list, then show the pane.
+            match pid {
+                PermId::Screen => unsafe { native::request_screen_now() },
+                _ => {
+                    native::request(pid);
+                }
+            }
+        }
+        open_settings(pid);
+        info(pid)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Quit and reopen openclicky (some grants only apply to a fresh process).
 #[tauri::command]
 pub fn relaunch(app: tauri::AppHandle) {
@@ -310,6 +346,10 @@ mod native {
             },
             PermId::Files => unreachable!("files handled by caller"),
         })
+    }
+
+    pub unsafe fn request_screen_now() {
+        CGRequestScreenCaptureAccess();
     }
 
     /// Returns `true` if a system prompt was (or may have been) shown; `false` means the

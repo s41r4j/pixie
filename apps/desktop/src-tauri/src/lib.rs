@@ -166,6 +166,7 @@ pub fn run() {
             permissions::permission_request,
             permissions::permission_open_settings,
             permissions::relaunch,
+            permissions::permission_reset,
         ])
         .setup(|app| {
             // Menu-bar agent: no Dock icon (LSUIElement is also set in Info.plist for bundles).

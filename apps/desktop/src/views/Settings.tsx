@@ -36,6 +36,20 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
             .
           </div>
         )}
+        {(p.id === "screen" || p.id === "accessibility") && !granted && (
+          <div className="row__hint row__hint--muted">
+            Already switched on but still “Not allowed”? That switch belongs to an older build.{" "}
+            <button
+              className="btn btn--link btn--inline"
+              onClick={async () => {
+                await api.resetPermission(p.id).catch(console.error);
+                onChange();
+              }}
+            >
+              Reset &amp; ask again
+            </button>
+          </div>
+        )}
       </div>
       <div className="row__side">
         <span className={`pill pill--${pill.tone}`}>{pill.text}</span>
