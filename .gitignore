@@ -17,3 +17,4 @@ captures/
 apps/desktop/src-tauri/binaries/
 !.env.example
 *.pem
+design/*.zip

@@ -38,6 +38,24 @@
     "sky-light": "#CFE6FF",
     "pink": "#C7848F"
   },
-  "radius": { "sm": "12px", "md": "14px", "lg": "16px" },
-  "motion": { "in": "220ms", "out": "140ms", "spring": "cubic-bezier(.2,.9,.3,1.15)" }
+  "radius": {
+    "sm": "12px",
+    "md": "14px",
+    "lg": "16px"
+  },
+  "motion": {
+    "in": "220ms",
+    "out": "140ms",
+    "spring": "cubic-bezier(.2,.9,.3,1.15)"
+  },
+  "brand": {
+    "ink": "#100C1B",
+    "plum": "#29162E",
+    "violet": "#A769DE",
+    "deep-violet": "#542482",
+    "pearl": "#FFF2E7",
+    "gold": "#FFCC8D",
+    "amber": "#FFAC70",
+    "rose": "#E4ABD9"
+  }
 }

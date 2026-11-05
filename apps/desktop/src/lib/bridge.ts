@@ -12,7 +12,8 @@ export type PanelMode =
   | "answer"
   | "idle"
   | "typing"
-  | "toast";
+  | "toast"
+  | "peek";
 
 export interface CoreEvent<P = any> {
   kind: string;
@@ -118,6 +119,9 @@ export interface Settings {
   provider: string;
   voice_id: string;
   speech_rate: number;
+  voice_engine: string;
+  kokoro_voice: number;
+  voice_speed: number;
   speak_answers: boolean;
   share_screen: boolean;
   master_volume: number;
@@ -142,6 +146,7 @@ export type SlotKind = "sound" | "icon" | "video" | "font";
 
 /** URL for a resource slot, served by the Rust `slot://` protocol. */
 export function slotUrl(kind: SlotKind, slot: string): string {
+  if (document.documentElement.classList.contains("preview") || new URLSearchParams(location.search).has("preview")) return `/__slot/${kind}/${slot}`;
   const windowsLike = /Windows|Android/.test(navigator.userAgent);
   return windowsLike ? `http://slot.localhost/${kind}/${slot}` : `slot://localhost/${kind}/${slot}`;
 }
@@ -153,6 +158,11 @@ export const api = {
   hitRects: (window: string, rects: Rect[]) => invoke<void>("hit_rects", { window, rects }),
   panelHover: (hovered: boolean) => invoke<void>("panel_hover", { hovered }),
   panelType: () => invoke<void>("panel_type"),
+  panelPeek: (on: boolean) => invoke<void>("panel_peek", { on }),
+  talkStart: () => invoke<void>("talk_start"),
+  talkStop: () => invoke<void>("talk_stop"),
+  voiceStatus: () => invoke<{ installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[] }>("voice_status"),
+  voiceInstall: () => invoke<void>("voice_install"),
   ask: (text: string) => invoke<void>("ask", { text }),
   sessionNote: () => invoke<NoteDoc | null>("session_note"),
   playSound: (slot: string) => invoke<void>("play_sound", { slot }),
@@ -183,6 +193,7 @@ export const api = {
   permissions: () => invoke<PermissionInfo[]>("permissions_status"),
   requestPermission: (id: string) => invoke<PermissionInfo>("permission_request", { id }),
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),
+  relaunch: () => invoke<void>("relaunch"),
 };
 
 export function onEvent(cb: (e: CoreEvent) => void): Promise<UnlistenFn> {

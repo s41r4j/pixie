@@ -1,0 +1,132 @@
+existing_slot,replacement_path,kind,notes
+app-icon-1024.png,app-icons/png/default-1024.png,app-icon,Default shipping icon; other variants optional
+app-icon-512.png,app-icons/png/default-512.png,app-icon,Default shipping icon; other variants optional
+app-icon-256.png,app-icons/png/default-256.png,app-icon,Default shipping icon; other variants optional
+app-icon-128.png,app-icons/png/default-128.png,app-icon,Default shipping icon; other variants optional
+app-icon-64.png,app-icons/png/default-64.png,app-icon,Default shipping icon; other variants optional
+app-icon-32.png,app-icons/png/default-32.png,app-icon,Default shipping icon; other variants optional
+app-icon-16.png,app-icons/png/default-16.png,app-icon,Default shipping icon; other variants optional
+AppIcon,app-icons/png/default-1024.png,brand,New vector-based app icon
+heyclicky-logo,brand/png/smile-ivory-512.png,brand,OpenClicky signature :)
+tray-template.png,platform/macOS/tray-template.png,tray,Monochrome no painted background
+ext-icon-16.png,platform/extensions/ext-icon-16.png,extension,Brand icon
+ext-icon-32.png,platform/extensions/ext-icon-32.png,extension,Brand icon
+ext-icon-48.png,platform/extensions/ext-icon-48.png,extension,Brand icon
+ext-icon-128.png,platform/extensions/ext-icon-128.png,extension,Brand icon
+ext-toolbar-16.png,platform/extensions/ext-toolbar-16.png,extension,Action icon
+ext-toolbar-16-off.png,platform/extensions/ext-toolbar-16-off.png,extension,Action icon
+ext-toolbar-32.png,platform/extensions/ext-toolbar-32.png,extension,Action icon
+ext-toolbar-32-off.png,platform/extensions/ext-toolbar-32-off.png,extension,Action icon
+microphone-state:Idle,microphone/svg/mic-idle.svg,voice-state,Functional equivalent; not proprietary icon
+microphone-state:Listening,microphone/svg/mic-listening.svg,voice-state,Functional equivalent; not proprietary icon
+microphone-state:Processing,microphone/svg/mic-processing.svg,voice-state,Functional equivalent; not proprietary icon
+microphone-state:Muted,microphone/svg/mic-muted.svg,voice-state,Functional equivalent; not proprietary icon
+interface-icon:microphone,system-icons/svg/microphone.svg,UI,Original outline glyph
+interface-icon:sparkle,system-icons/svg/sparkle.svg,UI,Original outline glyph
+interface-icon:focus,system-icons/svg/focus.svg,UI,Original outline glyph
+interface-icon:cursor,system-icons/svg/cursor.svg,UI,Original outline glyph
+interface-icon:layers,system-icons/svg/layers.svg,UI,Original outline glyph
+interface-icon:cube,system-icons/svg/cube.svg,UI,Original outline glyph
+interface-icon:chat,system-icons/svg/chat.svg,UI,Original outline glyph
+interface-icon:waveform,system-icons/svg/waveform.svg,UI,Original outline glyph
+interface-icon:settings,system-icons/svg/settings.svg,UI,Original outline glyph
+interface-icon:bolt,system-icons/svg/bolt.svg,UI,Original outline glyph
+interface-icon:code,system-icons/svg/code.svg,UI,Original outline glyph
+interface-icon:grid,system-icons/svg/grid.svg,UI,Original outline glyph
+interface-icon:sliders,system-icons/svg/sliders.svg,UI,Original outline glyph
+interface-icon:refresh,system-icons/svg/refresh.svg,UI,Original outline glyph
+interface-icon:mic-off,system-icons/svg/mic-off.svg,UI,Original outline glyph
+background:Amber,wallpapers/png/amber-4k.png,background,New 4K vector composition
+background:Pearl,wallpapers/png/pearl-4k.png,background,New 4K vector composition
+background:Violet,wallpapers/png/violet-4k.png,background,New 4K vector composition
+background:Horizon,wallpapers/png/horizon-4k.png,background,New 4K vector composition
+pencil-paper-bed-1.wav,audio/ambient/pencil-paper-bed-1.wav,audio,Retained synthesized audio replacement from v1
+handwriting-bed-1.wav,audio/ambient/handwriting-bed-1.wav,audio,Retained synthesized audio replacement from v1
+pencil-paper-bed-2.wav,audio/ambient/pencil-paper-bed-2.wav,audio,Retained synthesized audio replacement from v1
+handwriting-bed-2.wav,audio/ambient/handwriting-bed-2.wav,audio,Retained synthesized audio replacement from v1
+type-keys-1.wav,audio/ambient/type-keys-1.wav,audio,Retained synthesized audio replacement from v1
+eraser-bed-1.wav,audio/ambient/eraser-bed-1.wav,audio,Retained synthesized audio replacement from v1
+type-keys-2.wav,audio/ambient/type-keys-2.wav,audio,Retained synthesized audio replacement from v1
+eraser-bed-2.wav,audio/ambient/eraser-bed-2.wav,audio,Retained synthesized audio replacement from v1
+pen-screen-bed-1.wav,audio/ambient/pen-screen-bed-1.wav,audio,Retained synthesized audio replacement from v1
+slide-3.wav,audio/ui/slide-3.wav,audio,Retained synthesized audio replacement from v1
+photo-drop-2.wav,audio/ui/photo-drop-2.wav,audio,Retained synthesized audio replacement from v1
+target-ping-1.wav,audio/ui/target-ping-1.wav,audio,Retained synthesized audio replacement from v1
+photo-drop-3.wav,audio/ui/photo-drop-3.wav,audio,Retained synthesized audio replacement from v1
+tape-1.wav,audio/ui/tape-1.wav,audio,Retained synthesized audio replacement from v1
+copy-tick-2.wav,audio/ui/copy-tick-2.wav,audio,Retained synthesized audio replacement from v1
+tape-3.wav,audio/ui/tape-3.wav,audio,Retained synthesized audio replacement from v1
+gel-pop-4.wav,audio/ui/gel-pop-4.wav,audio,Retained synthesized audio replacement from v1
+sticky-press-2.wav,audio/ui/sticky-press-2.wav,audio,Retained synthesized audio replacement from v1
+sparkle-2.wav,audio/ui/sparkle-2.wav,audio,Retained synthesized audio replacement from v1
+page-clear-1.wav,audio/ui/page-clear-1.wav,audio,Retained synthesized audio replacement from v1
+stamp-2.wav,audio/ui/stamp-2.wav,audio,Retained synthesized audio replacement from v1
+gel-pop-1.wav,audio/ui/gel-pop-1.wav,audio,Retained synthesized audio replacement from v1
+page-clear-2.wav,audio/ui/page-clear-2.wav,audio,Retained synthesized audio replacement from v1
+nope-2.wav,audio/ui/nope-2.wav,audio,Retained synthesized audio replacement from v1
+tape-2.wav,audio/ui/tape-2.wav,audio,Retained synthesized audio replacement from v1
+whoosh-1.wav,audio/ui/whoosh-1.wav,audio,Retained synthesized audio replacement from v1
+ding-1.wav,audio/ui/ding-1.wav,audio,Retained synthesized audio replacement from v1
+button-appear-1.wav,audio/ui/button-appear-1.wav,audio,Retained synthesized audio replacement from v1
+badge-pop-3.wav,audio/ui/badge-pop-3.wav,audio,Retained synthesized audio replacement from v1
+target-ping-2.wav,audio/ui/target-ping-2.wav,audio,Retained synthesized audio replacement from v1
+copy-tick-1.wav,audio/ui/copy-tick-1.wav,audio,Retained synthesized audio replacement from v1
+nope-1.wav,audio/ui/nope-1.wav,audio,Retained synthesized audio replacement from v1
+tapback-thumbs-up.wav,audio/ui/tapback-thumbs-up.wav,audio,Retained synthesized audio replacement from v1
+button-appear-2.wav,audio/ui/button-appear-2.wav,audio,Retained synthesized audio replacement from v1
+sticky-press-3.wav,audio/ui/sticky-press-3.wav,audio,Retained synthesized audio replacement from v1
+ding-2.wav,audio/ui/ding-2.wav,audio,Retained synthesized audio replacement from v1
+paper-place-1.wav,audio/ui/paper-place-1.wav,audio,Retained synthesized audio replacement from v1
+eshop.mp3,audio/ui/eshop.mp3,audio,Retained synthesized audio replacement from v1
+gel-pop-3.wav,audio/ui/gel-pop-3.wav,audio,Retained synthesized audio replacement from v1
+stamp-1.wav,audio/ui/stamp-1.wav,audio,Retained synthesized audio replacement from v1
+badge-pop-2.wav,audio/ui/badge-pop-2.wav,audio,Retained synthesized audio replacement from v1
+photo-drop-1.wav,audio/ui/photo-drop-1.wav,audio,Retained synthesized audio replacement from v1
+enter.mp3,audio/ui/enter.mp3,audio,Retained synthesized audio replacement from v1
+sparkle-1.wav,audio/ui/sparkle-1.wav,audio,Retained synthesized audio replacement from v1
+gel-pop-2.wav,audio/ui/gel-pop-2.wav,audio,Retained synthesized audio replacement from v1
+paper-place-3.wav,audio/ui/paper-place-3.wav,audio,Retained synthesized audio replacement from v1
+slide-2.wav,audio/ui/slide-2.wav,audio,Retained synthesized audio replacement from v1
+paper-place-2.wav,audio/ui/paper-place-2.wav,audio,Retained synthesized audio replacement from v1
+sticky-press-1.wav,audio/ui/sticky-press-1.wav,audio,Retained synthesized audio replacement from v1
+slide-1.wav,audio/ui/slide-1.wav,audio,Retained synthesized audio replacement from v1
+badge-pop-1.wav,audio/ui/badge-pop-1.wav,audio,Retained synthesized audio replacement from v1
+connection-question.wav,audio/ui/connection-question.wav,audio,Retained synthesized audio replacement from v1
+whoosh-2.wav,audio/ui/whoosh-2.wav,audio,Retained synthesized audio replacement from v1
+build-3d-3.wav,audio/drawing/build-3d-3.wav,audio,Retained synthesized audio replacement from v1
+build-3d-4.wav,audio/drawing/build-3d-4.wav,audio,Retained synthesized audio replacement from v1
+pen-flick-1.wav,audio/drawing/pen-flick-1.wav,audio,Retained synthesized audio replacement from v1
+boing-2.wav,audio/drawing/boing-2.wav,audio,Retained synthesized audio replacement from v1
+highlighter-1.wav,audio/drawing/highlighter-1.wav,audio,Retained synthesized audio replacement from v1
+build-3d-2.wav,audio/drawing/build-3d-2.wav,audio,Retained synthesized audio replacement from v1
+highlighter-2.wav,audio/drawing/highlighter-2.wav,audio,Retained synthesized audio replacement from v1
+highlighter-3.wav,audio/drawing/highlighter-3.wav,audio,Retained synthesized audio replacement from v1
+boing-1.wav,audio/drawing/boing-1.wav,audio,Retained synthesized audio replacement from v1
+pen-flick-3.wav,audio/drawing/pen-flick-3.wav,audio,Retained synthesized audio replacement from v1
+pen-flick-2.wav,audio/drawing/pen-flick-2.wav,audio,Retained synthesized audio replacement from v1
+build-3d-1.wav,audio/drawing/build-3d-1.wav,audio,Retained synthesized audio replacement from v1
+clicky-text-send.wav,audio/agent/clicky-text-send.wav,audio,Retained synthesized audio replacement from v1
+hatching.wav,audio/agent/hatching.wav,audio,Retained synthesized audio replacement from v1
+agent-launch.wav,audio/agent/agent-launch.wav,audio,Retained synthesized audio replacement from v1
+clicky-question.wav,audio/agent/clicky-question.wav,audio,Retained synthesized audio replacement from v1
+clicky-surprised.wav,audio/agent/clicky-surprised.wav,audio,Retained synthesized audio replacement from v1
+skill-up.wav,audio/agent/skill-up.wav,audio,Retained synthesized audio replacement from v1
+tada-2.wav,audio/agent/tada-2.wav,audio,Retained synthesized audio replacement from v1
+clicky-text-close.wav,audio/agent/clicky-text-close.wav,audio,Retained synthesized audio replacement from v1
+reveal-boot.wav,audio/agent/reveal-boot.wav,audio,Retained synthesized audio replacement from v1
+clicky-text-receive.wav,audio/agent/clicky-text-receive.wav,audio,Retained synthesized audio replacement from v1
+agent-close.wav,audio/agent/agent-close.wav,audio,Retained synthesized audio replacement from v1
+agent-done.wav,audio/agent/agent-done.wav,audio,Retained synthesized audio replacement from v1
+home-reveal.wav,audio/agent/home-reveal.wav,audio,Retained synthesized audio replacement from v1
+skill-down.wav,audio/agent/skill-down.wav,audio,Retained synthesized audio replacement from v1
+clicky-text-open.wav,audio/agent/clicky-text-open.wav,audio,Retained synthesized audio replacement from v1
+agent-needs-you.wav,audio/agent/agent-needs-you.wav,audio,Retained synthesized audio replacement from v1
+tada-1.wav,audio/agent/tada-1.wav,audio,Retained synthesized audio replacement from v1
+onboarding-intro-v2.mp4,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+paywall-intro-v2.mp4,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+clicky-drive-sample.mp4,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+clicky-spatial-demo.mp4,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+ClickyCharacters,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+voice-preview-*,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+realtime-voice-preview-*,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples
+gemini-voice-preview-*,NOT INCLUDED,pending,Requires purpose-built creative source or licensed third-party samples

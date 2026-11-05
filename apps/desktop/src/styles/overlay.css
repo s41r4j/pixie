@@ -11,22 +11,22 @@
 /* The pointer flies out of the notch to its target. */
 .pointer {
   position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -4px 0 0 -4px; opacity: 0;
-  filter: drop-shadow(0 0 10px rgba(90,168,245,.75)) drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  filter: drop-shadow(0 0 10px rgba(167,105,222,.8)) drop-shadow(0 2px 3px rgba(0,0,0,.35));
   transition: transform 720ms cubic-bezier(.2, .9, .25, 1.12), opacity 160ms ease;
   will-change: transform;
 }
 .pointer--on { opacity: 1; animation: ink-fade 700ms ease 6.2s forwards; }
 .ring {
   position: absolute; border-radius: 14px; opacity: 0; transform: scale(1.25);
-  border: 3px solid var(--draw-sky);
-  box-shadow: 0 0 0 4px rgba(90,168,245,.22), 0 0 26px 4px rgba(90,168,245,.45), inset 0 0 18px rgba(90,168,245,.25);
+  border: 3px solid var(--brand-violet);
+  box-shadow: 0 0 0 4px rgba(167,105,222,.22), 0 0 26px 4px rgba(167,105,222,.45), inset 0 0 18px rgba(167,105,222,.25);
   transition: opacity 240ms ease 560ms, transform 380ms var(--m-spring) 560ms;
 }
 .ring--on { opacity: 1; transform: scale(1); animation: ring-pulse 1.6s ease-in-out 1s infinite, ink-fade 700ms ease 6.2s forwards; }
-@keyframes ring-pulse { 50% { box-shadow: 0 0 0 7px rgba(90,168,245,.12), 0 0 34px 8px rgba(90,168,245,.5), inset 0 0 18px rgba(90,168,245,.25); } }
+@keyframes ring-pulse { 50% { box-shadow: 0 0 0 7px rgba(167,105,222,.12), 0 0 34px 8px rgba(167,105,222,.5), inset 0 0 18px rgba(167,105,222,.25); } }
 .tag {
   position: absolute; padding: 4px 12px; border-radius: 10px; font-size: 19px; color: var(--ink);
-  background: var(--paper); box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 0 18px rgba(90,168,245,.35);
+  background: var(--paper); box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 0 18px rgba(167,105,222,.35);
   opacity: 0; transform: translateX(-8px) rotate(-1.5deg); transition: opacity 220ms ease 700ms, transform 320ms var(--m-spring) 700ms;
   white-space: nowrap;
 }

@@ -444,6 +444,16 @@ pub fn schedule_collapse(app: &AppHandle, after: Duration) {
     });
 }
 
+/// A queued sentence that won't be spoken (synthesis failed or was superseded).
+pub fn speech_failed(app: &AppHandle, id: &str) {
+    let st = app.state::<AppState>();
+    let all_done = st.session.speaking_ended(id);
+    emit(app, Event::new("speech.end", json!({ "id": id, "cancelled": true })));
+    if all_done && !st.session.busy() {
+        schedule_collapse(app, Duration::from_secs(7));
+    }
+}
+
 /// Route helper events (mic level, partial transcript, speech progress) to the UI.
 pub fn spawn_event_pump(app: AppHandle) {
     let mut rx = state(&app).helper.subscribe();

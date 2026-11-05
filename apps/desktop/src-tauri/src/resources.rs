@@ -84,6 +84,7 @@ pub fn load_store<R: Runtime>(app: &AppHandle<R>) -> (ResourceStore, PackSource)
 fn content_type(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
         "png" => "image/png",
+        "svg" => "image/svg+xml",
         "wav" => "audio/wav",
         "mp3" => "audio/mpeg",
         "mp4" => "video/mp4",

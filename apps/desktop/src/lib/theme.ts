@@ -1,7 +1,7 @@
 import { api, type Theme } from "./bridge";
 
 // Group → CSS var prefix. `colors.ink` → `--ink`, `draw.sky` → `--draw-sky`, `radius.md` → `--r-md`.
-const PREFIX: Record<string, string> = { colors: "", draw: "draw-", paper: "paper-", radius: "r-", motion: "m-" };
+const PREFIX: Record<string, string> = { colors: "", brand: "brand-", draw: "draw-", paper: "paper-", radius: "r-", motion: "m-" };
 
 /** Apply theme.json as CSS custom properties. styles.css carries the same defaults. */
 export function applyTheme(theme: Theme): void {

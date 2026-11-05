@@ -1,0 +1,40 @@
+{
+  "name": "OpenClicky",
+  "version": "2.0",
+  "symbols": [
+    ":)",
+    "OpenClicky"
+  ],
+  "colors": {
+    "ink": "#100C1B",
+    "plum": "#29162E",
+    "violet": "#A769DE",
+    "deepViolet": "#542482",
+    "pearl": "#FFF2E7",
+    "gold": "#FFCC8D",
+    "amber": "#FFAC70",
+    "rose": "#E4ABD9"
+  },
+  "gradients": {
+    "signature": [
+      "#A769DE",
+      "#E6ACD3",
+      "#FFCC8D"
+    ],
+    "darkTile": [
+      "#2E1E3F",
+      "#100C1B",
+      "#4D294C"
+    ]
+  },
+  "radii": {
+    "icon": "22%",
+    "pill": "full",
+    "cards": "20px"
+  },
+  "materials": [
+    "dark satin",
+    "pearlescent glass",
+    "champagne glow"
+  ]
+}

@@ -24,6 +24,7 @@ openclicky-tools.workspace = true
 openclicky-mcp.workspace = true
 openclicky-native-host.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-single-instance = "2"
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true

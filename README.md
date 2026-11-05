@@ -19,9 +19,31 @@ open target/release/bundle/macos/openclicky.app
 Development: `npm run dev` (Vite on :1420 + the app with hot reload).
 
 On first launch a welcome window walks through permissions (Microphone, Speech Recognition,
-Screen Recording, Accessibility) and the model key. macOS ties permissions to the app's
-signature; ad-hoc builds get a new one each build, so after rebuilding you may need to switch
-openclicky off and on again in System Settings → Privacy & Security.
+Screen Recording, Accessibility) and the model key. Screen Recording only applies to a fresh
+process: after switching it on, use **relaunch openclicky** in the window.
+
+macOS ties permissions to the app's signature. Default builds are ad-hoc signed, which changes
+every build, so after a rebuild remove the old openclicky rows in System Settings → Privacy &
+Security (the − button) and allow the new one. To keep permissions across rebuilds, create a
+local signing identity once and build with it:
+
+```bash
+sh scripts/create-signing-identity.sh
+APPLE_SIGNING_IDENTITY="openclicky Local Signing" npm run app:build
+```
+
+## The notch
+
+On a Mac with a notch, openclicky rests invisibly over it. **Hover the notch** to peek: Talk
+(click to talk, click Done), Type, Jobs and Settings, the jobs that are running or need you,
+and your last answer. Hold ⌃⌥ any time to talk; it opens on whichever screen you're using.
+
+## Voice
+
+Answers are spoken by **Kokoro**, a natural neural voice that runs offline (sherpa-onnx). Get it
+from Settings → Voice → Download natural voice (~350 MB, from the k2-fsa/sherpa-onnx GitHub
+releases, stored in `~/Library/Application Support/com.openclicky.app/voices`). Pick from eight
+voices and set the speed there; the system voice is the fallback.
 
 ## Using it
 
@@ -59,7 +81,9 @@ takes screenshots). See `.env.example` for model overrides.
 ## Media
 
 Every sound, icon, video and font is loaded by slot name from `resources/manifest.json`
-(see `resources/README.md`). `npm run assets:local -- --from DIR` builds a private local pack
+(see `resources/README.md`). The shipped icons, sounds, mic/system glyphs and brand colours come
+from the OpenClicky Design System v2 in `design/` (see its `reference.md` and
+`REPLACEMENT_MAP.csv`). `npm run assets:local -- --from DIR` builds a private local pack
 in Application Support that overrides the bundled media on this Mac only; never commit
 third-party media.
 
@@ -71,7 +95,6 @@ npm test               # cargo test --workspace
 npm run app:build      # .app + .dmg for this machine
 npm run app:build:universal   # needs: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run placeholders   # regenerate missing placeholder media (never overwrites)
-xcrun swift scripts/make-logo.swift   # re-render the :) icons
 ```
 
 UI preview without the app (mocked IPC): `npm run dev -w apps/desktop`, then open

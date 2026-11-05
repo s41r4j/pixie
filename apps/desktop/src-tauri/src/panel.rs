@@ -1,7 +1,8 @@
 //! The notch panel. A transparent window pinned to the top edge of the screen under the
 //! pointer, over the menu bar; the UI draws a black shape that grows out of the notch.
 //! Clicks pass through everywhere except the drawn shape (see `hit.rs`). Never steals focus,
-//! except in `Typing` mode where the user asked to type.
+//! except in `Typing` mode where the user asked to type. On a Mac with a notch the window rests
+//! there invisibly; hovering the notch opens `Peek` (quick actions, last answer, jobs).
 
 use crate::macos::{self, Rect};
 use crate::{emit, hit, AppState, PANEL};
@@ -34,6 +35,8 @@ pub enum PanelMode {
     Typing,
     /// A one-line notice (job finished, typed it…).
     Toast,
+    /// Hovering the resting notch: quick actions, last answer, jobs.
+    Peek,
 }
 
 #[derive(Debug, Default)]
@@ -61,7 +64,41 @@ pub fn screen(app: &AppHandle) -> macos::ScreenInfo {
     app.state::<AppState>().panel.lock().map(|p| p.screen).unwrap_or_default()
 }
 
-/// Set the mode; shows/hides the window and plays a sound on open/close.
+fn same_screen(a: &macos::ScreenInfo, b: &macos::ScreenInfo) -> bool {
+    a.frame == b.frame
+}
+
+/// Put the window at the top centre of `s`, over the menu bar / notch.
+fn place(handle: &AppHandle, win: &WebviewWindow, s: macos::ScreenInfo) {
+    let frame = Rect { x: s.frame.x + (s.frame.w - WIDTH) / 2.0, y: s.frame.y, w: WIDTH, h: HEIGHT };
+    macos::set_frame(win, frame);
+    handle.state::<AppState>().panel.lock().unwrap().screen = s;
+    hit::set_frame(handle, PANEL, frame);
+    emit(handle, Event::new("panel.screen", json!({ "screen": s })));
+}
+
+/// The screen with a camera notch, where the panel rests.
+fn notch_screen() -> Option<macos::ScreenInfo> {
+    macos::screens().into_iter().find(|s| s.notch_width.is_some())
+}
+
+/// Modes that come and go without a sound.
+fn quiet(m: PanelMode) -> bool {
+    matches!(m, PanelMode::Hidden | PanelMode::Peek | PanelMode::Toast)
+}
+
+/// At launch: rest invisibly over the notch so hovering it opens the peek.
+pub fn rest(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let (Some(win), Some(ns)) = (window(&handle), notch_screen()) else { return };
+        place(&handle, &win, ns);
+        macos::order_front_without_focus(&win);
+        hit::set_visible(&handle, PANEL, true);
+    });
+}
+
+/// Set the mode; places/shows the window and plays a sound on real open/close.
 pub fn set_mode(app: &AppHandle, next: PanelMode) {
     let state = app.state::<AppState>();
     let prev = {
@@ -75,16 +112,48 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
     let _ = app.run_on_main_thread(move || {
         let Some(win) = window(&handle) else { return };
         let st = handle.state::<AppState>();
-        if prev == PanelMode::Hidden {
-            let s = macos::screen_at_cursor();
-            let frame = Rect { x: s.frame.x + (s.frame.w - WIDTH) / 2.0, y: s.frame.y, w: WIDTH, h: HEIGHT };
-            macos::set_frame(&win, frame);
-            st.panel.lock().unwrap().screen = s;
-            hit::set_frame(&handle, PANEL, frame);
-            macos::order_front_without_focus(&win);
-            hit::set_visible(&handle, PANEL, true);
-            emit(&handle, Event::new("panel.screen", json!({ "screen": s })));
-            if next != PanelMode::Toast {
+        let current = st.panel.lock().unwrap().screen;
+        if next == PanelMode::Hidden {
+            st.session.set_hovered(false);
+            if !quiet(prev) {
+                st.play("agent-close");
+            }
+            // Let the collapse animation play, then rest over the notch (or leave the screen).
+            let h2 = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(340));
+                let h3 = h2.clone();
+                let _ = h2.run_on_main_thread(move || {
+                    if mode(&h3) != PanelMode::Hidden {
+                        return;
+                    }
+                    let Some(w) = window(&h3) else { return };
+                    match notch_screen() {
+                        Some(ns) => {
+                            let cur = h3.state::<AppState>().panel.lock().unwrap().screen;
+                            if !same_screen(&cur, &ns) {
+                                place(&h3, &w, ns);
+                            }
+                            hit::set_visible(&h3, PANEL, true);
+                        }
+                        None => {
+                            hit::set_visible(&h3, PANEL, false);
+                            macos::order_out(&w);
+                        }
+                    }
+                });
+            });
+        } else {
+            if prev == PanelMode::Hidden {
+                // Peek stays where it rests; everything else opens on the screen you're using.
+                let target = if next == PanelMode::Peek { current } else { macos::screen_at_cursor() };
+                if !same_screen(&current, &target) || current.frame.w == 0.0 {
+                    place(&handle, &win, target);
+                }
+                macos::order_front_without_focus(&win);
+                hit::set_visible(&handle, PANEL, true);
+            }
+            if quiet(prev) && !quiet(next) {
                 st.play("agent-launch");
             }
         }
@@ -93,26 +162,6 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
             let _ = win.set_focus();
         } else if prev == PanelMode::Typing {
             macos::deactivate();
-        }
-        if next == PanelMode::Hidden {
-            hit::set_visible(&handle, PANEL, false);
-            st.session.set_hovered(false);
-            if !matches!(prev, PanelMode::Toast) {
-                st.play("agent-close");
-            }
-            // Let the collapse animation play, then take the window off screen.
-            let h2 = handle.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(320));
-                let h3 = h2.clone();
-                let _ = h2.run_on_main_thread(move || {
-                    if mode(&h3) == PanelMode::Hidden {
-                        if let Some(w) = window(&h3) {
-                            macos::order_out(&w);
-                        }
-                    }
-                });
-            });
         }
     });
     emit(app, Event::new("panel.state", json!({ "mode": next, "prev": prev })));

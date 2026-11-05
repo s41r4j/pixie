@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, onEvent, type Job } from "../lib/bridge";
 import { useHitRects } from "../lib/hits";
-import { Mark } from "../components/Mark";
+import { Smile } from "../components/Mark";
 
 export function PlanBoxes({ job }: { job: Job }) {
   if (!job.plan.length) return null;
@@ -136,7 +136,7 @@ export function Shelf() {
   return (
     <div className="shelf" onMouseLeave={() => setOpen(false)}>
       <div ref={pill} className={`jobpill ${running ? "jobpill--busy" : ""} ${needs ? "jobpill--needs" : ""}`} onMouseEnter={() => setOpen(true)} onClick={() => setOpen(!open)}>
-        <Mark size={30} live={running > 0} />
+        <Smile size={22} live={running > 0} />
         {(running > 0 || needs > 0) && <span className="jobpill__badge">{needs || running}</span>}
       </div>
       <div ref={stack} className="stack">

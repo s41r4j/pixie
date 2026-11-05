@@ -50,7 +50,41 @@ fn build_helper() {
     }
 }
 
+/// The local neural voice server (`../voice/openclicky-voice.c`), loads sherpa-onnx at runtime.
+fn build_voice() {
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src = manifest.join("../voice/openclicky-voice.c");
+    let header = manifest.join("../voice/vendor/sherpa-onnx-c-api.h");
+    println!("cargo:rerun-if-changed={}", src.display());
+    let target = std::env::var("TARGET").unwrap();
+    let bin_dir = manifest.join("binaries");
+    let out = bin_dir.join(format!("openclicky-voice-{target}"));
+    if !target.contains("apple-darwin") {
+        if !out.exists() {
+            std::fs::write(&out, b"").unwrap();
+        }
+        return;
+    }
+    let arch = if target.starts_with("aarch64") { "arm64" } else { "x86_64" };
+    if newer(&[&src, &header], &out) {
+        let status = Command::new("xcrun")
+            .args(["clang", "-O2", "-arch", arch, "-mmacosx-version-min=14.0", "-o"])
+            .arg(&out)
+            .arg(&src)
+            .status()
+            .expect("run xcrun clang");
+        assert!(status.success(), "building openclicky-voice failed");
+    }
+    let arm = bin_dir.join("openclicky-voice-aarch64-apple-darwin");
+    let x86 = bin_dir.join("openclicky-voice-x86_64-apple-darwin");
+    let uni = bin_dir.join("openclicky-voice-universal-apple-darwin");
+    if arm.exists() && x86.exists() && newer(&[&arm, &x86], &uni) {
+        let _ = Command::new("lipo").arg("-create").arg(&arm).arg(&x86).arg("-output").arg(&uni).status();
+    }
+}
+
 fn main() {
     build_helper();
+    build_voice();
     tauri_build::build()
 }

@@ -164,6 +164,20 @@ impl Helper {
     }
 }
 
+/// Kill the helper once so the supervisor starts a fresh one (picks up new permissions).
+pub fn restart(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if DONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let st = app.state::<crate::AppState>();
+    let mut guard = st.helper.child.lock().unwrap();
+    if let Some(c) = guard.as_mut() {
+        let _ = c.kill();
+    }
+}
+
 impl Drop for Helper {
     fn drop(&mut self) {
         if let Some(mut c) = self.child.lock().unwrap().take() {

@@ -121,11 +121,58 @@ fn open_settings(id: PermId) {
     }
 }
 
+/// Screen Recording as a fresh process sees it. `CGPreflightScreenCaptureAccess` in this
+/// process is cached from launch, so a grant made in System Settings shows up here first.
+fn screen_check_fresh() -> bool {
+    let Some(helper) = crate::helper::locate() else { return false };
+    let Ok(mut child) = std::process::Command::new(helper)
+        .arg("screen-check")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(5) {
+        if let Ok(Some(status)) = child.try_wait() {
+            return status.success();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(60));
+    }
+    let _ = child.kill();
+    false
+}
+
 #[tauri::command]
-pub async fn permissions_status() -> Vec<PermissionInfo> {
-    tauri::async_runtime::spawn_blocking(|| PermId::ALL.into_iter().map(info).collect())
+pub async fn permissions_status(app: tauri::AppHandle) -> Vec<PermissionInfo> {
+    let list: Vec<PermissionInfo> = tauri::async_runtime::spawn_blocking(|| PermId::ALL.into_iter().map(info).collect())
         .await
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let screen_missing = list.iter().any(|p| p.id == "screen" && p.state != PermState::Granted);
+    if !screen_missing {
+        return list;
+    }
+    let fresh = tauri::async_runtime::spawn_blocking(screen_check_fresh).await.unwrap_or(false);
+    if !fresh {
+        return list;
+    }
+    // Granted since launch: restart the helper so capture picks it up, and say so.
+    crate::helper::restart(&app);
+    list.into_iter()
+        .map(|mut p| {
+            if p.id == "screen" {
+                p.state = PermState::Granted;
+            }
+            p
+        })
+        .collect()
+}
+
+/// Quit and reopen openclicky (some grants only apply to a fresh process).
+#[tauri::command]
+pub fn relaunch(app: tauri::AppHandle) {
+    app.restart();
 }
 
 /// Ask for a permission. Shows the system prompt when macOS still allows one; otherwise

@@ -46,6 +46,27 @@ pub fn panel_hover(state: State<'_, AppState>, hovered: bool) {
     state.session.set_hovered(hovered);
 }
 
+/// Hovering the resting notch opens the peek; leaving closes it.
+#[tauri::command]
+pub fn panel_peek(app: AppHandle, on: bool) {
+    match (on, panel::mode(&app)) {
+        (true, PanelMode::Hidden) => panel::set_mode(&app, PanelMode::Peek),
+        (false, PanelMode::Peek) => panel::set_mode(&app, PanelMode::Hidden),
+        _ => {}
+    }
+}
+
+/// Click-to-talk from the peek (same as holding ⌃⌥).
+#[tauri::command]
+pub fn talk_start(app: AppHandle) {
+    session::talk_down(&app);
+}
+
+#[tauri::command]
+pub fn talk_stop(app: AppHandle) {
+    session::talk_up(&app, false, true);
+}
+
 /// Open the text box (the panel becomes key so it can take typing).
 #[tauri::command]
 pub fn panel_type(app: AppHandle) {
@@ -257,6 +278,16 @@ pub async fn voices(app: AppHandle) -> Result<Value, String> {
 pub fn voice_test(app: AppHandle, text: Option<String>) {
     let line = text.unwrap_or_else(|| "Hi! Hold control and option, and ask me anything about your screen.".into());
     crate::speech::speak(&app, "test", &line);
+}
+
+#[tauri::command]
+pub fn voice_status(app: AppHandle) -> crate::kokoro::Status {
+    crate::kokoro::status(&app)
+}
+
+#[tauri::command]
+pub fn voice_install(app: AppHandle) -> Result<(), String> {
+    crate::kokoro::install(app)
 }
 
 #[tauri::command]

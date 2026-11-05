@@ -141,7 +141,8 @@
     },
     "eraser-bed": {
       "files": [
-        "sounds/eraser-bed-1.wav"
+        "sounds/eraser-bed-1.wav",
+        "sounds/eraser-bed-2.wav"
       ],
       "gain": 0.5,
       "category": "ambient",
@@ -295,6 +296,66 @@
       ],
       "gain": 1,
       "category": "ui"
+    },
+    "button-appear": {
+      "files": [
+        "sounds/button-appear-1.wav",
+        "sounds/button-appear-2.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "connection-question": {
+      "files": [
+        "sounds/connection-question.wav"
+      ],
+      "gain": 0.9,
+      "category": "agent"
+    },
+    "copy-tick": {
+      "files": [
+        "sounds/copy-tick-1.wav",
+        "sounds/copy-tick-2.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "eshop": {
+      "files": [
+        "sounds/eshop.mp3"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "skill-up": {
+      "files": [
+        "sounds/skill-up.wav"
+      ],
+      "gain": 0.9,
+      "category": "agent"
+    },
+    "skill-down": {
+      "files": [
+        "sounds/skill-down.wav"
+      ],
+      "gain": 0.9,
+      "category": "agent"
+    },
+    "tapback": {
+      "files": [
+        "sounds/tapback-thumbs-up.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
+    },
+    "tape": {
+      "files": [
+        "sounds/tape-1.wav",
+        "sounds/tape-2.wav",
+        "sounds/tape-3.wav"
+      ],
+      "gain": 0.8,
+      "category": "ui"
     }
   },
   "icons": {
@@ -327,6 +388,181 @@
       "files": [
         "icons/ext-128.png"
       ]
+    },
+    "mic-idle": {
+      "files": [
+        "icons/mic/mic-idle.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "mic-listening": {
+      "files": [
+        "icons/mic/mic-listening.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "mic-muted": {
+      "files": [
+        "icons/mic/mic-muted.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "mic-processing": {
+      "files": [
+        "icons/mic/mic-processing.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-bolt": {
+      "files": [
+        "icons/system/bolt.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-chat": {
+      "files": [
+        "icons/system/chat.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-code": {
+      "files": [
+        "icons/system/code.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-cube": {
+      "files": [
+        "icons/system/cube.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-cursor": {
+      "files": [
+        "icons/system/cursor.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-focus": {
+      "files": [
+        "icons/system/focus.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-grid": {
+      "files": [
+        "icons/system/grid.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-layers": {
+      "files": [
+        "icons/system/layers.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-mic-off": {
+      "files": [
+        "icons/system/mic-off.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-microphone": {
+      "files": [
+        "icons/system/microphone.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-refresh": {
+      "files": [
+        "icons/system/refresh.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-settings": {
+      "files": [
+        "icons/system/settings.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-sliders": {
+      "files": [
+        "icons/system/sliders.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-sparkle": {
+      "files": [
+        "icons/system/sparkle.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "system-waveform": {
+      "files": [
+        "icons/system/waveform.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-smile-dark": {
+      "files": [
+        "icons/brand/smile-dark.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-smile-ivory": {
+      "files": [
+        "icons/brand/smile-ivory.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-smile-white": {
+      "files": [
+        "icons/brand/smile-white.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-wordmark-dark": {
+      "files": [
+        "icons/brand/wordmark-dark.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-wordmark-light": {
+      "files": [
+        "icons/brand/wordmark-light.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "listening-pill": {
+      "files": [
+        "icons/listening-pill.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
     }
   },
   "videos": {

@@ -1,7 +1,7 @@
 // Settings + first-run welcome: permissions, the model key, voice, sounds, connectors.
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, onEvent, type PermissionInfo, type PermState, type ResourcesReport, type SettingsView, type Voice } from "../lib/bridge";
+import { api, onEvent, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
 import { Mark, Wordmark } from "../components/Mark";
 
 type Tab = "welcome" | "setup" | "ai" | "voice" | "sounds" | "connectors" | "about";
@@ -27,7 +27,15 @@ function PermRow({ p, onChange }: { p: PermissionInfo; onChange: () => void }) {
           {!p.required && <span className="row__opt">optional</span>}
         </div>
         <div className="row__why">{p.why}</div>
-        {p.restart_hint && !granted && <div className="row__hint">After you switch it on, quit and reopen openclicky.</div>}
+        {p.restart_hint && !granted && (
+          <div className="row__hint">
+            Switch openclicky on in System Settings, then{" "}
+            <button className="btn btn--link btn--inline" onClick={() => api.relaunch()}>
+              relaunch openclicky
+            </button>
+            .
+          </div>
+        )}
       </div>
       <div className="row__side">
         <span className={`pill pill--${pill.tone}`}>{pill.text}</span>
@@ -157,51 +165,109 @@ function AiPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: Se
 function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [def, setDef] = useState("");
+  const [vs, setVs] = useState<Awaited<ReturnType<typeof api.voiceStatus>> | null>(null);
+  const [installMsg, setInstallMsg] = useState("");
   useEffect(() => {
     api.voices().then((v) => {
       setVoices(v.voices);
       setDef(v.default);
     }).catch(() => {});
+    const load = () => api.voiceStatus().then(setVs).catch(() => {});
+    load();
+    const t = setInterval(load, 2500);
+    const un = onEvent((e) => {
+      if (e.kind !== "voice.install") return;
+      const step = e.payload.step;
+      setInstallMsg(step === "runtime" ? "Downloading the voice engine…" : step === "kokoro" ? "Downloading the voice (about 330 MB)…" : step === "done" ? "Ready." : `Couldn't download: ${e.payload.error}`);
+      load();
+    });
+    return () => {
+      clearInterval(t);
+      un.then((f) => f());
+    };
   }, []);
   const s = view?.settings;
+  const natural = (s?.voice_engine ?? "kokoro") !== "apple";
   const lang = navigator.language.slice(0, 2);
   const mine = voices.filter((v) => v.language.startsWith(lang));
   const sorted = [...mine].sort((a, b) => ({ premium: 0, enhanced: 1, default: 2 })[a.quality] - ({ premium: 0, enhanced: 1, default: 2 })[b.quality]);
+  const save = (patch: Partial<SettingsT>) => api.setSettings(patch).then(onSaved);
   return (
     <div className="stack-gap">
       <label className="toggle">
-        <input type="checkbox" checked={s?.speak_answers ?? true} onChange={(e) => api.setSettings({ speak_answers: e.target.checked }).then(onSaved)} />
+        <input type="checkbox" checked={s?.speak_answers ?? true} onChange={(e) => save({ speak_answers: e.target.checked })} />
         <span>Speak answers out loud</span>
       </label>
-      <label className="field">
-        <span>Voice</span>
-        <select value={s?.voice_id || ""} onChange={(e) => api.setSettings({ voice_id: e.target.value }).then(onSaved)}>
-          <option value="">Best available ({voices.find((v) => v.id === def)?.name ?? "system"})</option>
-          {sorted.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name} · {v.language}
-              {v.quality !== "default" ? ` · ${v.quality}` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>Speed</span>
-        <input type="range" min={0.4} max={0.65} step={0.01} value={s?.speech_rate ?? 0.52} onChange={(e) => api.setSettings({ speech_rate: parseFloat(e.target.value) }).then(onSaved)} />
-      </label>
+      <div className="seg-control">
+        <button className={natural ? "is-on" : ""} onClick={() => save({ voice_engine: "kokoro" })}>
+          Natural (Kokoro, on this Mac)
+        </button>
+        <button className={!natural ? "is-on" : ""} onClick={() => save({ voice_engine: "apple" })}>
+          System voice
+        </button>
+      </div>
+      {natural && vs && !vs.installed && (
+        <div className="banner banner--warn">
+          The natural voice isn't downloaded yet (about 350 MB, runs offline).
+          <div className="row-actions" style={{ marginTop: 8 }}>
+            <button className="btn btn--primary" disabled={vs.installing} onClick={() => api.voiceInstall().catch((e) => setInstallMsg(String(e)))}>
+              {vs.installing ? "Downloading…" : "Download natural voice"}
+            </button>
+            {installMsg && <span className="muted small">{installMsg}</span>}
+          </div>
+        </div>
+      )}
+      {natural && vs?.installed && (
+        <>
+          <div className={`banner ${vs.ready ? "banner--ok" : "banner--muted"}`}>{vs.ready ? "Natural voice is ready." : "Natural voice is starting…"}</div>
+          <div className="voices">
+            {vs.voices.map((v) => (
+              <button
+                key={v.id}
+                className={`voice ${s?.kokoro_voice === v.id ? "is-on" : ""}`}
+                onClick={() => save({ kokoro_voice: v.id }).then(() => api.voiceTest(`Hi, I'm ${v.name}. I'll be right up here in your notch.`))}
+              >
+                <b>{v.name}</b>
+                <span>{v.description}</span>
+              </button>
+            ))}
+          </div>
+          <label className="field">
+            <span>Speed · {(s?.voice_speed ?? 1).toFixed(2)}×</span>
+            <input type="range" min={0.8} max={1.3} step={0.05} value={s?.voice_speed ?? 1} onChange={(e) => save({ voice_speed: parseFloat(e.target.value) })} />
+          </label>
+        </>
+      )}
+      {!natural && (
+        <>
+          <label className="field">
+            <span>Voice</span>
+            <select value={s?.voice_id || ""} onChange={(e) => save({ voice_id: e.target.value })}>
+              <option value="">Best available ({voices.find((v) => v.id === def)?.name ?? "system"})</option>
+              {sorted.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} · {v.language}
+                  {v.quality !== "default" ? ` · ${v.quality}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Speed</span>
+            <input type="range" min={0.4} max={0.65} step={0.01} value={s?.speech_rate ?? 0.52} onChange={(e) => save({ speech_rate: parseFloat(e.target.value) })} />
+          </label>
+        </>
+      )}
       <div className="row-actions">
         <button className="btn btn--primary" onClick={() => api.voiceTest()}>Hear it</button>
       </div>
-      <p className="muted small">
-        For a warmer voice, download a Premium or Enhanced voice in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices. It shows up here.
-      </p>
       <label className="field">
         <span>Speech recognition language</span>
-        <input placeholder={navigator.language} value={s?.locale ?? ""} onChange={(e) => api.setSettings({ locale: e.target.value }).then(onSaved)} />
+        <input placeholder={navigator.language} value={s?.locale ?? ""} onChange={(e) => save({ locale: e.target.value })} />
       </label>
       <label className="field">
         <span>What should I call you?</span>
-        <input placeholder="Your name" value={s?.user_name ?? ""} onChange={(e) => api.setSettings({ user_name: e.target.value }).then(onSaved)} />
+        <input placeholder="Your name" value={s?.user_name ?? ""} onChange={(e) => save({ user_name: e.target.value })} />
       </label>
     </div>
   );
@@ -396,7 +462,7 @@ export function Settings() {
       <nav className="settings__nav" data-tauri-drag-region>
         <div className="settings__brand" data-tauri-drag-region>
           <Mark size={28} />
-          <Wordmark />
+          <span className="wordmark">openclicky</span>
         </div>
         {TABS.map((t) => (
           <button key={t.id} className={`navbtn ${tab === t.id ? "is-on" : ""}`} onClick={() => setTab(t.id)}>

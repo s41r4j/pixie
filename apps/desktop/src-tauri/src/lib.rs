@@ -10,6 +10,7 @@ mod hit;
 mod host;
 mod hotkey;
 mod jobs;
+mod kokoro;
 #[cfg(target_os = "macos")]
 mod macos;
 mod overlay;
@@ -120,6 +121,10 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let app = tauri::Builder::default()
+        // One openclicky at a time: a second launch just opens Settings in the first one.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            windows::open_settings(app, "");
+        }))
         .register_uri_scheme_protocol("slot", resources::slot_protocol)
         .invoke_handler(tauri::generate_handler![
             commands::panel_mode,
@@ -128,6 +133,9 @@ pub fn run() {
             commands::hit_rects,
             commands::panel_hover,
             commands::panel_type,
+            commands::panel_peek,
+            commands::talk_start,
+            commands::talk_stop,
             commands::ask,
             commands::session_note,
             commands::play_sound,
@@ -152,9 +160,12 @@ pub fn run() {
             commands::voice_test,
             commands::onboarding_done,
             commands::status,
+            commands::voice_status,
+            commands::voice_install,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
+            permissions::relaunch,
         ])
         .setup(|app| {
             // Menu-bar agent: no Dock icon (LSUIElement is also set in Info.plist for bundles).
@@ -201,6 +212,7 @@ pub fn run() {
             app.manage(state);
 
             panel::configure(app.handle());
+            panel::rest(app.handle());
             overlay::configure(app.handle());
             shelf::configure(app.handle());
             tray::create(app.handle())?;
@@ -208,6 +220,7 @@ pub fn run() {
             session::spawn_event_pump(app.handle().clone());
             connectors::start(app.handle().clone());
             browser::start(app.handle().clone());
+            kokoro::start(app.handle().clone());
             shelf::refresh(app.handle());
 
             if !settings.onboarded || !permissions::required_granted() {

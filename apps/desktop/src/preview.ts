@@ -83,7 +83,7 @@ export function installPreview() {
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "", provider: "", voice_id: "", speech_rate: 0.52, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "DeepSeek · deepseek-flash", key_hint: "sk-1••••abcd" };
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "", provider: "", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "" }, provider: "DeepSeek · deepseek-flash", key_hint: "sk-1••••abcd" };
         case "permissions_status": return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
@@ -93,6 +93,7 @@ export function installPreview() {
         ];
         case "voices": return { voices: [{ id: "ava", name: "Ava", language: "en-US", quality: "premium" }, { id: "sam", name: "Samantha", language: "en-US", quality: "default" }], default: "ava" };
         case "status": return { helper: true, provider: "DeepSeek · deepseek-flash", browser: false, connectors: [], data_dir: "/Users/me/Library/Application Support/com.openclicky.app", version: "0.2.0" };
+        case "voice_status": return { installed: true, ready: true, installing: false, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
         case "resources_report": return { root: "", pack: "local", sounds: 37, missing: [] };
         default: return null;
       }

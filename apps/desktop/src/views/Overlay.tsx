@@ -181,9 +181,9 @@ export function Overlay() {
               <defs>
                 <radialGradient id="gel" cx="35%" cy="30%" r="80%">
                   <stop offset="0" stopColor="#fff" />
-                  <stop offset="0.25" stopColor="var(--focus)" />
-                  <stop offset="0.6" stopColor="var(--draw-sky)" />
-                  <stop offset="1" stopColor="var(--gel-rim)" />
+                  <stop offset="0.25" stopColor="var(--brand-gold)" />
+                  <stop offset="0.6" stopColor="var(--brand-rose)" />
+                  <stop offset="1" stopColor="var(--brand-violet)" />
                 </radialGradient>
               </defs>
               <path d="M3 2 L29 14 L17 17 L12 30 Z" fill="url(#gel)" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />

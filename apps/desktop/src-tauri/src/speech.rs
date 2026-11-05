@@ -103,20 +103,20 @@ impl SpeechStream {
     }
 }
 
-/// Queue a line on the synthesizer and track it until `speak_end`.
+/// Queue a line: the natural local voice when it's installed, else the system voice.
 pub fn speak(app: &AppHandle, id: &str, text: &str) {
     let state = app.state::<AppState>();
-    let (voice, rate) = state
-        .settings
-        .lock()
-        .map(|s| (s.voice_id.clone(), s.speech_rate))
-        .unwrap_or_default();
+    let s = state.settings.lock().map(|s| s.clone()).unwrap_or_default();
     state.session.speaking_started(id);
-    state.helper.send("speak", json!({ "text": text, "utterance": id, "voice": voice, "rate": rate }));
+    if s.voice_engine != "apple" && crate::kokoro::speak(app, id, text, s.kokoro_voice, s.voice_speed) {
+        return;
+    }
+    state.helper.send("speak", json!({ "text": text, "utterance": id, "voice": s.voice_id, "rate": s.speech_rate }));
 }
 
 pub fn stop(app: &AppHandle) {
     let state = app.state::<AppState>();
+    crate::kokoro::stop();
     state.helper.send("speak_stop", json!({}));
     state.session.speaking_cleared();
 }

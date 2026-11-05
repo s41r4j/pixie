@@ -663,10 +663,81 @@ final class PDFMaker: NSObject, WKNavigationDelegate {
     }
 }
 
+// MARK: - playing synthesized speech (Kokoro wavs)
+
+final class Player: NSObject, AVAudioPlayerDelegate {
+    private struct Item { let id: String; let url: URL; let text: String }
+    private var queue: [Item] = []
+    private var current: AVAudioPlayer?
+    private var currentItem: Item?
+    private var words: [DispatchWorkItem] = []
+
+    func enqueue(id: String, path: String, text: String) {
+        queue.append(Item(id: id, url: URL(fileURLWithPath: path), text: text))
+        if current == nil { next() }
+    }
+
+    private func next() {
+        guard !queue.isEmpty else { current = nil; currentItem = nil; return }
+        let item = queue.removeFirst()
+        guard let p = try? AVAudioPlayer(contentsOf: item.url) else {
+            emit("speak_end", ["id": item.id, "cancelled": true])
+            next()
+            return
+        }
+        p.delegate = self
+        p.prepareToPlay()
+        current = p
+        currentItem = item
+        p.play()
+        emit("speak_start", ["id": item.id])
+        scheduleWords(item, duration: p.duration)
+    }
+
+    /// Light up words in step with the audio: time is shared out by word length.
+    private func scheduleWords(_ item: Item, duration: TimeInterval) {
+        let ns = item.text as NSString
+        var ranges: [NSRange] = []
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: .byWords) { _, r, _, _ in ranges.append(r) }
+        let total = max(1, ranges.reduce(0) { $0 + $1.length + 1 })
+        var t = 0.06
+        let usable = max(0.2, duration - 0.15)
+        for r in ranges {
+            let w = DispatchWorkItem { emit("speak_word", ["id": item.id, "at": r.location, "len": r.length]) }
+            words.append(w)
+            DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: w)
+            t += usable * Double(r.length + 1) / Double(total)
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if let item = currentItem {
+            emit("speak_end", ["id": item.id, "cancelled": false])
+            try? FileManager.default.removeItem(at: item.url)
+        }
+        words.removeAll()
+        next()
+    }
+
+    func stop() {
+        words.forEach { $0.cancel() }
+        words.removeAll()
+        current?.stop()
+        if let item = currentItem { emit("speak_end", ["id": item.id, "cancelled": true]) }
+        for item in queue { emit("speak_end", ["id": item.id, "cancelled": true]) }
+        queue.removeAll()
+        current = nil
+        currentItem = nil
+    }
+
+    var playing: Bool { current != nil }
+}
+
 // MARK: - dispatcher
 
 let listener = Listener()
 let speaker = Speaker()
+let player = Player()
 var keep: [AnyObject] = []
 
 func str(_ a: [String: Any], _ k: String) -> String? { a[k] as? String }
@@ -694,6 +765,10 @@ func handle(_ line: String) {
             reply(id)
         case "speak_stop":
             speaker.stop()
+            player.stop()
+            reply(id)
+        case "play":
+            player.enqueue(id: str(args, "utterance") ?? "", path: str(args, "path") ?? "", text: str(args, "text") ?? "")
             reply(id)
         case "voices":
             let lang = Locale.preferredLanguages.first ?? "en-US"
@@ -808,6 +883,13 @@ if argv.count >= 4 && argv[1] == "pdf" {
     }
     FileHandle.standardError.write("unsupported file\n".data(using: .utf8)!)
     exit(1)
+} else if argv.count >= 2 && argv[1] == "screen-check" {
+    // A fresh process sees the current Screen Recording grant (the app's own check is cached).
+    SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
+        exit(content != nil && error == nil ? 0 : 1)
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { exit(2) }
+    app.run()
 } else if argv.count >= 2 && argv[1] == "voices" {
     for v in Speaker.list() { print("\(v["quality"]!)\t\(v["language"]!)\t\(v["name"]!)\t\(v["id"]!)") }
     exit(0)

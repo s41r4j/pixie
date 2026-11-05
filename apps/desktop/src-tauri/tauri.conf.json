@@ -100,10 +100,12 @@
     "macOS": {
       "minimumSystemVersion": "14.0",
       "entitlements": "entitlements.plist",
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "signingIdentity": "-"
     },
     "externalBin": [
-      "binaries/openclicky-helper"
+      "binaries/openclicky-helper",
+      "binaries/openclicky-voice"
     ]
   }
 }
