@@ -1,6 +1,6 @@
 //! Tool implementations. Every path from the model passes `guard::check_path` first.
 
-use crate::{guard, notes, web, ToolCtx, ToolOutput};
+use crate::{guard, notes, portable, web, ToolCtx, ToolOutput};
 use base64::Engine;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -57,9 +57,12 @@ fn path_env(ctx: &ToolCtx) -> String {
     if let Some(dir) = ctx.helper.as_ref().and_then(|h| h.parent()) {
         parts.push(dir.display().to_string());
     }
-    parts.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(String::from));
-    parts.push(std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin:/usr/sbin:/sbin".into()));
-    parts.join(":")
+    if cfg!(target_os = "macos") {
+        parts.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(String::from));
+    }
+    let base = std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin:/usr/sbin:/sbin".into());
+    let all = parts.into_iter().map(PathBuf::from).chain(std::env::split_paths(&base));
+    std::env::join_paths(all).map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
 }
 
 async fn run_process(mut cmd: Command, timeout: Duration, ctx: &ToolCtx) -> Result<(i32, String), String> {
@@ -93,8 +96,8 @@ async fn bash(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     }
     let timeout = input.get("timeout").and_then(Value::as_u64).unwrap_or(BASH_TIMEOUT).clamp(1, 1800);
     let _ = std::fs::create_dir_all(&ctx.cwd);
-    let mut cmd = Command::new("/bin/bash");
-    cmd.arg("-c").arg(command).current_dir(&ctx.cwd).env("PATH", path_env(ctx)).env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+    let mut cmd = portable::shell(command);
+    cmd.current_dir(&ctx.cwd).env("PATH", path_env(ctx)).env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
     if let Some(h) = &ctx.helper {
         cmd.env("OPENCLICKY_HELPER", h);
     }
@@ -195,14 +198,20 @@ async fn grep(ctx: &ToolCtx, input: &Value) -> ToolOutput {
             Err(e) => return ToolOutput::err(e),
         },
     };
-    let mut cmd = Command::new("/usr/bin/grep");
-    cmd.args(["-rnEI", "--exclude-dir=node_modules", "--exclude-dir=.git", "-m", "50"]);
     let glob = s(input, "glob");
-    if !glob.is_empty() {
-        cmd.arg(format!("--include={glob}"));
-    }
-    cmd.arg("-e").arg(pattern).arg(&path);
-    match run_process(cmd, Duration::from_secs(60), ctx).await {
+    let found = if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("/usr/bin/grep");
+        cmd.args(["-rnEI", "--exclude-dir=node_modules", "--exclude-dir=.git", "-m", "50"]);
+        if !glob.is_empty() {
+            cmd.arg(format!("--include={glob}"));
+        }
+        cmd.arg("-e").arg(pattern).arg(&path);
+        run_process(cmd, Duration::from_secs(60), ctx).await
+    } else {
+        let (pattern, glob, path) = (pattern.to_string(), glob.to_string(), path.clone());
+        tokio::task::spawn_blocking(move || portable::grep(&pattern, &path, &glob).map(|o| (0, o))).await.map_err(|e| e.to_string()).and_then(|r| r)
+    };
+    match found {
         Ok((_, out)) => {
             let lines: Vec<&str> = out.lines().filter(|l| guard::check_path(Path::new(l.split(':').next().unwrap_or(""))).is_ok()).take(200).collect();
             if lines.is_empty() { ToolOutput::ok("No matches.") } else { ToolOutput::ok(cap(lines.join("\n"), OUTPUT_CAP)) }
@@ -211,7 +220,7 @@ async fn grep(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     }
 }
 
-fn glob_match(pattern: &str, name: &str) -> bool {
+pub(crate) fn glob_match(pattern: &str, name: &str) -> bool {
     // `*` only, case-insensitive.
     let p = pattern.to_lowercase();
     let n = name.to_lowercase();
@@ -271,9 +280,17 @@ async fn image_payload(ctx: &ToolCtx, path: &Path) -> Result<(String, String), S
         let tmp = ctx.cwd.join("tmp");
         let _ = std::fs::create_dir_all(&tmp);
         let out = tmp.join(format!("view-{}.jpg", std::process::id() as u64 ^ size));
-        let mut cmd = Command::new("/usr/bin/sips");
-        cmd.args(["-s", "format", "jpeg", "-Z", "1568"]).arg(path).arg("--out").arg(&out);
-        run_process(cmd, Duration::from_secs(30), ctx).await?;
+        #[cfg(target_os = "macos")]
+        {
+            let mut cmd = Command::new("/usr/bin/sips");
+            cmd.args(["-s", "format", "jpeg", "-Z", "1568"]).arg(path).arg("--out").arg(&out);
+            run_process(cmd, Duration::from_secs(30), ctx).await?;
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let (src, dst) = (path.to_path_buf(), out.clone());
+            tokio::task::spawn_blocking(move || portable::to_jpeg(&src, &dst, 1568)).await.map_err(|e| e.to_string())??;
+        }
         if !out.exists() {
             return Err(format!("Couldn't turn {} into an image.", path.display()));
         }
@@ -367,7 +384,7 @@ async fn doc_text(ctx: &ToolCtx, path: &Path) -> Result<String, String> {
             }
         }
     }
-    if matches!(ext.as_str(), "doc" | "docx" | "rtf" | "rtfd" | "odt" | "html" | "webarchive") {
+    if cfg!(target_os = "macos") && matches!(ext.as_str(), "doc" | "docx" | "rtf" | "rtfd" | "odt" | "html" | "webarchive") {
         let mut cmd = Command::new("/usr/bin/textutil");
         cmd.args(["-convert", "txt", "-stdout"]).arg(path);
         if let Ok((0, out)) = run_process(cmd, Duration::from_secs(60), ctx).await {
@@ -444,7 +461,8 @@ async fn device_find_files(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     if let Some(f) = &folder {
         cmd.arg("-onlyin").arg(f);
     }
-    let mut hits: Vec<String> = match run_process(cmd, Duration::from_secs(20), ctx).await {
+    let spotlight = if cfg!(target_os = "macos") { run_process(cmd, Duration::from_secs(20), ctx).await } else { Err(String::new()) };
+    let mut hits: Vec<String> = match spotlight {
         Ok((_, out)) => out
             .lines()
             .filter(|l| l.starts_with('/'))
@@ -527,7 +545,9 @@ async fn device_save_file(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     }
     // Never overwrite (enforced here, not in the prompt).
     let dest = guard::unique_destination(&dest);
-    let r = if source.is_dir() {
+    let r = if source.is_dir() && !cfg!(target_os = "macos") {
+        portable::copy_dir(&source, &dest).map_err(|e| e.to_string())
+    } else if source.is_dir() {
         let mut cmd = Command::new("/bin/cp");
         cmd.arg("-R").arg(&source).arg(&dest);
         run_process(cmd, Duration::from_secs(120), ctx).await.and_then(|(c, o)| if c == 0 { Ok(()) } else { Err(o) })
@@ -546,20 +566,19 @@ async fn device_open(ctx: &ToolCtx, input: &Value) -> ToolOutput {
         return ToolOutput::err("Nothing to open.");
     }
     let is_url = target.contains("://") || target.starts_with("mailto:");
-    let mut cmd = Command::new("/usr/bin/open");
-    if is_url {
-        cmd.arg(&target);
+    let cmd = if is_url {
+        portable::open(&target, false)
     } else {
         let p = match resolve(ctx, &target) {
             Ok(p) => p,
             Err(e) => return ToolOutput::err(e),
         };
         if p.exists() {
-            cmd.arg(&p);
+            portable::open(&p.to_string_lossy(), false)
         } else {
-            cmd.arg("-a").arg(&target);
+            portable::open(&target, true)
         }
-    }
+    };
     match run_process(cmd, Duration::from_secs(20), ctx).await {
         Ok((0, _)) => ToolOutput::ok(format!("Opened {target}.")),
         Ok((_, out)) => ToolOutput::err(format!("Couldn't open {target}: {}", out.trim())),

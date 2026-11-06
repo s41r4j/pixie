@@ -47,6 +47,13 @@ impl Helper {
             next: AtomicU64::new(1),
             events,
         });
+        // Windows / Linux: the same commands are answered in-process (src/native).
+        #[cfg(not(target_os = "macos"))]
+        {
+            crate::native::start(h.events.clone());
+            return h;
+        }
+        #[allow(unreachable_code)]
         match &h.path {
             Some(p) => log::info!("helper: {}", p.display()),
             None => log::error!("helper: openclicky-helper not found next to the app; voice and screen are off"),
@@ -111,7 +118,7 @@ impl Helper {
     }
 
     pub fn available(&self) -> bool {
-        self.path.is_some()
+        cfg!(not(target_os = "macos")) || self.path.is_some()
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<(String, Value)> {
@@ -120,6 +127,11 @@ impl Helper {
 
     /// Fire a command and await its reply.
     pub async fn call(&self, cmd: &str, args: Value, timeout: Duration) -> Result<Value, String> {
+        #[cfg(not(target_os = "macos"))]
+        {
+            return crate::native::call(cmd, args, timeout).await;
+        }
+        #[allow(unreachable_code)]
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(id, tx);

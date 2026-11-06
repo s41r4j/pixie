@@ -169,6 +169,17 @@ export interface UsageSummary {
   all_time?: { requests: number; tokens: number; cost: number; since: number | null };
   providers?: string[];
 }
+export interface MemoryNote {
+  id: string;
+  text: string;
+  kind: string;
+  source: string;
+  created: number;
+  updated: number;
+  uses: number;
+  last_used: number;
+}
+
 export interface Settings {
   deepseek_key: string;
   anthropic_key: string;
@@ -197,6 +208,18 @@ export interface Settings {
   user_name: string;
   locale: string;
   apps: Record<string, boolean>;
+  auto_update: boolean;
+  experimental: Record<string, boolean>;
+  /** Long-term memory: "auto" (also learns from chats), "manual" or "off". */
+  memory: "auto" | "manual" | "off";
+  /** Hour (0–23) when today's chat ends and a new one starts. */
+  chat_reset_hour: number;
+  /** Personality: pix (default), inos, xtrem, eon. */
+  persona: "pix" | "inos" | "xtrem" | "eon";
+  /** Xtrem may swear a little. */
+  spicy: boolean;
+  /** How readily Pixie draws on the canvas. */
+  canvas_use: "asked" | "helps" | "often";
   google_client_id: string;
   google_client_secret: string;
 }
@@ -232,6 +255,13 @@ export interface ConnectorCard {
   error: string | null;
   env: Record<string, string> | null;
   args: string[] | null;
+  /** Page section: work, notes, search, files, custom. */
+  group?: string;
+  /** token, browser (sign in in the browser), none, folder, custom. */
+  auth?: string;
+  /** A community server rather than the service's own. */
+  community?: boolean;
+  tool_list?: { name: string; description: string }[] | null;
 }
 export interface Gallery {
   presets: ConnectorCard[];
@@ -247,6 +277,26 @@ export interface Voice {
 }
 
 export type SlotKind = "sound" | "icon" | "video" | "font";
+
+export interface UpdateStatus {
+  current: string;
+  phase: "idle" | "checking" | "downloading" | "ready" | "up_to_date" | "error";
+  version: string | null;
+  notes: string | null;
+  error: string | null;
+  done: number;
+  total: number;
+  checked_at: number | null;
+  auto: boolean;
+  /** False in dev builds. */
+  supported: boolean;
+}
+
+/** Which desktop this is ("mac" in the browser preview too). */
+export const OS: "mac" | "windows" | "linux" = /Windows/.test(navigator.userAgent) ? "windows" : /Linux|X11/.test(navigator.userAgent) && !/Mac/.test(navigator.userAgent) ? "linux" : "mac";
+export const IS_MAC = OS === "mac";
+/** "this Mac" / "this PC" in copy. */
+export const MACHINE = IS_MAC ? "Mac" : "PC";
 
 /** URL for a resource slot, served by the Rust `slot://` protocol. */
 export function slotUrl(kind: SlotKind, slot: string): string {
@@ -271,7 +321,7 @@ export const api = {
   chatDelete: (id: string) => invoke<void>("chat_delete", { id }),
   openChats: (id?: string) => invoke<void>("open_chats", { id }),
   talkStop: () => invoke<void>("talk_stop"),
-  voiceStatus: () => invoke<{ installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[]; done: number; total: number }>("voice_status"),
+  voiceStatus: () => invoke<{ supported?: boolean; installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[]; done: number; total: number }>("voice_status"),
   voiceInstall: () => invoke<void>("voice_install"),
   ask: (text: string) => invoke<void>("ask", { text }),
   sessionNote: () => invoke<NoteDoc | null>("session_note"),
@@ -296,7 +346,18 @@ export const api = {
   connectorsGallery: () => invoke<Gallery>("connectors_gallery"),
   connectorSave: (id: string, values: Record<string, string>, on: boolean) => invoke<Gallery>("connector_save", { id, values, on }),
   connectorRemove: (id: string) => invoke<Gallery>("connector_remove", { id }),
+  connectorRetry: (id: string) => invoke<Gallery>("connector_retry", { id }),
+  connectorAddCustom: (name: string, command: string, args: string[], env: Record<string, string>) => invoke<Gallery>("connector_add_custom", { name, command, args, env }),
   openTarget: (target: string, reveal = false) => invoke<void>("open_target", { target, reveal }),
+  updateStatus: () => invoke<UpdateStatus>("update_status"),
+  updateCheck: () => invoke<UpdateStatus>("update_check"),
+  updateRestart: () => invoke<void>("update_restart"),
+  canvasOpen: (id?: string) => invoke<string>("canvas_open", { id: id ?? null }),
+  memoryList: () => invoke<MemoryNote[]>("memory_list"),
+  memoryAdd: (text: string, kind: string) => invoke<MemoryNote>("memory_add", { text, kind }),
+  memoryUpdate: (id: string, text: string, kind?: string) => invoke<MemoryNote>("memory_update", { id, text, kind: kind ?? null }),
+  memoryDelete: (id: string) => invoke<void>("memory_delete", { id }),
+  memoryClear: () => invoke<void>("memory_clear"),
   settings: () => invoke<SettingsView>("settings_get"),
   setSettings: (patch: Partial<Settings>) => invoke<SettingsView>("settings_set", { patch }),
   providerTest: () => invoke<string>("provider_test"),
@@ -311,7 +372,6 @@ export const api = {
   requestPermission: (id: string) => invoke<PermissionInfo>("permission_request", { id }),
   openPermissionSettings: (id: string) => invoke<void>("permission_open_settings", { id }),
   relaunch: () => invoke<void>("relaunch"),
-  boardClose: () => invoke<void>("board_close"),
   modelsAvailable: (provider: string) =>
     invoke<{ models: { id: string; name: string; vision: boolean | null; created: number | null; price: { input: number; output: number } | null; context: number | null }[]; prices_at: number }>("models_available", { provider }),
   pricesRefresh: () => invoke<{ models: number; fetched_at: number }>("prices_refresh"),

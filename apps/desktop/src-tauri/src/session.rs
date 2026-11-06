@@ -19,9 +19,11 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
-/// Conversation memory resets after this long without a turn.
-const HISTORY_TTL: Duration = Duration::from_secs(10 * 60);
-const HISTORY_MAX: usize = 16;
+/// Turns sent to the model in full; older ones go as a short summary.
+const KEEP_TURNS: usize = 12;
+const HISTORY_MAX: usize = KEEP_TURNS * 2;
+/// A gap this long gets a time note, so an old "this" isn't mixed up with the screen now.
+const GAP_NOTE: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Listening {
@@ -46,6 +48,55 @@ struct Inner {
     log: Vec<ChatEntry>,
     /// The saved conversation the log belongs to.
     chat_id: Option<String>,
+    /// The chat day the conversation belongs to (see `chats::day_of`).
+    day: String,
+    /// Summary / memory bookkeeping saved with the chat.
+    meta: crate::chats::Meta,
+    /// They pressed New chat: don't carry on with today's earlier chat.
+    fresh: bool,
+}
+
+/// The last turns of a log as model messages (text only).
+fn rebuild(log: &[ChatEntry]) -> Vec<Message> {
+    log.iter()
+        .rev()
+        .take(KEEP_TURNS)
+        .rev()
+        .flat_map(|e| [Message::user_text(e.q.clone()), Message::assistant(vec![Content::text(e.a.clone())])])
+        .collect()
+}
+
+impl Inner {
+    fn reset_chat(&mut self) {
+        self.history.clear();
+        self.log.clear();
+        self.chat_id = None;
+        self.meta = Default::default();
+    }
+
+    /// Today's chat: a new day starts a new one; otherwise carry on with today's latest chat
+    /// (after a relaunch), unless they asked for a new one. True when it loaded one.
+    fn ensure_today(&mut self, data: &std::path::Path, reset_hour: u32) -> bool {
+        let today = crate::chats::today(reset_hour);
+        if !self.day.is_empty() && self.day != today {
+            self.reset_chat();
+            self.fresh = false;
+        }
+        self.day = today;
+        if self.chat_id.is_some() || self.fresh || !self.log.is_empty() {
+            return false;
+        }
+        match crate::chats::latest_today(data, reset_hour) {
+            Some(c) => {
+                self.history = rebuild(&c.entries);
+                self.chat_id = Some(c.id);
+                self.log = c.entries;
+                self.meta = c.meta;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -55,7 +106,8 @@ pub struct ChatEntry {
     pub at: i64,
 }
 
-const LOG_MAX: usize = 40;
+/// A day's worth of turns.
+const LOG_MAX: usize = 500;
 
 #[derive(Default)]
 pub struct Session {
@@ -77,7 +129,7 @@ impl Session {
     pub fn is_speaking(&self) -> bool {
         !self.inner.lock().unwrap().speaking.is_empty()
     }
-    fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         let i = self.inner.lock().unwrap();
         i.answering || !i.speaking.is_empty()
     }
@@ -89,15 +141,28 @@ impl Session {
         let i = self.inner.lock().unwrap();
         i.listening.is_some() || i.answering || !i.speaking.is_empty()
     }
-    pub fn chat_log(&self) -> Vec<ChatEntry> {
-        self.inner.lock().unwrap().log.clone()
+    /// Today's conversation so far (carrying on with today's saved chat after a relaunch).
+    pub fn chat_log(&self, data: &std::path::Path, reset_hour: u32) -> Vec<ChatEntry> {
+        let mut i = self.inner.lock().unwrap();
+        i.ensure_today(data, reset_hour);
+        i.log.clone()
     }
-    /// Start a new conversation: forget the context and the log.
+    /// Start a new conversation: forget the context and the log (the old chat stays saved).
     pub fn chat_clear(&self) {
         let mut i = self.inner.lock().unwrap();
-        i.log.clear();
-        i.history.clear();
-        i.chat_id = None;
+        i.reset_chat();
+        i.fresh = true;
+    }
+    /// Memory has read a chat up to `n` entries.
+    pub fn set_learned(&self, data: &std::path::Path, id: &str, n: usize) {
+        let mut i = self.inner.lock().unwrap();
+        if i.chat_id.as_deref() == Some(id) {
+            i.meta.learned = i.meta.learned.max(n);
+            crate::chats::save(data, id, &i.log, &i.meta);
+        } else if let Some(mut c) = crate::chats::get(data, id) {
+            c.meta.learned = c.meta.learned.max(n);
+            crate::chats::save(data, id, &c.entries, &c.meta);
+        }
     }
 }
 
@@ -145,7 +210,6 @@ fn start_listening(app: &AppHandle, kind: Listening) {
     if kind == Listening::Talk {
         // Clear marks first so they aren't in the screenshot's way (they're excluded anyway).
         overlay::clear(app);
-        overlay::board_close(app);
         let rx = begin_capture(app, n);
         st.session.inner.lock().unwrap().capture = Some(rx);
     }
@@ -180,7 +244,7 @@ pub fn talk_down(app: &AppHandle) {
     start_listening(app, Listening::Talk);
 }
 
-/// `tap`: released quickly — just open the panel to type, or close it if it was open.
+/// `tap`: released quickly: just open the panel to type, or close it if it was open.
 pub fn talk_up(app: &AppHandle, tap: bool, was_open: bool) {
     let st = state(app);
     let (n, rx) = {
@@ -234,7 +298,6 @@ pub fn escape(app: &AppHandle) {
     interrupt(app);
     crate::jobs::cancel_live(app);
     overlay::clear(app);
-    overlay::board_close(app);
     panel::hide(app);
 }
 
@@ -317,14 +380,22 @@ fn environment(app: &AppHandle, cwd: &std::path::Path, capture: Option<&Capture>
         connected_apps: st.connected_apps(),
         browser_connected: crate::browser::connected(app),
         skills: st.skills.clone(),
-        memory: crate::jobs::memory(&st.data_dir),
+        memory: crate::memory::prompt_lines(app),
         helper: crate::jobs::helper_hint(&st),
         coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
+        persona: s.persona.clone(),
+        spicy: s.spicy,
+        canvas: s.canvas_use.clone(),
     }
 }
 
 /// One spoken turn.
 async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot::Receiver<Capture>>) {
+    // "Quit", "stop working", "never mind": done at once, without asking the model.
+    if let Some(q) = crate::myself::quick(&text) {
+        crate::myself::run_quick(&app, q);
+        return;
+    }
     let st = app.state::<AppState>();
     let cancel = CancellationToken::new();
     {
@@ -334,14 +405,24 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         }
         i.cancel = Some(cancel.clone());
         i.answering = true;
-        if i.last_turn.map(|t| t.elapsed() > HISTORY_TTL).unwrap_or(false) {
-            // Ten quiet minutes: a new conversation (the old one stays in Chats).
-            i.history.clear();
-            i.log.clear();
-            i.chat_id = None;
+        let reset = st.settings.lock().map(|s| s.chat_reset_hour).unwrap_or(0);
+        if i.ensure_today(&st.data_dir, reset) {
+            emit(&app, Event::new("chat.updated", json!({ "log": i.log, "id": i.chat_id })));
         }
         i.last_turn = Some(Instant::now());
     }
+    // Carrying on after a while: say how long it's been.
+    let gap_note = {
+        let i = st.session.inner.lock().unwrap();
+        let since = i.log.last().map(|e| chrono::Utc::now().timestamp_millis() - e.at).unwrap_or(0);
+        if since > GAP_NOTE.as_millis() as i64 {
+            let mins = since / 60_000;
+            let ago = if mins < 120 { format!("{mins} minutes") } else if mins < 48 * 60 { format!("{} hours", mins / 60) } else { format!("{} days", mins / 1440) };
+            format!("[{ago} since the last message; it's now {}. What's on screen now may be different.] ", chrono::Local::now().format("%H:%M"))
+        } else {
+            String::new()
+        }
+    };
     panel::set_mode(&app, PanelMode::Thinking);
     emit(&app, Event::new("turn.start", json!({ "turn": n, "text": text })));
 
@@ -375,8 +456,17 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
             content.push(Content::jpeg_base64(b64));
         }
     }
-    content.push(Content::text(text.clone()));
-    let mut messages = st.session.inner.lock().unwrap().history.clone();
+    content.push(Content::text(format!("{gap_note}{text}")));
+    let mut messages = {
+        let i = st.session.inner.lock().unwrap();
+        let mut m = vec![];
+        if !i.meta.summary.is_empty() {
+            m.push(Message::user_text(format!("(Earlier in today's conversation, in short: {})", i.meta.summary)));
+            m.push(Message::assistant(vec![Content::text("Okay.")]));
+        }
+        m.extend(i.history.iter().cloned());
+        m
+    };
     messages.push(Message::user(content));
 
     let host = Arc::new(AppHost { app: app.clone() });
@@ -431,8 +521,16 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
                 let excess = i.log.len().saturating_sub(LOG_MAX);
                 i.log.drain(..excess);
                 let id = i.chat_id.get_or_insert_with(crate::chats::new_id).clone();
-                crate::chats::save(&st.data_dir, &id, &i.log);
+                i.fresh = false;
+                crate::chats::save(&st.data_dir, &id, &i.log, &i.meta);
                 emit(&app, Event::new("chat.updated", json!({ "log": i.log, "id": id })));
+                // Turns that dropped out of the window get folded into the summary.
+                let upto = i.log.len().saturating_sub(KEEP_TURNS);
+                if upto >= i.meta.summarized + 6 {
+                    let older = i.log[i.meta.summarized..upto].to_vec();
+                    let prev = i.meta.summary.clone();
+                    tauri::async_runtime::spawn(summarize(app.clone(), id, prev, older, upto));
+                }
             }
             emit(&app, Event::new("turn.done", json!({ "turn": n, "text": out.final_text })));
             panel::set_mode(&app, PanelMode::Answer);
@@ -444,6 +542,60 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
             show_error(&app, &e.to_string(), false);
         }
     }
+}
+
+/// Fold older turns into the chat's running summary (cheap model, in the background).
+async fn summarize(app: AppHandle, id: String, prev: String, older: Vec<ChatEntry>, upto: usize) {
+    let Some(provider) = state(&app).provider() else { return };
+    let mut msg = String::new();
+    if !prev.is_empty() {
+        msg.push_str(&format!("Summary so far: {prev}\n\nMore of the conversation:\n"));
+    }
+    for e in &older {
+        msg.push_str(&format!("They: {}\nPixie: {}\n", e.q.chars().take(500).collect::<String>(), e.a.chars().take(500).collect::<String>()));
+    }
+    let mut req = Request::new(
+        "Summarise this part of a conversation between the user and Pixie, their desktop helper, in under 120 words: what they asked about, what was decided or done, names, numbers and anything still open. Merge it with the summary so far if there is one. Plain sentences, no lists.",
+        vec![Message::user_text(msg)],
+    );
+    req.max_tokens = 300;
+    req.effort = Effort::Fast;
+    let Ok(Ok(r)) = tokio::time::timeout(Duration::from_secs(40), provider.complete(&req, &mut |_| {})).await else { return };
+    let summary = r.text().trim().to_string();
+    if summary.is_empty() {
+        return;
+    }
+    let st = state(&app);
+    let mut i = st.session.inner.lock().unwrap();
+    if i.chat_id.as_deref() == Some(id.as_str()) && upto > i.meta.summarized {
+        i.meta.summary = summary;
+        i.meta.summarized = upto;
+        crate::chats::save(&st.data_dir, &id, &i.log, &i.meta);
+    }
+}
+
+/// Long-term memory (memory = auto): once a chat has been quiet a few minutes, read what's new
+/// in it for lasting facts. Looks at the last few chats, so one left by New chat isn't missed.
+pub fn spawn_learner(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(90)).await;
+        loop {
+            if crate::memory::mode(&app) == "auto" {
+                let data = state(&app).data_dir.clone();
+                let quiet = chrono::Utc::now().timestamp_millis() - 3 * 60_000;
+                for c in crate::chats::list(&data).into_iter().take(3) {
+                    let Some(chat) = crate::chats::get(&data, &c.id) else { continue };
+                    let n = chat.entries.len();
+                    if chat.updated > quiet || chat.meta.learned >= n {
+                        continue;
+                    }
+                    crate::memory::learn(&app, &chat.entries[chat.meta.learned.min(n)..]).await;
+                    state(&app).session.set_learned(&data, &chat.id, n);
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    });
 }
 
 fn finish_turn(app: &AppHandle, n: u64, spoke: bool) {

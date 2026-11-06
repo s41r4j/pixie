@@ -12,7 +12,13 @@ mod helper;
 mod hit;
 mod host;
 mod hotkey;
+#[cfg(not(target_os = "macos"))]
+mod native;
+mod canvas;
+mod myself;
+mod memory;
 mod integrations;
+mod updates;
 mod jobs;
 mod kokoro;
 #[cfg(target_os = "macos")]
@@ -47,7 +53,7 @@ pub const OVERLAY: &str = "overlay";
 pub const SHELF: &str = "shelf";
 pub const SETTINGS: &str = "settings";
 pub const NOTE: &str = "note";
-pub const BOARD: &str = "board";
+pub const CANVAS: &str = "canvas";
 pub const GUIDE: &str = "guide";
 
 pub struct AppState {
@@ -145,6 +151,7 @@ pub fn run() {
             windows::open_settings(app, "");
         }))
         .plugin(tauri_plugin_drag::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("slot", resources::slot_protocol)
         .invoke_handler(tauri::generate_handler![
             commands::panel_mode,
@@ -194,7 +201,6 @@ pub fn run() {
             commands::models_available,
             commands::usage_summary,
             commands::coders_status,
-            commands::board_close,
             commands::guide_show,
             commands::guide_hide,
             commands::voice_status,
@@ -206,6 +212,24 @@ pub fn run() {
             commands::connectors_gallery,
             commands::connector_save,
             commands::connector_remove,
+            commands::connector_retry,
+            commands::connector_add_custom,
+            commands::update_status,
+            commands::update_check,
+            commands::update_restart,
+            memory::memory_list,
+            memory::memory_add,
+            memory::memory_update,
+            memory::memory_delete,
+            memory::memory_clear,
+            canvas::canvas_list,
+            canvas::canvas_load,
+            canvas::canvas_save,
+            canvas::canvas_delete,
+            canvas::canvas_open,
+            canvas::canvas_take_ops,
+            canvas::canvas_done,
+            canvas::canvas_export,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
@@ -270,6 +294,8 @@ pub fn run() {
             connectors::start(app.handle().clone());
             browser::start(app.handle().clone());
             kokoro::start(app.handle().clone());
+            updates::spawn(app.handle().clone());
+            session::spawn_learner(app.handle().clone());
             shelf::refresh(app.handle());
             {
                 // Live model prices for Settings → Usage (cached; refreshed once a day).
@@ -304,18 +330,20 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Focused(false) = event {
+                if window.label() == CANVAS {
+                    windows::canvas_blurred(window.app_handle());
+                }
+            }
             // Windows hide instead of closing; the app lives in the menu bar.
             if let WindowEvent::Destroyed = event {
-                if window.label() == NOTE {
-                    windows::dock_sync(window.app_handle(), NOTE);
+                if [NOTE, CANVAS, SETTINGS].contains(&window.label()) {
+                    windows::dock_sync(window.app_handle(), window.label());
                 }
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == NOTE {
-                    return; // the note window is created on demand; let it close
-                }
-                if window.label() == SETTINGS {
-                    windows::dock_sync(window.app_handle(), SETTINGS);
+                if [NOTE, CANVAS, SETTINGS].contains(&window.label()) {
+                    return; // created on demand; let it close (and free its memory)
                 }
                 api.prevent_close();
                 if window.label() == PANEL {
@@ -331,6 +359,7 @@ pub fn run() {
     app.run(|_app, event| match event {
         // Closing the last window must not quit a menu-bar app; only Quit (exit code) does.
         RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        RunEvent::Exit => updates::on_quit(),
         // Clicking Pixie in the Dock, Launchpad or Finder while it runs brings Settings back.
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => windows::open_settings(_app, ""),

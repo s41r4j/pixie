@@ -80,29 +80,15 @@ pub fn jobs_dir(data: &Path) -> PathBuf {
     data.join("jobs")
 }
 
-/// Durable facts from `LEARNED` blocks.
-pub fn memory(data: &Path) -> Vec<String> {
-    std::fs::read_to_string(data.join("memory.md"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("- ").map(str::to_string))
-        .rev()
-        .take(30)
-        .collect()
-}
-
-fn remember(data: &Path, facts: &[String]) {
-    if facts.is_empty() {
+/// `LEARNED` lines from a job's report go into long-term memory (unless memory is off).
+fn remember(app: &AppHandle, facts: &[String]) {
+    if crate::memory::mode(app) == "off" {
         return;
     }
-    let mut cur = std::fs::read_to_string(data.join("memory.md")).unwrap_or_else(|_| "# What Pixie knows about you\n\n".into());
-    let date = chrono::Local::now().format("%Y-%m-%d");
+    let data = app.state::<AppState>().data_dir.clone();
     for f in facts {
-        if !cur.contains(f.as_str()) {
-            cur.push_str(&format!("- {f} ({date})\n"));
-        }
+        let _ = crate::memory::add(&data, f, "other", "job");
     }
-    let _ = std::fs::write(data.join("memory.md"), cur);
 }
 
 pub fn helper_hint(st: &AppState) -> String {
@@ -437,9 +423,12 @@ fn drive(app: AppHandle, id: String) {
             connected_apps: st.connected_apps(),
             browser_connected: crate::browser::connected(&app),
             skills: st.skills.clone(),
-            memory: memory(&st.data_dir),
+            memory: crate::memory::prompt_lines(&app),
             helper: helper_hint(&st),
             coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
+            persona: st.settings.lock().map(|s| s.persona.clone()).unwrap_or_default(),
+            spicy: st.settings.lock().map(|s| s.spicy).unwrap_or(false),
+            canvas: st.settings.lock().map(|s| s.canvas_use.clone()).unwrap_or_default(),
         };
         let task = format!("Title: {}\n\n{}", view.title, view.instructions);
         let system = prompt::assemble(&PromptInput { mode, env, task });
@@ -472,7 +461,7 @@ fn drive(app: AppHandle, id: String) {
         match result {
             Ok(out) => {
                 let rep = report::parse(&out.final_text);
-                remember(&st.data_dir, &rep.learned);
+                remember(&app, &rep.learned);
                 let title = rep.done_title.clone().unwrap_or_else(|| view.title.clone());
                 let v = st.jobs.update(&app, &id, |e| {
                     e.messages = out.messages.clone();

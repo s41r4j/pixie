@@ -332,6 +332,18 @@ enum AX {
 
     static func frontApp() -> NSRunningApplication? { NSWorkspace.shared.frontmostApplication }
 
+    /// The element that has keyboard focus in the frontmost app (where typing goes).
+    static func focusedInfo() -> [String: Any]? {
+        guard let app = frontApp() else { return nil }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let f = attr(root, kAXFocusedUIElementAttribute), CFGetTypeID(f) == AXUIElementGetTypeID() else { return nil }
+        let el = f as! AXUIElement
+        let role = string(el, kAXRoleAttribute) ?? ""
+        var out: [String: Any] = ["role": role, "label": label(el, role: role)]
+        if let r = frame(el) { out["frame"] = rectJSON(r) }
+        return out
+    }
+
     /// Walk the frontmost app's focused window + menu bar and number the controls (`e1`, `e2`…).
     static func snapshot(limit: Int = 160, on screenRect: CGRect? = nil) -> [String: Any] {
         cache.removeAll()
@@ -493,7 +505,10 @@ enum Keys {
             if !saved.isEmpty { pb.writeObjects(saved) }
         }
         let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
-        return ["inserted": text.count, "app": app]
+        var out: [String: Any] = ["inserted": text.count, "app": app]
+        // Where it went, so the caller can tell a wrong pane from the right one.
+        if let f = AX.focusedInfo() { out["into"] = f }
+        return out
     }
 }
 

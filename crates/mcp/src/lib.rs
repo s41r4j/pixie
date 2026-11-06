@@ -78,6 +78,18 @@ pub struct Client {
     next: AtomicU64,
     _child: Mutex<Child>,
     pub server_info: Mutex<Value>,
+    /// The last lines the server wrote to stderr (why it failed, usually).
+    stderr: Arc<Mutex<std::collections::VecDeque<String>>>,
+}
+
+/// The command to run: on Windows, npx / uvx / npm are `.cmd` scripts that `Command` won't find
+/// by bare name.
+fn program(command: &str) -> String {
+    if cfg!(windows) && matches!(command, "npx" | "npm" | "uvx" | "pnpm" | "yarn" | "bunx") {
+        format!("{command}.cmd")
+    } else {
+        command.to_string()
+    }
 }
 
 impl Client {
@@ -86,19 +98,49 @@ impl Client {
         if cfg.command.is_empty() {
             return Err(format!("{name}: only stdio servers (\"command\") are supported so far"));
         }
-        let mut cmd = Command::new(&cfg.command);
+        let mut cmd = Command::new(program(&cfg.command));
         cmd.args(&cfg.args)
             .envs(&cfg.env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         // GUI apps get a bare PATH; servers are usually npx/uvx from Homebrew.
-        let path = std::env::var("PATH").unwrap_or_default();
-        cmd.env("PATH", format!("/opt/homebrew/bin:/usr/local/bin:{path}"));
-        let mut child = cmd.spawn().map_err(|e| format!("{name}: couldn't start {}: {e}", cfg.command))?;
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let mut dirs: Vec<std::path::PathBuf> = if cfg!(target_os = "macos") { vec!["/opt/homebrew/bin".into(), "/usr/local/bin".into()] } else { vec![] };
+        dirs.extend(std::env::split_paths(&path));
+        if let Ok(joined) = std::env::join_paths(dirs) {
+            cmd.env("PATH", joined);
+        }
+        let mut child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("{name}: {} isn't installed (or isn't on PATH)", cfg.command)
+            } else {
+                format!("{name}: couldn't start {}: {e}", cfg.command)
+            }
+        })?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
+        let stderr_tail: Arc<Mutex<std::collections::VecDeque<String>>> = Arc::default();
+        if let Some(err) = child.stderr.take() {
+            let tail = stderr_tail.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(err).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let line = line.trim().to_string();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let mut t = tail.lock().unwrap();
+                    t.push_back(line.chars().take(300).collect());
+                    if t.len() > 12 {
+                        t.pop_front();
+                    }
+                }
+            });
+        }
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let reader_pending = pending.clone();
         let server = name.to_string();
@@ -130,8 +172,9 @@ impl Client {
             next: AtomicU64::new(1),
             _child: Mutex::new(child),
             server_info: Mutex::new(Value::Null),
+            stderr: stderr_tail,
         });
-        let init = client
+        let init = match client
             .request(
                 "initialize",
                 json!({
@@ -141,10 +184,26 @@ impl Client {
                 }),
                 Duration::from_secs(60),
             )
-            .await?;
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                // Let the last of its output arrive, then say what it said.
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                let said = client.stderr_tail();
+                return Err(if said.is_empty() { e } else { format!("{e}. It said: {said}") });
+            }
+        };
         *client.server_info.lock().unwrap() = init.get("serverInfo").cloned().unwrap_or(Value::Null);
         client.notify("notifications/initialized", json!({})).await?;
         Ok(client)
+    }
+
+    /// What the server last wrote to stderr, most useful line last.
+    pub fn stderr_tail(&self) -> String {
+        let t = self.stderr.lock().unwrap();
+        let useful: Vec<&String> = t.iter().filter(|l| !l.starts_with("npm warn") && !l.starts_with("npm WARN")).collect();
+        useful.iter().rev().take(3).rev().map(|s| s.as_str()).collect::<Vec<_>>().join(" · ")
     }
 
     async fn write(&self, msg: Value) -> Result<(), String> {

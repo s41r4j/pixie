@@ -1,5 +1,5 @@
 //! The buddy: Pixie's own pointer that rides next to your cursor (on the overlay window),
-//! flies to things it points at, and — when allowed — clicks for you.
+//! flies to things it points at, and, when allowed, clicks for you.
 
 use crate::macos::{self, Rect};
 use crate::{emit, AppState, OVERLAY};
@@ -203,7 +203,7 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
     let r = st.helper.call("click_at", json!({ "x": x, "y": y, "button": button, "count": count }), Duration::from_secs(8)).await?;
     let after = &r["after"];
     Ok(format!(
-        "Clicked {} at ({:.0}, {:.0}). Now: {} — \"{}\"; focused: {}. Controls now: {}. Check this is what you expected before the next step.",
+        "Clicked {} at ({:.0}, {:.0}). Now: {}, window \"{}\"; focused: {}. Controls now: {}. Check this is what you expected before the next step.",
         if label.is_empty() { "there".to_string() } else { format!("\"{label}\"") },
         x,
         y,

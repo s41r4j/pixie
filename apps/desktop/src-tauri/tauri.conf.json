@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Pixie",
-  "version": "0.6.0",
+  "version": "0.7.7",
   "identifier": "com.openclicky.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -51,37 +51,6 @@
         "title": "Pixie jobs",
         "width": 340,
         "height": 700,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "visible": false,
-        "focus": false,
-        "resizable": false,
-        "skipTaskbar": true,
-        "shadow": false,
-        "acceptFirstMouse": true,
-        "visibleOnAllWorkspaces": true,
-        "backgroundThrottling": "disabled"
-      },
-      {
-        "label": "settings",
-        "title": "Pixie",
-        "width": 860,
-        "height": 640,
-        "minWidth": 720,
-        "minHeight": 520,
-        "visible": false,
-        "resizable": true,
-        "center": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "backgroundThrottling": "disabled"
-      },
-      {
-        "label": "board",
-        "title": "Pixie board",
-        "width": 960,
-        "height": 680,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
@@ -154,6 +123,17 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
         "silent": true
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzQjBFMjFGNzBBMTFGNUUKUldSZUg2RndIK0t3bzJTTW5DWEtjSFRhbEZFRjROVzFIUnNDMEREN1BoZkVCWU1TQUtPc1dVY2oK",
+      "endpoints": [
+        "https://github.com/s41r4j/pixie/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

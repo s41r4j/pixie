@@ -3,6 +3,7 @@ target/
 node_modules/
 dist/
 apps/desktop/src-tauri/gen/
+apps/desktop/public/excalidraw-assets/
 
 # reverse-engineering reference material: never commit (proprietary binaries, extracted assets)
 work/

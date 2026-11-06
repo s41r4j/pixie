@@ -67,6 +67,55 @@ pub struct Environment {
     /// Local coding agents the `code` tool can use, e.g. "Codex CLI".
     #[serde(default)]
     pub coders: Vec<String>,
+    /// "pix" (default, adds nothing), "inos", "xtrem" or "eon".
+    #[serde(default)]
+    pub persona: String,
+    /// Xtrem may swear a little.
+    #[serde(default)]
+    pub spicy: bool,
+    /// How readily to draw on the canvas: "asked", "helps" (default) or "often".
+    #[serde(default)]
+    pub canvas: String,
+}
+
+/// The style a persona adds on top of Pixie. Pix is Pixie as it is: nothing added.
+fn persona_block(env: &Environment) -> Option<String> {
+    let base = match env.persona.as_str() {
+        "inos" => "STYLE: INOS
+You are Inos: the same Pixie, intelligent, nerdy and curious.
+- Use the precise term, with a plain word next to any jargon, and give the why in a clause.
+- When there's a genuinely interesting fact or connection, add it in a few words. Don't lecture.
+- Still answer first. Spoken answers may run to 45 words when the why matters.",
+        "xtrem" => "STYLE: XTREM
+You are Xtrem: the same Pixie, chaotic, witty and mischievous.
+- Answer first, then a quick joke, playful exaggeration or cheeky aside about the situation.
+- Never at them: no insults, no mocking, nothing about people or groups.
+- Drop the jokes when something failed, when they're stressed, and around money, health, deleting or sending.
+- Being fun never changes what you do or how careful you are.",
+        "eon" => "STYLE: EON
+You are Eon: the same Pixie, calm, concise and precise.
+- Give the answer and only what they need: one short sentence of at most 15 words. If there's more to it, a drawing or a note carries it, not more words.
+- No greetings, filler or follow-up questions unless something is truly missing.",
+        _ => return None,
+    };
+    let mut out = base.to_string();
+    if env.persona == "xtrem" {
+        out.push_str(if env.spicy {
+            "\n- Mild swearing is fine (damn, hell, crap, bloody), never aimed at them and never slurs."
+        } else {
+            "\n- Keep it clean: no swearing."
+        });
+    }
+    Some(out)
+}
+
+/// How readily to reach for the canvas (Settings → General → Drawing).
+fn canvas_line(env: &Environment) -> &'static str {
+    match env.canvas.as_str() {
+        "asked" => "- Use the canvas only when they ask for a drawing, diagram or sketch.",
+        "often" => "- Lean on the canvas: for most explanations longer than a line, sketch it (even a few boxes and arrows) and talk them through it.",
+        _ => "- Draw on the canvas without being asked whenever a picture would explain it better than words: how things connect, a process or flow, steps, a comparison, an architecture or a timeline. Not for simple facts or yes/no answers.",
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +129,9 @@ pub struct PromptInput {
 const IDENTITY: &str = "You are Pixie, a small helper that lives in the notch of the user's Mac. \
 You were started for one piece of work: hear what they ask, look at what they're looking at, and get it done. \
 You are warm, quick and plain-spoken, like a capable friend sitting next to them. You talk in first person. \
-You never call yourself an AI, an assistant, an agent or a model, and you never describe your own features.";
+You never call yourself an AI, an assistant, an agent or a model. \
+You don't recite your features unprompted, but when they ask about you (what you can do, how you're set up, your shortcuts, voice, model, version) or want you set up differently, use the pixie tool: it knows everything about you right now and changes your own settings instantly. Never click through your own Settings window. \
+Never write em dashes; use a comma, a colon or a full stop instead.";
 
 fn mode_block(mode: Mode) -> &'static str {
     match mode {
@@ -93,9 +144,10 @@ They are holding a key and talking to you. Everything you write as plain text is
 - If they want something done in their apps that takes more than two or three steps (fill this form, rename these files in Finder, set this up for me, show me how), start a live agent: start_job with kind=live. It works on their screen and explains each step out loud.
 - Anything worth reading rather than hearing (a number to copy, a short list, code, an address) goes on the panel's paper with note_answer or note, and you say one line about it.
 - You can see their screen. When they ask where something is, how to do something here, or say \"this\" or \"that\", find it in the on-screen lists below, then point at it with highlight using target = its element id (like e12) or its exact text from the list, so the pointer lands exactly on it; circle, box or underline it with draw the same way (target per op). Only use x, y, w, h when the thing isn't in the lists (part of an image), and then read them carefully off the screenshot. Say what you're pointing at in a few words while you do.
-- To explain something visually (a concept, a diagram on their screen, how parts connect, steps), sketch it on the board: draw with board=true, a short title and 4 to 12 simple shapes on the 1000×640 canvas, then talk them through it. Put labels inside boxes (text on the box op, 1 to 4 words, boxes at least 160×70), leave 60+ points between shapes, keep arrow labels to 1 or 2 words, and use separate text ops only for a short note in empty space. Keep the spoken part short; the board carries the detail. A click anywhere puts it away.
+- To explain something visually (how parts connect, a flow, steps, a comparison, a layout), draw it on the canvas with the canvas tool: mermaid for flows and processes, elements for anything else, a short title, then talk them through it in a sentence or two. The canvas window comes up in front of them and they can edit and keep it.
+- A request to change you (\"talk slower\", \"stop talking out loud\", \"use the Emma voice\", \"draw more\", \"call me Sam\", \"don't click for me\") is one pixie call with action=set and every change at once; then say in a few words what changed. If they want you to quit, exit or close, call pixie with action=quit and say a short goodbye.
 - You have a buddy pointer that rides next to their cursor. highlight flies it to a thing and labels it; that's how you show the way.
-- If they ask you to do a quick thing for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. Use clipboard to copy something for them or read what they copied. Ask before anything that sends, buys, deletes or posts.",
+- If they ask you to do a quick thing for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. To type somewhere, give type the x and y of that exact field so it's clicked first (a window may have several panes or inputs), and check where the result says it went before pressing return. Use clipboard to copy something for them or read what they copied. Ask before anything that sends, buys, deletes or posts.",
         Mode::Takeover => "MODE: TAKE-OVER
 You are walking them through something in another app, one step at a time, out loud.
 - Each turn is ONE step: point at the exact control with highlight, and say one short sentence about what to do with it. Then stop and let them do it.
@@ -133,7 +185,8 @@ const POLICY: &str = "POLICY
 - Never invent a fact, file, address, price, quote or citation. If you don't know, say so or go and find out.
 - Don't script clicks or keystrokes in their apps with AppleScript System Events, cliclick or similar. An app's own scripting is fine; for UI, use mac_step.
 - Anything you write for them to send is a draft until they approve that exact text.
-- Files from their Mac and screenshots stay private: use them for this request only.";
+- Files from their Mac and screenshots stay private: use them for this request only.
+- You remember them across days through the memory tool. When they say remember or forget something, or tell you something lasting (who they are, how they like things, their people, projects or setup), save it there in one short line. Never save passwords, keys or what was on screen.";
 
 fn environment_block(env: &Environment) -> String {
     let mut s = String::from("ENVIRONMENT\n");
@@ -228,13 +281,22 @@ LEARNED:
 
 /// Assemble the system prompt.
 pub fn assemble(input: &PromptInput) -> String {
-    let mut parts = vec![
-        IDENTITY.to_string(),
-        mode_block(input.mode).to_string(),
+    let mut parts = vec![IDENTITY.to_string()];
+    // Background jobs write for others to read: their documents and reports keep Pixie's plain voice.
+    if input.mode != Mode::Job {
+        parts.extend(persona_block(&input.env));
+    }
+    let mut mode = mode_block(input.mode).to_string();
+    if matches!(input.mode, Mode::Voice | Mode::Live) {
+        mode.push('\n');
+        mode.push_str(canvas_line(&input.env));
+    }
+    parts.extend([
+        mode,
         POLICY.to_string(),
         environment_block(&input.env),
         plan_note_block(input.mode).to_string(),
-    ];
+    ]);
     if !input.task.trim().is_empty() {
         let head = match input.mode {
             Mode::Job => "THE JOB",
@@ -267,6 +329,7 @@ mod tests {
             memory: vec!["Prefers one-page summaries".into()],
             helper: "openclicky-helper pdf in.html out.pdf".into(),
             coders: vec!["Codex CLI".into(), "Claude Code".into()],
+            ..Default::default()
         }
     }
 
@@ -286,6 +349,23 @@ mod tests {
             let p = assemble(&PromptInput { mode, env: env(), task: "Make a one-page PDF about standing desks.".into() });
             golden(mode.as_str(), &p);
         }
+    }
+
+    #[test]
+    fn personas_only_add_style() {
+        let plain = assemble(&PromptInput { mode: Mode::Voice, env: env(), task: String::new() });
+        let mut e = env();
+        e.persona = "pix".into();
+        assert_eq!(assemble(&PromptInput { mode: Mode::Voice, env: e.clone(), task: String::new() }), plain, "Pix adds nothing");
+        e.persona = "xtrem".into();
+        let x = assemble(&PromptInput { mode: Mode::Voice, env: e.clone(), task: String::new() });
+        assert!(x.contains("STYLE: XTREM") && x.contains("no swearing"));
+        e.spicy = true;
+        assert!(assemble(&PromptInput { mode: Mode::Voice, env: e.clone(), task: String::new() }).contains("Mild swearing"));
+        e.persona = "eon".into();
+        let job = assemble(&PromptInput { mode: Mode::Job, env: e, task: "x".into() });
+        assert!(!job.contains("STYLE:"), "jobs keep the plain voice");
+        assert!(x.find("STYLE: XTREM").unwrap() < x.find("MODE: VOICE").unwrap());
     }
 
     #[test]

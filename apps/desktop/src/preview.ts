@@ -79,7 +79,7 @@ export function installPreview() {
   mockWindows(previewView);
   const mode = params.get("mode") ?? "answer";
   mockIPC(
-    (cmd) => {
+    (cmd, args) => {
       switch (cmd) {
         case "panel_mode": return mode;
         case "panel_screen": return { frame: { x: 0, y: 0, w: 1710, h: 1107 }, top_inset: 34, notch_width: 185, scale: 2 };
@@ -103,7 +103,7 @@ export function installPreview() {
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } } };
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz", auto_update: true, experimental: { excalidraw: params.get("exp") === "on" }, memory: "auto", chat_reset_hour: 0, persona: (params.get("persona") ?? "pix"), spicy: false, canvas_use: "helps" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } } };
         case "permissions_status": if (previewView === "guide") return []; return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
@@ -131,15 +131,54 @@ export function installPreview() {
           { id: "claude", label: "Claude Code", installed: true, path: "/opt/homebrew/bin/claude", version: "2.1.318 (Claude Code)" },
           { id: "opencode", label: "opencode", installed: true, path: "/opt/homebrew/bin/opencode", version: "v2.2.5" } ], t3code: true };
         case "voice_status": return { installed: params.get("voice") !== "dl", ready: true, installing: params.get("voice") === "dl", done: 128_000_000, total: 372_000_000, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
+        case "memory_list": return [
+          { id: "m1", text: "Prefers short answers without small talk", kind: "preference", source: "said", created: Date.now() - 864e5 * 3, updated: Date.now() - 864e5 * 3, uses: 4, last_used: Date.now() },
+          { id: "m2", text: "Works on Pixie, a Rust + Tauri desktop app", kind: "project", source: "learned", created: Date.now() - 864e5, updated: Date.now() - 864e5, uses: 1, last_used: 0 },
+          { id: "m3", text: "Their manager is Priya", kind: "person", source: "learned", created: Date.now() - 36e5, updated: Date.now() - 36e5, uses: 0, last_used: 0 },
+          { id: "m4", text: "Uses Warp with Claude Code in a split pane", kind: "howto", source: "job", created: Date.now() - 72e5, updated: Date.now() - 72e5, uses: 0, last_used: 0 },
+        ];
+        case "memory_add": case "memory_update": return { id: "m9", text: String((args as Record<string, unknown>)?.text ?? ""), kind: String((args as Record<string, unknown>)?.kind ?? "other"), source: "you", created: Date.now(), updated: Date.now(), uses: 0, last_used: 0 };
+        case "memory_delete": case "memory_clear": return null;
+        case "canvas_list": return [{ id: "demo", title: "Signup flow", modified: Math.floor(Date.now() / 1000), shapes: 7 }];
+        case "canvas_load": return null;
+        case "canvas_take_ops": {
+          if ((window as unknown as { __tookOps?: boolean }).__tookOps) return [];
+          (window as unknown as { __tookOps?: boolean }).__tookOps = true;
+          const kind = params.get("draw") ?? "elements";
+          const input =
+            kind === "mermaid"
+              ? { action: "draw", title: "Signup flow", mermaid: "flowchart LR\n  A[Visit site] --> B{Has account?}\n  B -- yes --> C[Sign in]\n  B -- no --> D[Sign up]\n  D --> E[Verify email]\n  E --> C\n  C --> F((Dashboard))" }
+              : { action: "draw", title: "How Pixie answers", elements: [
+                    { type: "rectangle", id: "you", x: 40, y: 120, width: 180, height: 80, label: { text: "You ask" }, backgroundColor: "#ffec99", fillStyle: "solid", roundness: { type: 3 } },
+                    { type: "rectangle", id: "pixie", x: 320, y: 120, width: 200, height: 80, label: { text: "Pixie looks\nat the screen" }, backgroundColor: "#a5d8ff", fillStyle: "solid", roundness: { type: 3 } },
+                    { type: "diamond", id: "need", x: 620, y: 100, width: 180, height: 120, label: { text: "Big job?" } },
+                    { type: "ellipse", id: "say", x: 900, y: 40, width: 180, height: 80, label: { text: "Answers out loud" }, backgroundColor: "#b2f2bb", fillStyle: "solid" },
+                    { type: "ellipse", id: "agent", x: 900, y: 220, width: 180, height: 80, label: { text: "Starts an agent" }, backgroundColor: "#d0bfff", fillStyle: "solid" },
+                    { type: "arrow", x: 0, y: 0, start: { id: "you" }, end: { id: "pixie" } },
+                    { type: "arrow", x: 0, y: 0, start: { id: "pixie" }, end: { id: "need" } },
+                    { type: "arrow", x: 0, y: 0, start: { id: "need" }, end: { id: "say" }, label: { text: "no" } },
+                    { type: "arrow", x: 0, y: 0, start: { id: "need" }, end: { id: "agent" }, label: { text: "yes" } },
+                    { type: "text", x: 40, y: 360, text: "Drawn by Pixie · edit anything", fontSize: 20, strokeColor: "#868e96" },
+                  ] };
+          return [{ req: 1, canvas: "demo", action: "draw", input }];
+        }
+        case "canvas_done": console.log("canvas_done", JSON.stringify(args)); return null;
+        case "update_status":
+        case "update_check":
+          return { current: "0.7.0", phase: params.get("update") ?? "up_to_date", version: "0.7.1", notes: "Fixes.", error: null, done: 9_400_000, total: 22_800_000, checked_at: Math.floor(Date.now() / 1000) - 600, auto: true, supported: true };
         case "apps_status": return { supported: true, on: { calendar: true, reminders: true, contacts: false, mail: false }, calendar: "granted", reminders: "granted", contacts: "not_determined", mail: "ask", google: { configured: true, signed_in: params.get("google") === "on", email: "you@gmail.com" } };
-        case "connectors_gallery": return { node: true, path: "/Users/me/Library/Application Support/com.openclicky.app/mcp.json", custom: [], presets: [
-          { id: "github", name: "GitHub", blurb: "Issues, pull requests, code search and files in your repos.", help: "Create a fine-grained token.", help_url: "https://github.com", fields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token", placeholder: "github_pat_…" }], folder: false, added: true, on: true, tools: 26, error: null, env: { GITHUB_PERSONAL_ACCESS_TOKEN: "gith••••x9Q" }, args: [] },
-          { id: "notion", name: "Notion", blurb: "Search, read and add pages in the workspaces you share with it.", fields: [{ key: "NOTION_TOKEN", label: "Integration secret", placeholder: "ntn_…" }], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null },
-          { id: "slack", name: "Slack", blurb: "Read channels and threads, post when you ask.", fields: [{ key: "SLACK_BOT_TOKEN", label: "Bot token", placeholder: "xoxb-…" }], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null },
-          { id: "linear", name: "Linear", blurb: "Find, create and update issues and projects.", fields: [], folder: false, added: true, on: true, tools: null, error: null, env: {}, args: [] },
-          { id: "atlassian", name: "Jira & Confluence", blurb: "Search and update Jira issues and Confluence pages.", fields: [], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null },
-          { id: "brave", name: "Brave Search", blurb: "Private web and news search with fresh results.", fields: [{ key: "BRAVE_API_KEY", label: "API key", placeholder: "BSA…" }], folder: false, added: true, on: false, tools: null, error: null, env: { BRAVE_API_KEY: "BSA1••••abc" }, args: [] },
-          { id: "files", name: "A folder", blurb: "Read and write files in one folder you choose.", fields: [], folder: true, added: false, on: false, tools: null, error: null, env: null, args: null },
+        case "connectors_gallery": return { node: true, path: "/Users/me/Library/Application Support/com.openclicky.app/mcp.json",
+          custom: [{ id: "my-db", name: "my-db", command: "uvx", args: ["mcp-server-sqlite", "--db-path", "~/data.db"], group: "custom", auth: "custom", added: true, on: true, tools: 6, error: null, env: {}, tool_list: [] }],
+          presets: [
+          { id: "github", name: "GitHub", group: "work", auth: "token", blurb: "Issues, pull requests, code search and files in your repos, through GitHub's own server.", help: "Create a fine-grained token.", help_url: "https://github.com", fields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token", placeholder: "github_pat_…" }], folder: false, added: true, on: true, tools: 41, error: null, env: { GITHUB_PERSONAL_ACCESS_TOKEN: "gith••••a1b" }, args: [], tool_list: [{ name: "search_issues", description: "Search issues" }, { name: "create_pull_request", description: "Open a PR" }, { name: "get_file_contents", description: "Read a file" }, { name: "list_commits", description: "" }] },
+          { id: "linear", name: "Linear", group: "work", auth: "browser", blurb: "Find, create and update issues, projects and comments.", fields: [], folder: false, added: true, on: true, tools: null, error: null, env: {}, args: [] },
+          { id: "atlassian", name: "Jira & Confluence", group: "work", auth: "browser", blurb: "Search and update Jira issues and Confluence pages.", fields: [], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null, help_url: "https://atlassian.com" },
+          { id: "sentry", name: "Sentry", group: "work", auth: "token", blurb: "Look up errors, issues and releases in your Sentry projects.", fields: [{ key: "SENTRY_AUTH_TOKEN", label: "Auth token", placeholder: "sntryu_…" }], folder: false, added: true, on: true, tools: null, error: "sentry: initialize timed out. It said: Error: 401 Unauthorized: invalid token", env: {}, args: [] },
+          { id: "notion", name: "Notion", group: "notes", auth: "token", blurb: "Search, read and add pages in the workspaces you share with it.", fields: [{ key: "NOTION_TOKEN", label: "Integration secret", placeholder: "ntn_…" }], folder: false, added: true, on: false, tools: null, error: null, env: {}, args: [] },
+          { id: "slack", name: "Slack", group: "notes", auth: "token", community: true, blurb: "Read channels, threads and DMs, and search messages. Posting stays off.", fields: [{ key: "SLACK_MCP_XOXP_TOKEN", label: "User OAuth token", placeholder: "xoxp-…" }], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null, help_url: "https://api.slack.com/apps" },
+          { id: "brave", name: "Brave Search", group: "search", auth: "token", blurb: "Private web, news and image search with fresh results.", fields: [{ key: "BRAVE_API_KEY", label: "API key", placeholder: "BSA…" }], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null, help_url: "https://brave.com" },
+          { id: "context7", name: "Context7", group: "search", auth: "none", blurb: "Up-to-date docs and code examples for libraries and frameworks.", fields: [], folder: false, added: false, on: false, tools: null, error: null, env: null, args: null, help_url: "https://context7.com" },
+          { id: "files", name: "A folder", group: "files", auth: "folder", blurb: "Read and write files in one folder you choose.", fields: [], folder: true, added: false, on: false, tools: null, error: null, env: null, args: null }
         ] };
         case "resources_report": return { root: "", pack: "local", sounds: 37, missing: [] };
         default: return null;
@@ -179,19 +218,6 @@ export function installPreview() {
     ev("speech.start", { id: "b1" }, 200);
     ev("overlay.highlight", { rect: { x: 560, y: 120, w: 150, h: 36 } }, 300);
     ev("overlay.draw", { ops: [{ kind: "circle", x: 140, y: 330, w: 200, h: 48 }, { kind: "underline", x: 520, y: 420, w: 260, h: 20 }, { kind: "arrow", x: 860, y: 480, to_x: 720, to_y: 180 }] }, 500);
-  }
-  if (previewView === "board") {
-    ev("board.show", { title: "How a request reaches the server", ops: [
-      { kind: "box", x: 60, y: 240, w: 140, h: 60, text: "Your web browser on the laptop" },
-      { kind: "arrow", x: 250, y: 280, to_x: 400, to_y: 280, text: "HTTPS" },
-      { kind: "box", x: 410, y: 240, w: 180, h: 80, text: "Load balancer", color: "blue" },
-      { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 200 },
-      { kind: "arrow", x: 600, y: 280, to_x: 750, to_y: 360 },
-      { kind: "box", x: 760, y: 150, w: 180, h: 80, text: "Server A" },
-      { kind: "box", x: 760, y: 320, w: 180, h: 80, text: "Server B" },
-      { kind: "text", x: 380, y: 300, text: "the load balancer picks whichever server is less busy right now", color: "red" },
-      { kind: "underline", x: 410, y: 300, w: 180, h: 20, color: "red" },
-    ] }, 200);
   }
   if (previewView === "guide") ev("guide.show", { perm: "accessibility", app: "/Applications/Pixie.app", icon: "" }, 150);
   if (previewView === "settings" && params.get("tab")) ev("settings.tab", { tab: params.get("tab") }, 300);

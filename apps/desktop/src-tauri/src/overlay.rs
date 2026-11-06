@@ -1,13 +1,12 @@
-//! Pointing and drawing on the user's screen (`highlight`, `draw`), and the **board**: a paper
-//! canvas for explaining things visually (`draw` with `board: true`), so the notch text never
-//! covers a diagram.
+//! Pointing and drawing on the user's screen (`highlight`, `draw`). Diagrams and explanations go
+//! on the Excalidraw canvas instead (`canvas.rs`).
 //!
 //! Screen coordinates arrive in CG global points. The overlay covers the screen they fall on;
 //! the UI converts using the window's *actual* frame. Targets snap to the nearest real control
 //! or text line from the last capture.
 
 use crate::macos::{self, Rect};
-use crate::{emit, screen, AppState, BOARD, OVERLAY};
+use crate::{emit, screen, AppState, OVERLAY};
 use openclicky_core::Event;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -21,7 +20,6 @@ static SHOWN: AtomicBool = AtomicBool::new(false);
 pub fn is_shown() -> bool {
     SHOWN.load(Ordering::SeqCst)
 }
-static BOARD_OPEN: AtomicBool = AtomicBool::new(false);
 /// Upper bound for marks that outlive the answer (speech end clears sooner).
 const LINGER: Duration = Duration::from_secs(20);
 
@@ -29,9 +27,6 @@ pub fn configure(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(OVERLAY) {
         macos::configure_overlay(&w, macos::OVERLAY_LEVEL);
         macos::set_ignores_mouse(&w, true);
-    }
-    if let Some(w) = app.get_webview_window(BOARD) {
-        macos::configure_overlay(&w, macos::OVERLAY_LEVEL);
     }
 }
 
@@ -79,7 +74,7 @@ pub fn clear(app: &AppHandle) {
         return;
     }
     emit(app, Event::new("overlay.clear", json!({})));
-    emit(app, Event::new("overlay.state", json!({ "active": BOARD_OPEN.load(Ordering::SeqCst) })));
+    emit(app, Event::new("overlay.state", json!({ "active": false })));
     let h = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(450)).await;
@@ -142,9 +137,6 @@ pub fn highlight(app: &AppHandle, input: &Value) -> Result<String, String> {
 }
 
 pub fn draw(app: &AppHandle, input: &Value) -> Result<String, String> {
-    if input.get("board").and_then(Value::as_bool).unwrap_or(false) {
-        return board(app, input);
-    }
     let mut ops = input.get("ops").and_then(Value::as_array).cloned().unwrap_or_default();
     if ops.is_empty() {
         return Err("draw needs at least one op.".into());
@@ -174,61 +166,3 @@ pub fn draw(app: &AppHandle, input: &Value) -> Result<String, String> {
     Ok(format!("Drew {} mark(s).", ops.len()))
 }
 
-/// Board size in points; ops use a 1000 × 640 canvas.
-const BOARD_W: f64 = 960.0;
-const BOARD_H: f64 = 680.0;
-
-fn board(app: &AppHandle, input: &Value) -> Result<String, String> {
-    let ops = input.get("ops").and_then(Value::as_array).cloned().unwrap_or_default();
-    if ops.is_empty() {
-        return Err("draw needs at least one op.".into());
-    }
-    let title = input.get("title").and_then(Value::as_str).unwrap_or("").to_string();
-    let h = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let Some(w) = h.get_webview_window(BOARD) else { return };
-        let s = macos::screen_at_cursor();
-        let width = BOARD_W.min(s.frame.w - 80.0);
-        let height = BOARD_H.min(s.frame.h - s.top_inset - 120.0);
-        // Centre, nudged down so the notch above stays readable.
-        let frame = Rect { x: s.frame.x + (s.frame.w - width) / 2.0, y: s.frame.y + s.top_inset + 90.0_f64.max((s.frame.h - height) / 2.0 - 10.0), w: width, h: height };
-        macos::set_frame(&w, frame);
-        macos::order_front_without_focus(&w);
-    });
-    BOARD_OPEN.store(true, Ordering::SeqCst);
-    emit(app, Event::new("board.show", json!({ "title": title, "ops": ops })));
-    emit(app, Event::new("overlay.state", json!({ "active": true })));
-    let st = app.state::<AppState>();
-    st.play("pencil-paper-bed");
-    let secs = (ops.len() as u64 * 450).clamp(900, 6000);
-    let h2 = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(secs)).await;
-        if let Ok(mut bus) = h2.state::<AppState>().audio.lock() {
-            bus.stop_bed();
-        }
-    });
-    Ok(format!("Drew {} things on the board. It stays open until they close it or ask something else.", ops.len()))
-}
-
-pub fn board_open() -> bool {
-    BOARD_OPEN.load(Ordering::SeqCst)
-}
-
-pub fn board_close(app: &AppHandle) {
-    if !BOARD_OPEN.swap(false, Ordering::SeqCst) {
-        return;
-    }
-    emit(app, Event::new("board.hide", json!({})));
-    emit(app, Event::new("overlay.state", json!({ "active": SHOWN.load(Ordering::SeqCst) })));
-    let h = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(260)).await;
-        let h2 = h.clone();
-        let _ = h.run_on_main_thread(move || {
-            if let Some(w) = h2.get_webview_window(BOARD) {
-                macos::order_out(&w);
-            }
-        });
-    });
-}

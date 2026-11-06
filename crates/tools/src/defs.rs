@@ -13,7 +13,8 @@ fn obj(props: Value, required: &[&str]) -> Value {
 }
 
 pub fn bash() -> ToolDef {
-    def("bash", "Run a shell command (bash) in the job's working folder. Default timeout 300 s; output is cut to 50 KB. Install missing libraries into tmp/.",
+    let what = format!("Run a shell command ({}) in the job's working folder. Default timeout 300 s; output is cut to 50 KB. Install missing libraries into tmp/.", crate::portable::shell_name());
+    def("bash", &what,
         obj(json!({ "command": {"type":"string"}, "timeout": {"type":"integer","description":"seconds"} }), &["command"]))
 }
 pub fn read() -> ToolDef {
@@ -109,15 +110,15 @@ pub fn draw() -> ToolDef {
         "text": {"type":"string","description":"handwritten text (kind text), or a label inside a box/circle"},
         "color": {"type":"string","enum":["ink","blue","red","green","orange","yellow","pink"]}
     }), &["kind"]);
-    def("draw", "Draw by hand. On their screen (default): circle, box or underline something that's on screen (x,y,w,h in screen points, use the frame from the lists), an arrow from (x,y) to (to_x,to_y), a check or cross, or short text; marks fade after the answer. With board=true: open a clean paper board and sketch an explanation there instead (a diagram, steps, how things connect) on a 1000×640 canvas, origin top-left; give it a short title. Use the board whenever you explain something visually rather than mark what's on screen.",
-        obj(json!({ "ops": {"type":"array","items": op}, "board": {"type":"boolean"}, "title": {"type":"string"} }), &["ops"]))
+    def("draw", "Draw by hand. On their screen (default): circle, box or underline something that's on screen (x,y,w,h in screen points, use the frame from the lists), an arrow from (x,y) to (to_x,to_y), a check or cross, or short text; marks fade after the answer. This marks what's on their screen; to explain something with a diagram, use the canvas tool instead.",
+        obj(json!({ "ops": {"type":"array","items": op} }), &["ops"]))
 }
 pub fn highlight() -> ToolDef {
     def("highlight", "Point at something on screen: the pointer flies there and rings it. Best: give target, the element id from the controls list (e.g. e12) or the exact text of a line from the text list; its exact frame is used. Otherwise give x, y, w, h in screen points copied from those lists (never estimate from the image when the item is listed). label is a 1-4 word tag shown beside it.",
         obj(json!({ "target": {"type":"string","description":"element id like e12, or exact on-screen text"}, "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"}, "label": {"type":"string"} }), &[]))
 }
 pub fn mac_step() -> ToolDef {
-    def("mac_step", "Do one step in their apps. Your buddy pointer flies there first so they see it. action: click / double_click / right_click (target = a label, an element id like e12, or give x and y in screen points), drag (x,y → to_x,to_y), press (a button by label/id through Accessibility), menu (a path like \"File > Export…\"), type (put text into the focused field), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without acting). Each click returns what the screen looks like after; check it before the next step.",
+    def("mac_step", "Do one step in their apps. Your buddy pointer flies there first so they see it. action: click / double_click / right_click (target = a label, an element id like e12, or give x and y in screen points), drag (x,y → to_x,to_y), press (a button by label/id through Accessibility), menu (a path like \"File > Export…\"), type (target = the text; it goes into the field with keyboard focus. Give x and y of the field to click into it first: always do that unless you just clicked it, and always when the window has several panes or inputs such as split terminals, chat side panels or editor + console; the result says which field got it), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without acting). Each click returns what the screen looks like after; check it before the next step.",
         obj(json!({
             "action": {"type":"string","enum":["click","double_click","right_click","drag","press","menu","type","key","focus","open","scroll","find"]},
             "target": {"type":"string"},

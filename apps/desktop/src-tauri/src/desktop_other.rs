@@ -104,17 +104,6 @@ pub fn key_down(keycode: u16) -> bool {
     }
 }
 
-pub fn mouse_down() -> bool {
-    #[cfg(windows)]
-    {
-        win::down(0x01)
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
-
 /// Cursor in logical points.
 pub fn cursor() -> (f64, f64) {
     #[cfg(windows)]
@@ -139,8 +128,11 @@ pub fn cursor() -> (f64, f64) {
     }
 }
 
-/// (physical position, physical size, scale) for each monitor, primary first.
-fn monitors() -> Vec<((f64, f64), (f64, f64), f64)> {
+/// (physical position, physical size, scale).
+type Monitor = ((f64, f64), (f64, f64), f64);
+
+/// Every monitor, primary first.
+fn monitors() -> Vec<Monitor> {
     let Some(app) = APP.get() else { return vec![] };
     let primary = app.primary_monitor().ok().flatten().map(|m| *m.position());
     let mut all: Vec<_> = app
@@ -157,6 +149,29 @@ fn monitors() -> Vec<((f64, f64), (f64, f64), f64)> {
         all.sort_by_key(|m| (m.0 .0 as i32 != pp.x || m.0 .1 as i32 != pp.y) as u8);
     }
     all
+}
+
+/// The monitor containing a physical point (falls back to the primary).
+pub fn phys_monitor_at(px: f64, py: f64) -> Monitor {
+    let all = monitors();
+    all.iter()
+        .copied()
+        .find(|(pos, size, _)| px >= pos.0 && px < pos.0 + size.0 && py >= pos.1 && py < pos.1 + size.1)
+        .or(all.first().copied())
+        .unwrap_or(((0.0, 0.0), (1440.0, 900.0), 1.0))
+}
+
+/// Physical pixels → global logical points (by the scale of the monitor they're on).
+#[allow(dead_code)]
+pub fn to_logical(px: f64, py: f64) -> (f64, f64) {
+    let (_, _, scale) = phys_monitor_at(px, py);
+    (px / scale, py / scale)
+}
+
+/// Global logical points → physical pixels.
+pub fn to_physical(x: f64, y: f64) -> (f64, f64) {
+    let scale = screens().into_iter().find(|s| s.frame.contains(x, y)).map(|s| s.scale).unwrap_or(1.0);
+    (x * scale, y * scale)
 }
 
 pub fn screens() -> Vec<ScreenInfo> {
@@ -224,3 +239,16 @@ pub fn make_key<R: Runtime>(win: &WebviewWindow<R>) {
 }
 
 pub fn deactivate() {}
+
+/// Up front, focused, above other windows.
+pub fn present<R: Runtime>(win: &WebviewWindow<R>) {
+    let _ = win.unminimize();
+    let _ = win.set_always_on_top(true);
+    make_key(win);
+}
+
+/// Pixie has focus: one of its own windows is focused.
+pub fn app_active_in<R: Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    use tauri::Manager;
+    app.webview_windows().values().any(|w| w.is_focused().unwrap_or(false))
+}

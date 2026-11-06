@@ -15,7 +15,10 @@ impl std::fmt::Display for Denied {
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// `~` expansion only; no canonicalisation.
@@ -24,7 +27,7 @@ pub fn expand(path: &str) -> PathBuf {
     if p == "~" {
         return home();
     }
-    if let Some(rest) = p.strip_prefix("~/") {
+    if let Some(rest) = p.strip_prefix("~/").or_else(|| p.strip_prefix("~\\")) {
         return home().join(rest);
     }
     PathBuf::from(p)
@@ -63,6 +66,10 @@ fn denied_components(path: &Path) -> bool {
             return true;
         }
         if lower == ".config" && next.as_deref() == Some("gh") {
+            return true;
+        }
+        // Windows: saved credentials, DPAPI keys and the credential vault.
+        if lower == "microsoft" && matches!(next.as_deref(), Some("credentials" | "protect" | "vault")) {
             return true;
         }
     }

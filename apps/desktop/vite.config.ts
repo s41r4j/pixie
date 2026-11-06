@@ -27,10 +27,29 @@ function slots(): Plugin {
   };
 }
 
+// Excalidraw's fonts, served locally so the canvas works offline (public/excalidraw-assets/fonts,
+// copied from the package; not committed). The 12 MB CJK font is left out: those characters
+// fall back to the system font.
+function excalidrawFonts(): Plugin {
+  const copy = () => {
+    const from = path.resolve(__dirname, "../../node_modules/@excalidraw/excalidraw/dist/prod/fonts");
+    const to = path.resolve(__dirname, "public/excalidraw-assets/fonts");
+    if (!fs.existsSync(from)) return;
+    for (const family of fs.readdirSync(from)) {
+      if (family === "Xiaolai") continue;
+      fs.cpSync(path.join(from, family), path.join(to, family), { recursive: true });
+    }
+  };
+  return { name: "excalidraw-fonts", buildStart: copy, configureServer: copy };
+}
+
 // Tauri expects a fixed port and no screen clearing.
 export default defineConfig({
-  plugins: [react(), slots()],
+  plugins: [react(), slots(), excalidrawFonts()],
   clearScreen: false,
+  // Excalidraw must share the app's React (a second copy sits at the repo root).
+  resolve: { dedupe: ["react", "react-dom"] },
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
-  build: { target: "safari16", outDir: "dist", emptyOutDir: true },
+  // The canvas window's Excalidraw + Mermaid chunks are big by nature; they load only there.
+  build: { target: "safari16", outDir: "dist", emptyOutDir: true, chunkSizeWarningLimit: 2500 },
 });

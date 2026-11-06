@@ -10,6 +10,7 @@ pub mod defs;
 mod exec;
 pub mod guard;
 pub mod notes;
+pub mod portable;
 pub mod web;
 
 pub use agent::{run, AgentEvent, AgentOptions, AgentOutcome};

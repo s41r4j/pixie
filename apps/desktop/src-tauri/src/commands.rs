@@ -86,11 +86,6 @@ pub fn guide_hide(app: AppHandle) {
     });
 }
 
-#[tauri::command]
-pub fn board_close(app: AppHandle) {
-    crate::overlay::board_close(&app);
-}
-
 /// Hovering the resting notch opens the peek; leaving closes it.
 #[tauri::command]
 pub fn panel_peek(app: AppHandle, on: bool) {
@@ -104,7 +99,8 @@ pub fn panel_peek(app: AppHandle, on: bool) {
 /// The Chat tab's log of this conversation.
 #[tauri::command]
 pub fn chat_log(state: State<'_, AppState>) -> Vec<crate::session::ChatEntry> {
-    state.session.chat_log()
+    let reset = state.settings.lock().map(|s| s.chat_reset_hour).unwrap_or(0);
+    state.session.chat_log(&state.data_dir, reset)
 }
 
 /// "New chat": forget the conversation.
@@ -322,12 +318,44 @@ pub fn open_chats(app: AppHandle, id: Option<String>) {
 /// Open an artifact (path or URL) the way Finder would.
 #[tauri::command]
 pub fn open_target(target: String, reveal: Option<bool>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("/usr/bin/open");
-    if reveal.unwrap_or(false) {
-        cmd.arg("-R");
-    }
-    let status = cmd.arg(&target).status().map_err(|e| e.to_string())?;
-    if status.success() { Ok(()) } else { Err(format!("Couldn't open {target}")) }
+    open_external(&target, reveal.unwrap_or(false))
+}
+
+/// Open a URL, file or folder with the system's default app (`reveal`: show it in the file manager).
+pub fn open_external(target: &str, reveal: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("/usr/bin/open");
+        if reveal {
+            c.arg("-R");
+        }
+        c.arg(target);
+        c
+    };
+    #[cfg(windows)]
+    let mut cmd = {
+        let c = if reveal {
+            let mut c = std::process::Command::new("explorer.exe");
+            c.arg(format!("/select,{target}"));
+            c
+        } else {
+            // ShellExecute through url.dll: URLs, ms-settings: pages, files and folders; no shell.
+            let mut c = std::process::Command::new("rundll32.exe");
+            c.args(["url.dll,FileProtocolHandler", target]);
+            c
+        };
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        let p = std::path::Path::new(target);
+        c.arg(if reveal { p.parent().unwrap_or(p) } else { p });
+        c
+    };
+    let status = cmd.status().map_err(|e| e.to_string())?;
+    // explorer.exe /select exits 1 even when it worked.
+    if status.success() || (cfg!(windows) && reveal) { Ok(()) } else { Err(format!("Couldn't open {target}")) }
 }
 
 // ---- settings --------------------------------------------------------------------------
@@ -563,7 +591,36 @@ pub fn connector_save(app: AppHandle, id: String, values: Value, on: bool) -> Re
 }
 
 #[tauri::command]
+pub fn connector_retry(app: AppHandle, id: String) -> Result<Value, String> {
+    crate::connectors::retry(&app, &id)?;
+    Ok(crate::connectors::gallery(&app))
+}
+
+#[tauri::command]
+pub fn connector_add_custom(app: AppHandle, name: String, command: String, args: Vec<String>, env: std::collections::BTreeMap<String, String>) -> Result<Value, String> {
+    crate::connectors::add_custom(&app, &name, &command, &args, &env)?;
+    Ok(crate::connectors::gallery(&app))
+}
+
+#[tauri::command]
 pub fn connector_remove(app: AppHandle, id: String) -> Result<Value, String> {
     crate::connectors::remove(&app, &id)?;
     Ok(crate::connectors::gallery(&app))
+}
+
+// ---- updates ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn update_status(app: AppHandle) -> Value {
+    crate::updates::status(&app)
+}
+
+#[tauri::command]
+pub async fn update_check(app: AppHandle) -> Result<Value, String> {
+    crate::updates::check(&app).await
+}
+
+#[tauri::command]
+pub fn update_restart(app: AppHandle) -> Result<(), String> {
+    crate::updates::restart_now(&app)
 }

@@ -1,6 +1,10 @@
 //! Natural local voice: Kokoro (82M) through sherpa-onnx, run by the `openclicky-voice`
-//! sidecar. The model loads once; sentences are synthesised in order and handed to the helper
-//! for playback (with word timing), so speech starts while the answer is still streaming.
+//! sidecar. Sentences are synthesised in order and handed to the helper for playback (with word
+//! timing), so speech starts while the answer is still streaming.
+//!
+//! Memory: the loaded model takes ~470 MB, so it isn't kept around. It loads (about a second)
+//! when they start talking or the first sentence is queued, and unloads after a few quiet
+//! minutes. Sentences queued while it loads are spoken once it's up.
 //!
 //! Files: `<app_data>/voices/runtime` (sherpa-onnx v2.0.1 osx-arm64, shared) and
 //! `<app_data>/voices/kokoro` (kokoro-multi-lang-v1_0). Settings → Voice can download them.
@@ -14,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 pub const RUNTIME_URL: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-osx-universal2-shared.tar.bz2";
@@ -31,9 +36,18 @@ pub const VOICES: &[(i32, &str, &str)] = &[
     (26, "George", "steady, British"),
 ];
 
+/// Unload the model after this long without speaking.
+const IDLE_UNLOAD: Duration = Duration::from_secs(5 * 60);
+
 struct Engine {
     stdin: Mutex<Option<ChildStdin>>,
+    /// The model is loaded and taking requests.
     ready: AtomicBool,
+    /// The server process is starting or running.
+    running: AtomicBool,
+    /// Lines queued while the model loads (lock order: queue, then stdin).
+    queue: Mutex<Vec<String>>,
+    last_used: Mutex<Option<Instant>>,
     gen: AtomicU64,
     /// request id → (generation, text)
     pending: Mutex<HashMap<String, (u64, String)>>,
@@ -45,6 +59,9 @@ fn engine() -> &'static Engine {
     E.get_or_init(|| Engine {
         stdin: Mutex::new(None),
         ready: AtomicBool::new(false),
+        running: AtomicBool::new(false),
+        queue: Mutex::new(Vec::new()),
+        last_used: Mutex::new(None),
         gen: AtomicU64::new(0),
         pending: Mutex::new(HashMap::new()),
         installing: AtomicBool::new(false),
@@ -70,8 +87,19 @@ pub fn ready() -> bool {
     engine().ready.load(Ordering::SeqCst)
 }
 
+/// The natural voice can be used here (installed, sidecar present); it may not be loaded yet.
+fn available(app: &AppHandle) -> bool {
+    cfg!(target_os = "macos") && installed(&app.state::<AppState>().data_dir) && binary().is_some()
+}
+
+fn touch() {
+    *engine().last_used.lock().unwrap() = Some(Instant::now());
+}
+
 #[derive(Serialize)]
 pub struct Status {
+    /// The natural voice ships for macOS only so far.
+    supported: bool,
     installed: bool,
     ready: bool,
     installing: bool,
@@ -101,8 +129,9 @@ fn remote_size(url: &str) -> u64 {
 pub fn status(app: &AppHandle) -> Status {
     let data = app.state::<AppState>().data_dir.clone();
     Status {
+        supported: cfg!(target_os = "macos"),
         installed: installed(&data),
-        ready: ready(),
+        ready: installed(&data) && binary().is_some(),
         installing: engine().installing.load(Ordering::SeqCst),
         voices: VOICES.iter().map(|(id, n, d)| json!({ "id": id, "name": n, "description": d })).collect(),
         done: progress().lock().map(|p| p.0).unwrap_or(0),
@@ -110,33 +139,60 @@ pub fn status(app: &AppHandle) -> Status {
     }
 }
 
-/// Start the voice server if the model is there.
-pub fn start(app: AppHandle) {
-    let data = app.state::<AppState>().data_dir.clone();
-    if !installed(&data) {
-        log::info!("voice: Kokoro not installed; using the system voice");
+/// At launch: nothing loads yet; a watcher unloads the model when it's been quiet a while.
+pub fn start(_app: AppHandle) {
+    std::thread::Builder::new()
+        .name("openclicky-voice-idle".into())
+        .spawn(|| loop {
+            std::thread::sleep(Duration::from_secs(30));
+            let e = engine();
+            let quiet = e.last_used.lock().unwrap().map(|t| t.elapsed() > IDLE_UNLOAD).unwrap_or(true);
+            if e.ready.load(Ordering::SeqCst) && quiet && e.pending.lock().unwrap().is_empty() {
+                log::info!("voice: quiet for a while, unloading Kokoro");
+                // Closing stdin ends the server; the reader thread tidies up.
+                *e.stdin.lock().unwrap() = None;
+            }
+        })
+        .expect("voice idle thread");
+}
+
+/// Load the model now if it isn't (they started talking, so an answer is coming).
+pub fn warm(app: &AppHandle) {
+    let voice = app.state::<AppState>().settings.lock().map(|s| s.voice_engine.clone()).unwrap_or_default();
+    if voice == "apple" || !available(app) {
         return;
     }
+    touch();
+    launch(app.clone());
+}
+
+/// Start the voice server unless it's already starting or running.
+fn launch(app: AppHandle) {
+    if engine().running.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let data = app.state::<AppState>().data_dir.clone();
     let Some(bin) = binary() else {
-        log::warn!("voice: openclicky-voice sidecar missing");
+        engine().running.store(false, Ordering::SeqCst);
         return;
     };
     std::thread::Builder::new()
         .name("openclicky-voice".into())
         .spawn(move || {
             let v = voices_dir(&data);
-            let mut child = match Command::new(&bin)
+            let spawned = Command::new(&bin)
                 .arg(v.join("runtime"))
                 .arg(v.join("kokoro"))
                 .arg("4")
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
-                .spawn()
-            {
+                .spawn();
+            let mut child = match spawned {
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("voice: {e}");
+                    stopped(&app);
                     return;
                 }
             };
@@ -147,8 +203,17 @@ pub fn start(app: AppHandle) {
                 let f: Vec<&str> = line.splitn(4, '\t').collect();
                 match f.as_slice() {
                     ["ready", n, ..] => {
+                        // Under the queue lock, so nothing is queued after the flush.
+                        let mut q = engine().queue.lock().unwrap();
                         engine().ready.store(true, Ordering::SeqCst);
-                        log::info!("voice: Kokoro ready ({n} voices)");
+                        let mut stdin = engine().stdin.lock().unwrap();
+                        if let Some(w) = stdin.as_mut() {
+                            for l in q.drain(..) {
+                                let _ = w.write_all(l.as_bytes());
+                            }
+                            let _ = w.flush();
+                        }
+                        log::info!("voice: Kokoro loaded ({n} voices)");
                     }
                     ["fatal", msg, ..] => log::error!("voice: {msg}"),
                     [id, "ok", ..] => delivered(&app, id, true),
@@ -159,12 +224,26 @@ pub fn start(app: AppHandle) {
                     _ => {}
                 }
             }
-            engine().ready.store(false, Ordering::SeqCst);
-            *engine().stdin.lock().unwrap() = None;
             let _ = child.wait();
-            log::warn!("voice: server stopped; falling back to the system voice");
+            stopped(&app);
         })
         .expect("voice thread");
+}
+
+/// The server is gone (unloaded, or it failed): anything still waiting falls through.
+fn stopped(app: &AppHandle) {
+    let waiting: Vec<String> = {
+        let mut q = engine().queue.lock().unwrap();
+        engine().ready.store(false, Ordering::SeqCst);
+        *engine().stdin.lock().unwrap() = None;
+        engine().running.store(false, Ordering::SeqCst);
+        q.drain(..).filter_map(|l| l.split('\t').next().map(str::to_string)).collect()
+    };
+    let left: Vec<String> = engine().pending.lock().unwrap().keys().cloned().collect();
+    for id in waiting.into_iter().chain(left) {
+        delivered(app, &id, false);
+    }
+    log::info!("voice: Kokoro unloaded");
 }
 
 fn wav_path(app: &AppHandle, id: &str) -> PathBuf {
@@ -185,21 +264,30 @@ fn delivered(app: &AppHandle, id: &str, ok: bool) {
     }
 }
 
-/// Queue a sentence. False when the natural voice isn't available.
+/// Queue a sentence (loading the model first if needed). False when the natural voice isn't
+/// available, so the system voice speaks instead.
 pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64) -> bool {
-    if !ready() {
+    if !ready() && !available(app) {
         return false;
     }
+    touch();
     let clean: String = text.chars().map(|c| if c == '\t' || c == '\n' { ' ' } else { c }).collect();
     let line = format!("{id}\t{sid}\t{speed:.2}\t{}\t{clean}\n", wav_path(app, id).display());
-    let mut guard = engine().stdin.lock().unwrap();
-    let Some(stdin) = guard.as_mut() else { return false };
-    engine().pending.lock().unwrap().insert(id.to_string(), (engine().gen.load(Ordering::SeqCst), clean));
-    if stdin.write_all(line.as_bytes()).and_then(|_| stdin.flush()).is_err() {
-        engine().pending.lock().unwrap().remove(id);
-        return false;
+    let gen = engine().gen.load(Ordering::SeqCst);
+    let mut q = engine().queue.lock().unwrap();
+    engine().pending.lock().unwrap().insert(id.to_string(), (gen, clean));
+    if !ready() {
+        q.push(line);
+        drop(q);
+        launch(app.clone());
+        return true;
     }
-    true
+    let mut guard = engine().stdin.lock().unwrap();
+    let ok = guard.as_mut().map(|w| w.write_all(line.as_bytes()).and_then(|_| w.flush()).is_ok()).unwrap_or(false);
+    if !ok {
+        engine().pending.lock().unwrap().remove(id);
+    }
+    ok
 }
 
 /// Drop everything queued (barge-in / escape).
@@ -209,6 +297,9 @@ pub fn stop() {
 
 /// Download + unpack the runtime and model (user-initiated from Settings → Voice).
 pub fn install(app: AppHandle) -> Result<(), String> {
+    if cfg!(not(target_os = "macos")) {
+        return Err("The natural voice is Mac-only for now; Pixie uses the system voice here.".into());
+    }
     if engine().installing.swap(true, Ordering::SeqCst) {
         return Err("Already downloading.".into());
     }
@@ -264,7 +355,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         match r {
             Ok(()) => {
                 crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "done" })));
-                start(app);
+                warm(&app);
             }
             Err(e) => crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "error", "error": e }))),
         }

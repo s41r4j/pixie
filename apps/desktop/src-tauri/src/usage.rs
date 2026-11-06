@@ -318,54 +318,6 @@ pub fn summary_with(all: &[Line], settings: &Settings, f: &Filter, now_ms: i64) 
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn catalog_parses_and_normalises() {
-        assert_eq!(normalize("anthropic/claude-opus-5.5"), "claude-opus-5-5");
-        assert_eq!(normalize("claude-sonnet-4-20250514"), "claude-sonnet-4");
-        assert_eq!(normalize("gpt-5-2025-08-07"), "gpt-5");
-        assert_eq!(normalize("openai/gpt-5-mini"), "gpt-5-mini");
-        let v = json!({ "data": [
-            { "id": "anthropic/claude-opus-5.5", "context_length": 200000, "pricing": { "prompt": "0.000004", "completion": "0.00002" } },
-            { "id": "anthropic/claude-opus-5.5:batch", "pricing": { "prompt": "0.000002", "completion": "0.00001" } },
-            { "id": "openai/gpt-5", "pricing": { "prompt": "0.00000125", "completion": "0.00001" } },
-            { "id": "meta/llama", "pricing": { "prompt": "0.1", "completion": "0.1" } },
-            { "id": "openai/gpt-x", "pricing": { "prompt": "-1", "completion": "-1" } }
-        ] });
-        let c = Catalog::from_openrouter(&v, 1);
-        assert_eq!(c.models.len(), 2);
-        let e = c.lookup("claude-opus-5-5-20260101").unwrap();
-        assert!((e.input - 4.0).abs() < 1e-9 && (e.output - 20.0).abs() < 1e-9 && e.context == 200000);
-        assert!((c.lookup("gpt-5").unwrap().input - 1.25).abs() < 1e-9);
-        let mut c = c;
-        c.aliases.insert("claude-best".into(), "Claude Opus 5.5".into());
-        assert!((c.lookup("claude-best").unwrap().input - 4.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn totals_and_costs() {
-        let now = 1_800_000_000_000;
-        let l = |m: &str, i, o, kind: &str| Line { ts: now - 1000, provider: "claude".into(), model: m.into(), kind: kind.into(), input: i, output: o };
-        let lines = vec![l("claude-opus-5-5", 1_000_000, 100_000, "voice"), l("claude-opus-5-5", 0, 0, "job"), l("deepseek-flash", 500, 50, "voice")];
-        let mut s = Settings::default();
-        let v = summary(&lines, &s, 30, now);
-        assert_eq!(v["requests"], 3);
-        assert!((v["cost"].as_f64().unwrap() - 6.0).abs() < 1e-9, "4 + 0.1*20");
-        assert_eq!(v["unpriced"], true);
-        s.prices.insert("deepseek-flash".into(), Price { input: 1.0, output: 2.0 });
-        let v = summary(&lines, &s, 30, now);
-        assert_eq!(v["unpriced"], false);
-        let old = Line { ts: now - 40 * 86_400_000, ..lines[0].clone() };
-        assert_eq!(summary(&[old.clone()], &s, 30, now)["requests"], 0);
-        assert_eq!(summary(&[old], &s, 0, now)["requests"], 1, "0 days = all time");
-        let v = summary_with(&lines, &s, &Filter { days: 30, provider: "claude".into(), kind: "job".into() }, now);
-        assert_eq!(v["requests"], 1);
-        assert_eq!(v["all_time"]["requests"], 3);
-    }
-}
 
 // ---- official model lists ---------------------------------------------------------------------
 
@@ -438,5 +390,54 @@ pub async fn warm(data: &Path, settings: &Settings) {
                 log::warn!("models {p}: {e}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_parses_and_normalises() {
+        assert_eq!(normalize("anthropic/claude-opus-5.5"), "claude-opus-5-5");
+        assert_eq!(normalize("claude-sonnet-4-20250514"), "claude-sonnet-4");
+        assert_eq!(normalize("gpt-5-2025-08-07"), "gpt-5");
+        assert_eq!(normalize("openai/gpt-5-mini"), "gpt-5-mini");
+        let v = json!({ "data": [
+            { "id": "anthropic/claude-opus-5.5", "context_length": 200000, "pricing": { "prompt": "0.000004", "completion": "0.00002" } },
+            { "id": "anthropic/claude-opus-5.5:batch", "pricing": { "prompt": "0.000002", "completion": "0.00001" } },
+            { "id": "openai/gpt-5", "pricing": { "prompt": "0.00000125", "completion": "0.00001" } },
+            { "id": "meta/llama", "pricing": { "prompt": "0.1", "completion": "0.1" } },
+            { "id": "openai/gpt-x", "pricing": { "prompt": "-1", "completion": "-1" } }
+        ] });
+        let c = Catalog::from_openrouter(&v, 1);
+        assert_eq!(c.models.len(), 2);
+        let e = c.lookup("claude-opus-5-5-20260101").unwrap();
+        assert!((e.input - 4.0).abs() < 1e-9 && (e.output - 20.0).abs() < 1e-9 && e.context == 200000);
+        assert!((c.lookup("gpt-5").unwrap().input - 1.25).abs() < 1e-9);
+        let mut c = c;
+        c.aliases.insert("claude-best".into(), "Claude Opus 5.5".into());
+        assert!((c.lookup("claude-best").unwrap().input - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn totals_and_costs() {
+        let now = 1_800_000_000_000;
+        let l = |m: &str, i, o, kind: &str| Line { ts: now - 1000, provider: "claude".into(), model: m.into(), kind: kind.into(), input: i, output: o };
+        let lines = vec![l("claude-opus-5-5", 1_000_000, 100_000, "voice"), l("claude-opus-5-5", 0, 0, "job"), l("deepseek-flash", 500, 50, "voice")];
+        let mut s = Settings::default();
+        let v = summary(&lines, &s, 30, now);
+        assert_eq!(v["requests"], 3);
+        assert!((v["cost"].as_f64().unwrap() - 6.0).abs() < 1e-9, "4 + 0.1*20");
+        assert_eq!(v["unpriced"], true);
+        s.prices.insert("deepseek-flash".into(), Price { input: 1.0, output: 2.0 });
+        let v = summary(&lines, &s, 30, now);
+        assert_eq!(v["unpriced"], false);
+        let old = Line { ts: now - 40 * 86_400_000, ..lines[0].clone() };
+        assert_eq!(summary(std::slice::from_ref(&old), &s, 30, now)["requests"], 0);
+        assert_eq!(summary(&[old], &s, 0, now)["requests"], 1, "0 days = all time");
+        let v = summary_with(&lines, &s, &Filter { days: 30, provider: "claude".into(), kind: "job".into() }, now);
+        assert_eq!(v["requests"], 1);
+        assert_eq!(v["all_time"]["requests"], 3);
     }
 }

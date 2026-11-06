@@ -97,7 +97,7 @@ impl Capture {
         if !self.app.is_empty() {
             s.push_str(&format!("Frontmost app: {}", self.app));
             if !self.window.is_empty() {
-                s.push_str(&format!(" — window \"{}\"", self.window));
+                s.push_str(&format!(", window \"{}\"", self.window));
             }
             s.push('\n');
         }

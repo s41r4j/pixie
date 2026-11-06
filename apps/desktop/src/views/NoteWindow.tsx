@@ -158,7 +158,7 @@ export function NoteWindow() {
   }, []);
 
   useEffect(() => {
-    document.title = job ? `${job.title} — Pixie` : "Pixie";
+    document.title = job ? `${job.title} · Pixie` : "Pixie";
   }, [job]);
 
   const say = (text: string) => {

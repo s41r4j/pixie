@@ -703,6 +703,27 @@
       ],
       "gain": 1.0,
       "category": "ui"
+    },
+    "brand-face-inos": {
+      "files": [
+        "icons/brand/face-inos.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-face-xtrem": {
+      "files": [
+        "icons/brand/face-xtrem.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
+    },
+    "brand-face-eon": {
+      "files": [
+        "icons/brand/face-eon.svg"
+      ],
+      "gain": 1.0,
+      "category": "ui"
     }
   },
   "videos": {

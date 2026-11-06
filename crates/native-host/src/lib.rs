@@ -26,7 +26,12 @@ pub fn is_native_host_launch(args: &[String]) -> bool {
 
 pub fn default_socket() -> PathBuf {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    home.join("Library/Application Support/com.openclicky.app/browser.sock")
+    if cfg!(target_os = "macos") {
+        return home.join("Library/Application Support/com.openclicky.app/browser.sock");
+    }
+    // Linux: the app's data folder (Tauri's app_data_dir).
+    let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
+    data.join("com.openclicky.app/browser.sock")
 }
 
 /// Read one native message (None on EOF).
@@ -131,21 +136,19 @@ pub fn host_manifest(binary: &std::path::Path) -> String {
     .to_string()
 }
 
-/// NativeMessagingHosts folders for Chromium browsers on macOS.
+/// NativeMessagingHosts folders for Chromium browsers (macOS and Linux).
 pub fn manifest_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    let base = home.join("Library/Application Support");
-    [
-        "Google/Chrome",
-        "Google/Chrome Beta",
-        "Google/Chrome Canary",
-        "Chromium",
-        "BraveSoftware/Brave-Browser",
-        "Microsoft Edge",
-        "Arc/User Data",
-        "Vivaldi",
-    ]
-    .iter()
+    let (base, dirs): (PathBuf, &[&str]) = if cfg!(target_os = "macos") {
+        (
+            home.join("Library/Application Support"),
+            &["Google/Chrome", "Google/Chrome Beta", "Google/Chrome Canary", "Chromium", "BraveSoftware/Brave-Browser", "Microsoft Edge", "Arc/User Data", "Vivaldi"],
+        )
+    } else {
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        (config, &["google-chrome", "google-chrome-beta", "chromium", "BraveSoftware/Brave-Browser", "microsoft-edge", "vivaldi"])
+    };
+    dirs.iter()
     .map(|d| base.join(d))
     .filter(|d| d.exists())
     .map(|d| d.join("NativeMessagingHosts"))

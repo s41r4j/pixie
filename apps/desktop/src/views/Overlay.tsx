@@ -4,6 +4,7 @@
 // marquee selection. No text: Pixie talks, the pointer shows.
 import { useEffect, useRef, useState } from "react";
 import { onEvent, slotUrl, type Rect, type ScreenInfo } from "../lib/bridge";
+import { personaOf, usePersona } from "../lib/persona";
 
 export interface Op {
   kind: "circle" | "underline" | "arrow" | "box" | "check" | "cross" | "text" | "line" | "select";
@@ -17,7 +18,7 @@ export interface Op {
   color?: string;
 }
 
-// Board colours (monochrome); kept here because the board imports them.
+// Mark colours (monochrome).
 export const COLOR: Record<string, string> = {
   ink: "#000000", blue: "#000000", red: "#000000", green: "#404040", orange: "#404040", yellow: "#a0a0a0",
   pink: "#404040", white: "#ffffff", sky: "#000000", coral: "#000000", butter: "#a0a0a0", mint: "#404040", peach: "#404040",
@@ -85,6 +86,7 @@ const instant = () => typeof document !== "undefined" && document.documentElemen
 const SIZE = 22;
 
 export function Overlay() {
+  const persona = usePersona();
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
   const [win, setWin] = useState<Rect | null>(null);
   const [marks, setMarks] = useState<Mark[]>([]);
@@ -383,7 +385,7 @@ export function Overlay() {
       ))}
       <div ref={buddyEl} className={`buddy buddy--${mood} ${buddyOn ? "" : "buddy--away"}`}>
         <span className="buddy__ring" />
-        <span className="buddy__face" style={{ ["--icon" as string]: `url(${slotUrl("icon", "brand-mark-white")})` }} />
+        <span className="buddy__face" style={{ ["--icon" as string]: `url(${slotUrl("icon", personaOf(persona).icon)})` }} />
         <span className={`buddy__say ${tip ? "buddy__say--on" : ""} ${tipLeft ? "buddy__say--left" : ""}`}>{tip}</span>
       </div>
     </div>

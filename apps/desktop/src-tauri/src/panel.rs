@@ -108,6 +108,13 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
     if prev == next {
         return;
     }
+    if next != PanelMode::Hidden {
+        crate::updates::touch();
+    }
+    if matches!(next, PanelMode::Listening | PanelMode::Typing) {
+        // An answer is coming: load the natural voice while they talk or type.
+        crate::kokoro::warm(app);
+    }
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(win) = window(&handle) else { return };
@@ -161,7 +168,11 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
             macos::make_key(&win);
             let _ = win.set_focus();
         } else if prev == PanelMode::Typing {
-            macos::deactivate();
+            // Back to the canvas if it's up (so a click outside still closes it), else their app.
+            match handle.get_webview_window(crate::CANVAS).filter(|w| w.is_visible().unwrap_or(false)) {
+                Some(c) => macos::present(&c),
+                None => macos::deactivate(),
+            }
         }
     });
     emit(app, Event::new("panel.state", json!({ "mode": next, "prev": prev })));

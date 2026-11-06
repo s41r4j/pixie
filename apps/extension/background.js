@@ -316,7 +316,7 @@ async function run(msg) {
       return {
         text: tabs
           .slice(0, 500)
-          .map((t) => `${t.id}${t.id === cur?.id ? " (current)" : ""}: ${t.title} — ${t.url}`)
+          .map((t) => `${t.id}${t.id === cur?.id ? " (current)" : ""}: ${t.title} (${t.url})`)
           .join("\n"),
       };
     }

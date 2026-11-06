@@ -1,7 +1,7 @@
 // Settings → Apps (Calendar, Reminders, Contacts, Mail, Google) and Settings → Connectors
 // (one-click MCP servers, custom ones from mcp.json, and the Chrome extension).
 import { useEffect, useState } from "react";
-import { api, type AppsStatus, type ConnectorCard, type Gallery, type SettingsView } from "../lib/bridge";
+import { api, IS_MAC, MACHINE, onEvent, type AppsStatus, type ConnectorCard, type Gallery, type SettingsView } from "../lib/bridge";
 import { Glyph } from "../components/Mark";
 
 function Toggle({ on, busy, label, onChange }: { on: boolean; busy?: boolean; label: string; onChange: (v: boolean) => void }) {
@@ -30,6 +30,13 @@ export function AppsPanel({ view, onSaved }: { view: SettingsView | null; onSave
   const load = () => api.appsStatus().then(setSt).catch(() => {});
   useEffect(() => {
     load();
+    // Pixie switched an app on or off itself.
+    const un = onEvent((e) => {
+      if (e.kind === "settings.external") load();
+    });
+    return () => {
+      un.then((f) => f());
+    };
   }, []);
 
   const flip = (id: string, on: boolean) => {
@@ -72,7 +79,7 @@ export function AppsPanel({ view, onSaved }: { view: SettingsView | null; onSave
 
   return (
     <div className="stack-gap stack-gap--wide">
-      <h3 className="sub">On this Mac</h3>
+      <h3 className="sub">{IS_MAC ? "On this Mac" : "Mac apps"}</h3>
       {st && !st.supported && <div className="banner banner--muted">These use macOS apps, so they're Mac-only.</div>}
       <ul className="app-list">
         {MAC_APPS.map((a) => {
@@ -148,7 +155,7 @@ export function AppsPanel({ view, onSaved }: { view: SettingsView | null; onSave
               <li>
                 Enable the <b>Gmail API</b> and <b>Google Calendar API</b>, and add your address as a test user on the OAuth consent screen.
               </li>
-              <li>Paste the client ID and secret here, then sign in. Tokens stay on this Mac.</li>
+              <li>Paste the client ID and secret here, then sign in. Tokens stay on this {MACHINE}.</li>
             </ol>
             <div className="gcard__fields">
               <label className="field">
@@ -167,48 +174,154 @@ export function AppsPanel({ view, onSaved }: { view: SettingsView | null; onSave
   );
 }
 
+const GROUPS: { id: string; title: string; blurb: string }[] = [
+  { id: "work", title: "Work and code", blurb: "Issues, pull requests, projects and errors." },
+  { id: "notes", title: "Notes and messages", blurb: "Your pages and conversations." },
+  { id: "search", title: "Search and docs", blurb: "Fresh results from the web and library docs." },
+  { id: "files", title: "Files", blurb: "A folder Pixie may read and write." },
+];
+
+const AUTH: Record<string, string> = { token: "Token", browser: "Browser sign-in", none: "No setup", folder: "Pick a folder", custom: "Your server" };
+
+type Status = { tone: "idle" | "wait" | "ok" | "off" | "err"; text: string };
+
+function statusOf(c: ConnectorCard): Status {
+  if (!c.added) return { tone: "idle", text: "Not added" };
+  if (!c.on) return { tone: "off", text: "Off" };
+  if (c.error) return { tone: "err", text: "Couldn't connect" };
+  if (c.tools != null) return { tone: "ok", text: `Connected · ${c.tools} tool${c.tools === 1 ? "" : "s"}` };
+  return { tone: "wait", text: c.auth === "browser" ? "Connecting… sign in in your browser if it asks" : "Connecting…" };
+}
+
+/** Plain words for the usual failures; the raw message stays one click away. */
+function explain(err: string): string {
+  const e = err.toLowerCase();
+  if (e.includes("isn't installed")) return "Node.js isn't installed, so the connector can't start.";
+  if (e.includes("401") || e.includes("unauthorized") || e.includes("bad credentials") || e.includes("invalid token") || e.includes("invalid_auth")) return "The token was refused. Check it, then Edit and save it again.";
+  if (e.includes("403") || e.includes("forbidden")) return "The token works but isn't allowed to do this. Give it more permissions.";
+  if (e.includes("404") || e.includes("not found")) return "The server couldn't be found. Check your connection and try again.";
+  if (e.includes("timed out")) return "It took too long to answer. It may still be downloading the first time; try again.";
+  if (e.includes("enotfound") || e.includes("network") || e.includes("econnrefused")) return "No connection to the service. Check your internet and try again.";
+  return "It stopped while starting.";
+}
+
+function Monogram({ name }: { name: string }) {
+  const letters = name.replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter((w, i, all) => Boolean(w) && !(i === 0 && all.length > 1 && /^(a|an|the)$/i.test(w))).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return <span className="cmark" aria-hidden>{letters || "?"}</span>;
+}
+
 function ConnectorTile({ c, node, onChange }: { c: ConnectorCard; node: boolean; onChange: (g: Gallery) => void }) {
   const [open, setOpen] = useState(false);
+  const [showTools, setShowTools] = useState(false);
+  const [showErr, setShowErr] = useState(false);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const run = (p: Promise<Gallery>) => {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const run = (p: Promise<Gallery>, close = true) => {
     setBusy(true);
     setErr("");
     p.then((g) => {
       onChange(g);
-      setOpen(false);
+      if (close) setOpen(false);
     })
       .catch((e) => setErr(String(e)))
       .finally(() => setBusy(false));
   };
-  const state = !c.added ? "" : !c.on ? "off" : c.error ? "error" : c.tools != null ? `${c.tools} tools` : "starting…";
+  const st = statusOf(c);
+  const needsForm = !!(c.fields?.length || c.folder);
   const folderArg = c.args?.[c.args.length - 1] ?? "";
+  const remove = () => {
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      window.setTimeout(() => setConfirmRemove(false), 4000);
+      return;
+    }
+    run(api.connectorRemove(c.id));
+  };
   return (
-    <div className={`ctile ${c.on ? "ctile--on" : ""} ${c.error && c.on ? "ctile--err" : ""}`}>
+    <div className={`ctile ctile--${st.tone}`}>
       <div className="ctile__top">
-        <b>{c.name}</b>
+        <Monogram name={c.name} />
+        <div className="ctile__title">
+          <b>{c.name}</b>
+          <span className="ctile__chips">
+            <span className="chip">{AUTH[c.auth ?? "custom"] ?? "Server"}</span>
+            {c.community && (
+              <span className="chip chip--muted" data-tip="Made by the community, not by the service itself.">
+                Community
+              </span>
+            )}
+          </span>
+        </div>
         {c.added ? <Toggle on={c.on} busy={busy} label={c.name} onChange={(v) => run(api.connectorSave(c.id, {}, v))} /> : null}
       </div>
       {c.blurb && <span className="ctile__blurb">{c.blurb}</span>}
-      {state && <span className={`ctile__state ${c.error && c.on ? "ctile__state--err" : ""}`} title={c.error ?? ""}>{c.error && c.on ? c.error.slice(0, 90) : state}</span>}
+      {!c.blurb && c.command && (
+        <code className="ctile__cmd">
+          {c.command} {(c.args ?? []).join(" ")}
+        </code>
+      )}
+      <span className={`ctile__state ctile__state--${st.tone}`}>
+        <i className="dot" /> {st.text}
+      </span>
+      {st.tone === "err" && c.error && (
+        <div className="ctile__err">
+          <span>{explain(c.error)}</span>
+          <span className="ctile__errbtns">
+            <button className="btn btn--link" onClick={() => run(api.connectorRetry(c.id), false)} disabled={busy}>
+              Retry
+            </button>
+            <button className="btn btn--link" onClick={() => setShowErr((v) => !v)}>
+              {showErr ? "Hide details" : "Details"}
+            </button>
+          </span>
+          {showErr && <code className="ctile__raw">{c.error}</code>}
+        </div>
+      )}
+      {st.tone === "ok" && !!c.tool_list?.length && (
+        <>
+          <button className="btn btn--link ctile__more" onClick={() => setShowTools((v) => !v)}>
+            {showTools ? "Hide what it can do" : "What it can do"}
+          </button>
+          {showTools && (
+            <ul className="ctile__tools">
+              {c.tool_list.map((t) => (
+                <li key={t.name} data-tip={t.description || t.name}>
+                  {t.name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
       {!open && (
         <div className="ctile__actions">
           {!c.added ? (
-            <button className="btn btn--ghost" disabled={!node && !c.command} onClick={() => (c.fields?.length || c.folder ? setOpen(true) : run(api.connectorSave(c.id, {}, true)))} data-tip={node ? `Add ${c.name}` : "Needs Node.js (npx) first"}>
-              <Glyph name="plus" size={12} /> Add
+            <button
+              className="btn btn--ghost"
+              disabled={!node || busy}
+              onClick={() => (needsForm ? setOpen(true) : run(api.connectorSave(c.id, {}, true)))}
+              data-tip={node ? (needsForm ? `Set up ${c.name}` : `Add ${c.name}: no setup needed`) : "Needs Node.js first"}
+            >
+              <Glyph name="plus" size={12} /> {needsForm ? "Set up" : "Add"}
             </button>
           ) : (
             <>
-              {(c.fields?.length || c.folder) && (
+              {needsForm && (
                 <button className="btn btn--link" onClick={() => setOpen(true)}>
                   Edit
                 </button>
               )}
-              <button className="btn btn--link" onClick={() => run(api.connectorRemove(c.id))}>
-                Remove
+              <button className={`btn btn--link ${confirmRemove ? "btn--link-danger" : ""}`} onClick={remove}>
+                {confirmRemove ? "Remove for good?" : "Remove"}
               </button>
             </>
+          )}
+          {c.help_url && !open && (
+            <button className="btn btn--link ctile__help" onClick={() => api.openTarget(c.help_url!)} data-tip="Their setup guide">
+              Guide
+            </button>
           )}
         </div>
       )}
@@ -227,7 +340,7 @@ function ConnectorTile({ c, node, onChange }: { c: ConnectorCard; node: boolean;
           {c.fields?.map((f) => (
             <label key={f.key} className="field">
               <span>{f.label}</span>
-              <input placeholder={c.env?.[f.key] || f.placeholder} value={vals[f.key] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))} spellCheck={false} />
+              <input type="password" placeholder={c.env?.[f.key] || f.placeholder} value={vals[f.key] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))} spellCheck={false} autoComplete="off" />
             </label>
           ))}
           {c.folder && (
@@ -236,6 +349,7 @@ function ConnectorTile({ c, node, onChange }: { c: ConnectorCard; node: boolean;
               <input placeholder={folderArg || "~/Documents/Projects"} value={vals.folder ?? ""} onChange={(e) => setVals((v) => ({ ...v, folder: e.target.value }))} spellCheck={false} />
             </label>
           )}
+          <p className="muted small">Saved on this {MACHINE} in mcp.json, and only sent to {c.name}.</p>
           {err && <div className="app-row__err">{err}</div>}
           <div className="ctile__actions">
             <button className="btn btn--primary" disabled={busy} onClick={() => run(api.connectorSave(c.id, vals, true))}>
@@ -252,6 +366,78 @@ function ConnectorTile({ c, node, onChange }: { c: ConnectorCard; node: boolean;
   );
 }
 
+/** Split a command line the way a shell would, quotes included. */
+function words(line: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line))) out.push(m[1] ?? m[2] ?? m[3]);
+  return out;
+}
+
+function AddCustom({ onChange }: { onChange: (g: Gallery) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [line, setLine] = useState("");
+  const [env, setEnv] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = () => {
+    const parts = words(line);
+    const vars: Record<string, string> = {};
+    for (const l of env.split("\n")) {
+      const i = l.indexOf("=");
+      if (i > 0) vars[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+    }
+    setBusy(true);
+    setErr("");
+    api
+      .connectorAddCustom(name, parts[0] ?? "", parts.slice(1), vars)
+      .then((g) => {
+        onChange(g);
+        setOpen(false);
+        setName("");
+        setLine("");
+        setEnv("");
+      })
+      .catch((e) => setErr(String(e)))
+      .finally(() => setBusy(false));
+  };
+  if (!open)
+    return (
+      <button className="btn btn--ghost" onClick={() => setOpen(true)}>
+        <Glyph name="plus" size={12} /> Add your own server
+      </button>
+    );
+  return (
+    <div className="ctile ctile--form-wide">
+      <b className="ctile__formtitle">Your own MCP server</b>
+      <label className="field">
+        <span>Name</span>
+        <input value={name} placeholder="my-server" onChange={(e) => setName(e.target.value)} spellCheck={false} />
+      </label>
+      <label className="field">
+        <span>Command</span>
+        <input value={line} placeholder="npx -y @scope/some-mcp-server --flag" onChange={(e) => setLine(e.target.value)} spellCheck={false} />
+      </label>
+      <label className="field">
+        <span>Environment (one KEY=value per line, optional)</span>
+        <textarea rows={3} value={env} placeholder="API_KEY=…" onChange={(e) => setEnv(e.target.value)} spellCheck={false} />
+      </label>
+      <p className="muted small">Only add servers you trust: they run on this {MACHINE} with your permissions.</p>
+      {err && <div className="app-row__err">{err}</div>}
+      <div className="ctile__actions">
+        <button className="btn btn--primary" disabled={busy || !name.trim() || !line.trim()} onClick={add}>
+          {busy ? "Adding…" : "Add"}
+        </button>
+        <button className="btn btn--link" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectorsPanel() {
   const [g, setG] = useState<Gallery | null>(null);
   const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
@@ -264,39 +450,83 @@ export function ConnectorsPanel() {
     const t = setInterval(tick, 3000);
     return () => clearInterval(t);
   }, []);
+  const all = [...(g?.presets ?? []), ...(g?.custom ?? [])];
+  const live = all.filter((c) => c.added && c.on && c.tools != null);
+  const broken = all.filter((c) => c.added && c.on && c.error);
+  const toolCount = live.reduce((n, c) => n + (c.tools ?? 0), 0);
   return (
     <div className="stack-gap stack-gap--wide">
+      <div className="csummary">
+        <div>
+          <b>{live.length}</b>
+          <span>connected</span>
+        </div>
+        <div>
+          <b>{toolCount}</b>
+          <span>tools Pixie can use</span>
+        </div>
+        <div className={broken.length ? "csummary--err" : ""}>
+          <b>{broken.length}</b>
+          <span>need attention</span>
+        </div>
+        <div>
+          <b>{g ? (g.node ? "Ready" : "Missing") : "…"}</b>
+          <span>Node.js</span>
+        </div>
+      </div>
       {g && !g.node && (
         <div className="banner banner--warn">
-          Connectors run as small local servers through Node.js, which isn't on this Mac yet. Install it from{" "}
+          Connectors run as small local servers through Node.js, which isn't on this {MACHINE} yet. Install it from{" "}
           <button className="btn btn--link" onClick={() => api.openTarget("https://nodejs.org/en/download")}>
             nodejs.org
           </button>{" "}
-          (or <code>brew install node</code>), then come back.
+          {IS_MAC && (
+            <>
+              (or <code>brew install node</code>)
+            </>
+          )}
+          , then come back.
         </div>
       )}
-      <div className="ctiles">
-        {g?.presets.map((c) => (
-          <ConnectorTile key={c.id} c={c} node={g.node} onChange={setG} />
-        ))}
-      </div>
+      <p className="muted small">
+        Connectors give Pixie tools from other services. Pixie uses them when you ask (“what's assigned to me in Linear?”) and asks before anything that posts, sends or deletes. Tokens stay on this {MACHINE}.
+      </p>
 
-      {!!g?.custom.length && (
-        <>
-          <h3 className="sub">Your own (from mcp.json)</h3>
+      {GROUPS.map((grp) => {
+        const list = (g?.presets ?? []).filter((c) => (c.group ?? "work") === grp.id);
+        if (!list.length) return null;
+        return (
+          <section key={grp.id} className="cgroup">
+            <h3 className="sub">
+              {grp.title} <span className="muted">· {grp.blurb}</span>
+            </h3>
+            <div className="ctiles">
+              {list.map((c) => (
+                <ConnectorTile key={c.id} c={c} node={g!.node} onChange={setG} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
+
+      <section className="cgroup">
+        <h3 className="sub">
+          Your own servers <span className="muted">· any MCP server, from mcp.json or added here</span>
+        </h3>
+        {!!g?.custom.length && (
           <div className="ctiles">
             {g.custom.map((c) => (
               <ConnectorTile key={c.id} c={c} node={g.node} onChange={setG} />
             ))}
           </div>
-        </>
-      )}
-      <p className="muted small">
-        Any other MCP server goes in <code>mcp.json</code>; Pixie picks up changes made here right away.{" "}
-        <button className="btn btn--link" onClick={() => g && api.openTarget(g.path)}>
-          Open mcp.json
-        </button>
-      </p>
+        )}
+        <div className="cfoot">
+          {g && <AddCustom onChange={setG} />}
+          <button className="btn btn--link" onClick={() => g && api.openTarget(g.path)}>
+            Open mcp.json
+          </button>
+        </div>
+      </section>
 
       <h3 className="sub">Chrome</h3>
       <div className={`banner ${st?.browser ? "banner--ok" : "banner--muted"}`}>

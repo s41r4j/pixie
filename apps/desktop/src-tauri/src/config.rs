@@ -53,6 +53,20 @@ pub struct Settings {
     pub locale: String,
     /// Settings → Apps: "calendar", "reminders", "contacts", "mail" switched on.
     pub apps: BTreeMap<String, bool>,
+    /// Check GitHub for new versions and install them when Pixie is idle.
+    pub auto_update: bool,
+    /// Settings → Experimental: features that are switched on early ("excalidraw").
+    pub experimental: BTreeMap<String, bool>,
+    /// Long-term memory: "auto" (also learns from chats), "manual" (only "remember…"), "off".
+    pub memory: String,
+    /// When today's chat ends and a new one starts: hour of the day, 0–23 (0 = midnight).
+    pub chat_reset_hour: u32,
+    /// Personality: "pix" (default), "inos", "xtrem", "eon".
+    pub persona: String,
+    /// Xtrem may swear a little.
+    pub spicy: bool,
+    /// How readily Pixie draws on the canvas: "asked", "helps", "often".
+    pub canvas_use: String,
     /// The user's own Google OAuth client ("Desktop app") for Gmail + Google Calendar.
     pub google_client_id: String,
     pub google_client_secret: String,
@@ -106,6 +120,13 @@ impl Default for Settings {
             user_name: String::new(),
             locale: String::new(),
             apps: BTreeMap::new(),
+            auto_update: true,
+            experimental: BTreeMap::new(),
+            memory: "auto".into(),
+            chat_reset_hour: 0,
+            persona: "pix".into(),
+            spicy: false,
+            canvas_use: "helps".into(),
             google_client_id: String::new(),
             google_client_secret: String::new(),
         }
@@ -113,6 +134,11 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Is an experimental feature switched on?
+    pub fn experiment(&self, flag: &str) -> bool {
+        self.experimental.get(flag).copied().unwrap_or(false)
+    }
+
     pub fn load(dir: &Path) -> Self {
         std::fs::read_to_string(dir.join("settings.json"))
             .ok()

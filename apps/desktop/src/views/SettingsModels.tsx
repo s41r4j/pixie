@@ -1,6 +1,6 @@
 // Settings → Models, Usage, Coding.
 import { useEffect, useState } from "react";
-import { api, type Settings, type SettingsView, type UsageSummary } from "../lib/bridge";
+import { api, MACHINE, type Settings, type SettingsView, type UsageSummary } from "../lib/bridge";
 import { Glyph } from "../components/Mark";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
@@ -182,11 +182,11 @@ export function ModelsPanel({ view, onSaved }: { view: SettingsView | null; onSa
         </div>
         <div className="now__cell" title="Answers when you hold the talk keys. Not the speaking voice: that's Settings → Voice.">
           <span>talk model</span>
-          <b>{eff.fast || "—"}</b>
+          <b>{eff.fast || "n/a"}</b>
         </div>
         <div className="now__cell" title="Background and live agents.">
           <span>agent model</span>
-          <b>{eff.deep || "—"}</b>
+          <b>{eff.deep || "n/a"}</b>
         </div>
         <div className="now__cell" title="Answers only when the main model fails.">
           <span>fallback</span>
@@ -284,7 +284,7 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
           </div>
           <div className="now__cell">
             <span>calls since</span>
-            <b className="big-num">{u.all_time.requests} · {u.all_time.since ? new Date(u.all_time.since).toLocaleDateString([], { month: "short", day: "numeric" }) : "—"}</b>
+            <b className="big-num">{u.all_time.requests} · {u.all_time.since ? new Date(u.all_time.since).toLocaleDateString([], { month: "short", day: "numeric" }) : "n/a"}</b>
           </div>
         </div>
       )}
@@ -378,8 +378,8 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
                 <td className="num">{m.voice} · {m.job}</td>
                 <td className="num">{fmt(m.input)}</td>
                 <td className="num">{fmt(m.output)}</td>
-                <td className="num">{m.price ? `${money(m.price.input)} · ${money(m.price.output)}` : <span className="muted">—</span>}</td>
-                <td className="num"><b>{m.cost === null ? "—" : `$${m.cost.toFixed(m.cost < 1 ? 4 : 2)}`}</b></td>
+                <td className="num">{m.price ? `${money(m.price.input)} · ${money(m.price.output)}` : <span className="muted">n/a</span>}</td>
+                <td className="num"><b>{m.cost === null ? "n/a" : `$${m.cost.toFixed(m.cost < 1 ? 4 : 2)}`}</b></td>
               </tr>
             ))}
           </tbody>
@@ -399,7 +399,7 @@ const AGENTS = [
 const SANDBOX = [
   ["read-only", "Read only", "Looks, never writes."],
   ["workspace-write", "Workspace", "Writes inside the project folder."],
-  ["danger-full-access", "Full access", "Anything on this Mac. Careful."],
+  ["danger-full-access", "Full access", `Anything on this ${MACHINE}. Careful.`],
 ];
 const PERMS = [
   ["plan", "Plan only", "Proposes changes, edits nothing."],
@@ -474,7 +474,7 @@ export function CodingPanel({ view, onSaved }: { view: SettingsView | null; onSa
 
       {!anyInstalled && (
         <div className="banner banner--warn">
-          No coding agent on this Mac yet. Install one with the command on its card, then <button className="btn btn--link" onClick={load}>check again</button>. Until then, agents write code themselves with plain file tools.
+          No coding agent on this {MACHINE} yet. Install one with the command on its card, then <button className="btn btn--link" onClick={load}>check again</button>. Until then, agents write code themselves with plain file tools.
         </div>
       )}
 

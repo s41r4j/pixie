@@ -1,12 +1,13 @@
 name: Build
 
-# Builds Pixie for macOS (universal .dmg) and Windows (.exe installer).
+# Builds Pixie for macOS (universal .dmg), Windows (.exe installer) and Linux (.AppImage, .deb).
 #   • every push to main that touches the app → downloadable artifacts on the run page
 #   • Actions → Build → "Run workflow"        → the same, on demand (give a tag to also release)
 #   • pushing a tag like v0.5.1                → builds both and publishes a GitHub release
 # Release assets keep stable names so the website can link to
 #   https://github.com/<owner>/<repo>/releases/latest/download/Pixie-macOS-universal.dmg
 #   https://github.com/<owner>/<repo>/releases/latest/download/Pixie-Windows-x64-setup.exe
+#   https://github.com/<owner>/<repo>/releases/latest/download/Pixie-Linux-x64.AppImage
 on:
   push:
     branches: [main]
@@ -36,6 +37,10 @@ concurrency:
 
 env:
   TAG: ${{ github.event.inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+  # Auto-update signing (Settings → Secrets → Actions). Without them builds still work, just
+  # without update packages, so installed copies won't see that release.
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
 jobs:
   macos:
@@ -85,6 +90,10 @@ jobs:
           mkdir -p out
           cp "$BUNDLE"/dmg/*.dmg out/Pixie-macOS-universal.dmg
           ditto -c -k --keepParent "$BUNDLE/macos/Pixie.app" out/Pixie-macOS-universal.zip
+          if [ -f "$BUNDLE/macos/Pixie.app.tar.gz" ]; then
+            cp "$BUNDLE/macos/Pixie.app.tar.gz" out/Pixie-macOS-universal.app.tar.gz
+            cp "$BUNDLE/macos/Pixie.app.tar.gz.sig" out/Pixie-macOS-universal.app.tar.gz.sig
+          fi
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -109,7 +118,11 @@ jobs:
       - run: npm ci
 
       - name: Build installer
-        run: npm run tauri -w apps/desktop -- build --bundles nsis
+        shell: bash
+        run: |
+          # Signed update packages only when the key is there.
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then EXTRA='--config {"bundle":{"createUpdaterArtifacts":true}}'; else EXTRA=""; fi
+          npm run tauri -w apps/desktop -- build --bundles nsis $EXTRA
 
       - name: Collect
         shell: bash
@@ -117,6 +130,7 @@ jobs:
           set -euo pipefail
           mkdir -p out
           cp target/release/bundle/nsis/*-setup.exe out/Pixie-Windows-x64-setup.exe
+          for f in target/release/bundle/nsis/*-setup.exe.sig; do [ -f "$f" ] && cp "$f" out/Pixie-Windows-x64-setup.exe.sig; done
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -125,10 +139,51 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  linux:
+    name: Linux (x64 .AppImage + .deb)
+    # Ubuntu 22.04 so the AppImage runs on older glibc too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-x64
+      - run: npm ci
+
+      - name: Build AppImage + deb
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then EXTRA='--config {"bundle":{"createUpdaterArtifacts":true}}'; else EXTRA=""; fi
+          npm run tauri -w apps/desktop -- build --bundles appimage,deb $EXTRA
+
+      - name: Collect
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp target/release/bundle/appimage/*.AppImage out/Pixie-Linux-x64.AppImage
+          cp target/release/bundle/deb/*.deb out/Pixie-Linux-x64.deb
+          for f in target/release/bundle/appimage/*.AppImage.sig; do [ -f "$f" ] && cp "$f" out/Pixie-Linux-x64.AppImage.sig; done
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pixie-Linux
+          path: out/*
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [macos, windows]
-    if: ${{ needs.macos.result == 'success' && needs.windows.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != '') }}
+    # Linux is a preview: a failed Linux build doesn't hold the release back.
+    needs: [macos, windows, linux]
+    if: ${{ always() && needs.macos.result == 'success' && needs.windows.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,7 +198,8 @@ jobs:
           cd dist
           cp Pixie-macOS-universal.dmg "Pixie_${VERSION}_macOS_universal.dmg"
           cp Pixie-Windows-x64-setup.exe "Pixie_${VERSION}_Windows_x64-setup.exe"
-          sha256sum *.dmg *.zip *.exe > SHA256SUMS.txt
+          [ -f Pixie-Linux-x64.AppImage ] && cp Pixie-Linux-x64.AppImage "Pixie_${VERSION}_Linux_x64.AppImage"
+          sha256sum *.dmg *.zip *.exe *.AppImage *.deb > SHA256SUMS.txt 2>/dev/null || sha256sum *.dmg *.zip *.exe > SHA256SUMS.txt
           ls -la
           cd ..
           # Release notes: this version's section of CHANGELOG.md.
@@ -153,8 +209,39 @@ jobs:
           ---
           **macOS** (Apple Silicon and Intel, macOS 14+): **Pixie-macOS-universal.dmg**. If macOS says it can’t check the app, right-click Pixie in Applications → Open once.
 
-          **Windows** (preview, 64-bit Windows 10/11): **Pixie-Windows-x64-setup.exe**. Chat, agents, models and settings work; voice input, screen reading and pointing still need the Mac helper and come later. SmartScreen may ask once: More info → Run anyway.
+          **Windows** (preview, 64-bit Windows 10/11): **Pixie-Windows-x64-setup.exe**. Voice uses Windows speech recognition (turn on Settings → Privacy & security → Speech → Online speech recognition). SmartScreen may ask once: More info → Run anyway.
+
+          **Linux** (preview, x64): **Pixie-Linux-x64.AppImage** or the **.deb**. Chat, agents and screen reading work; voice input doesn't yet. Install grim or scrot, tesseract and xdotool for seeing and clicking.
+
+          What works where: [CHECKLIST.md](https://github.com/s41r4j/pixie/blob/main/CHECKLIST.md).
           NOTES
+
+      - name: latest.json (what installed copies check for updates)
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          python3 - "$VERSION" "$BASE" <<'PY'
+          import json, sys, os, datetime
+          version, base = sys.argv[1], sys.argv[2]
+          notes = open("notes.md").read().split("\n---\n")[0].strip()
+          def entry(file):
+              sig = f"dist/{file}.sig"
+              return {"signature": open(sig).read().strip(), "url": f"{base}/{file}"} if os.path.exists(sig) else None
+          mac = entry("Pixie-macOS-universal.app.tar.gz")
+          platforms = {
+              "darwin-aarch64": mac, "darwin-x86_64": mac,
+              "windows-x86_64": entry("Pixie-Windows-x64-setup.exe"),
+              "linux-x86_64": entry("Pixie-Linux-x64.AppImage"),
+          }
+          platforms = {k: v for k, v in platforms.items() if v}
+          if not platforms:
+              print("No update signatures (TAURI_SIGNING_PRIVATE_KEY not set): skipping latest.json")
+              sys.exit(0)
+          data = {"version": version, "notes": notes, "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "platforms": platforms}
+          json.dump(data, open("dist/latest.json", "w"), indent=2)
+          print(json.dumps(data, indent=2)[:2000])
+          PY
 
       - name: Publish
         uses: softprops/action-gh-release@v2
@@ -168,4 +255,10 @@ jobs:
             dist/Pixie_*_macOS_universal.dmg
             dist/Pixie-Windows-x64-setup.exe
             dist/Pixie_*_Windows_x64-setup.exe
+            dist/Pixie-Linux-x64.AppImage
+            dist/Pixie_*_Linux_x64.AppImage
+            dist/Pixie-Linux-x64.deb
+            dist/Pixie-macOS-universal.app.tar.gz
+            dist/*.sig
+            dist/latest.json
             dist/SHA256SUMS.txt

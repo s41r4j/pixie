@@ -21,7 +21,7 @@
 .click-ripple { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; outline: 2px solid #000; animation: ripple 440ms steps(4, end) forwards; }
 @keyframes ripple { from { transform: scale(.35); opacity: 1; } to { transform: scale(1.9); opacity: 0; } }
 
-/* The buddy: a round badge with the pixel :) — clearly not a mouse pointer. */
+/* The buddy: a round badge with the pixel :), clearly not a mouse pointer. */
 .buddy { position: absolute; left: 0; top: 0; width: 22px; height: 22px; will-change: transform; }
 .buddy__face {
   position: absolute; inset: 0; border-radius: 50%; background: #000; border: 1.5px solid #fff;

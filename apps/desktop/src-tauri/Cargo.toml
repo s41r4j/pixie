@@ -26,6 +26,7 @@ openclicky-native-host.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-drag = "2"
+tauri-plugin-updater = "2"
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
@@ -37,6 +38,7 @@ async-trait = "0.1"
 chrono = "0.4"
 sha2 = "0.10"
 rand.workspace = true
+trash = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -46,5 +48,13 @@ block2 = "0.6"
 [dev-dependencies]
 tempfile = "3"
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+arboard = { version = "3", default-features = false }
+rodio = { version = "0.20", default-features = false, features = ["symphonia-wav"] }
+cpal = "0.15"
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Graphics_Imaging", "Media_Core", "Media_Ocr", "Media_SpeechRecognition", "Media_SpeechSynthesis", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility"] }
+windows-future = "0.3"

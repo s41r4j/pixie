@@ -51,3 +51,14 @@ fs.symlinkSync("/Applications", path.join(stage, "Applications"));
 execFileSync("hdiutil", ["create", "-volname", "Pixie", "-srcfolder", stage, "-ov", "-format", "UDZO", dmg], { stdio: "ignore" });
 fs.rmSync(stage, { recursive: true, force: true });
 console.log(`app: ${app}\ndmg: ${dmg}`);
+
+// Auto-update package: the finished (re-signed) app as .app.tar.gz plus its updater signature.
+// Only when the signing key is around (CI with TAURI_SIGNING_PRIVATE_KEY); local builds skip it.
+if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
+  const tgz = path.join(bundleDir, "macos/Pixie.app.tar.gz");
+  fs.rmSync(tgz, { force: true });
+  fs.rmSync(`${tgz}.sig`, { force: true });
+  execFileSync("tar", ["-czf", tgz, "-C", path.join(bundleDir, "macos"), "Pixie.app"], { stdio: "inherit" });
+  execFileSync("npx", ["--no-install", "tauri", "signer", "sign", tgz], { cwd: path.join(repo, "apps/desktop"), stdio: "inherit" });
+  console.log(`update: ${tgz}`);
+}

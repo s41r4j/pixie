@@ -51,7 +51,7 @@ const SCENES = [
   { t: "Ask", d: "Hold ⌃⌥ and talk", ms: 8200, run: sAsk },
   { t: "Show", d: "It points and draws", ms: 8200, run: sShow },
   { t: "Do", d: "It clicks and types", ms: 11000, run: sDo },
-  { t: "Explain", d: "It sketches a board", ms: 9800, run: sExplain },
+  { t: "Explain", d: "It sketches on a canvas", ms: 9800, run: sExplain },
   { t: "Delegate", d: "Agents take the job", ms: 13500, run: sDelegate },
 ];
 const ctl = $("#dctl");
@@ -155,7 +155,7 @@ async function sExplain(g) {
     if (label) { const t = document.createElementNS(NS, "text"); t.setAttribute("x", lx); t.setAttribute("y", ly); t.setAttribute("text-anchor", "middle"); t.textContent = label; svg.append(t); setTimeout(() => t.classList.add("d"), 350); }
     await sleep(560, g);
   }
-  await sleep(2400, g); subtitle("Click", "anywhere and the board goes away"); ripple(cx, cy); await sleep(500, g);
+  await sleep(2400, g); subtitle("Canvas", "edit it, keep it, export it as PNG or SVG"); ripple(cx, cy); await sleep(500, g);
   $("#brd").classList.remove("on"); notch("rest"); subtitle(); await sleep(500, g);
 }
 function plan(id, st) { $$("#" + id + " i").forEach((i, k) => i.className = k < st ? "d" : k === st ? "a" : ""); }
@@ -216,7 +216,7 @@ if ($("#dnav")) (() => {
 /* ---------- feature shots open full size ---------- */
 if ($("#lb")) {
   const lb = $("#lb");
-  $$(".dshot").forEach(f => f.addEventListener("click", () => { const img = $("img", f); $("img", lb).src = img.src; $("figcaption span", lb).textContent = $("figcaption", f).textContent; lb.showModal(); }));
+  $$(".dshot").forEach(f => f.addEventListener("click", () => { const img = $("img", f); if (!img) return; $("img", lb).src = img.src; $("figcaption span", lb).textContent = $("figcaption", f).textContent; lb.showModal(); }));
   lb.addEventListener("click", () => lb.close());
 }
 
@@ -232,7 +232,7 @@ $("#dsearch").addEventListener("input", e => {
 })();
 
 /* ---------- live release info ---------- */
-const mb = b => b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1e3) + " KB";
+const mb = b => b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b < 1e3 ? "<1 KB" : Math.round(b / 1e3) + " KB";
 fetch(`https://api.github.com/repos/${REPO}/releases/latest`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(rel => {
   const dmg = rel.assets.find(a => a.name === DMG) || rel.assets.find(a => a.name.endsWith(".dmg"));
   $$("[data-version]").forEach(e => e.textContent = rel.tag_name);
@@ -247,7 +247,7 @@ const inl = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*\*(.+
 fetch("CHANGELOG.md").then(r => r.text()).then(md => {
   const parts = md.split(/^## /m).slice(1);
   $("#log").innerHTML = parts.map((p, i) => {
-    const [head, ...rest] = p.split("\n"); const [v, date] = head.split(/\s+[—-]\s+/);
+    const [head, ...rest] = p.split("\n"); const [v, date] = head.split(/\s+[·-]\s+/);
     const items = rest.filter(l => l.startsWith("- ")).map(l => `<li>${inl(l.slice(2))}</li>`).join("");
     return `<article class="rel ${i ? "old" : ""}"><div><div class="v">${v.trim()}</div><time>${date || ""}</time>${i ? "" : '<span class="tag">latest</span>'}</div><div><ul>${items}</ul><button class="more">Show ${rest.filter(l => l.startsWith("- ")).length} changes</button></div></article>`;
   }).join("");

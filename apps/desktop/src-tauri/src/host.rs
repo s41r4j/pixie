@@ -12,29 +12,50 @@ use tauri::{AppHandle, Manager};
 
 /// Copy to / read from the general pasteboard.
 async fn clipboard(action: &str, text: &str) -> ToolOutput {
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows / Linux: the system clipboard directly (keeps every character intact).
+        let (action, text) = (action.to_string(), text.to_string());
+        return tauri::async_runtime::spawn_blocking(move || {
+            let mut cb = match arboard::Clipboard::new() {
+                Ok(c) => c,
+                Err(_) => return ToolOutput::err("Couldn't reach the clipboard."),
+            };
+            match action.as_str() {
+                "copy" => match cb.set_text(text.clone()) {
+                    Ok(()) => ToolOutput::ok(format!("Copied {} characters; they can paste with Ctrl+V.", text.chars().count())),
+                    Err(_) => ToolOutput::err("Couldn't copy."),
+                },
+                "read" => match cb.get_text() {
+                    Ok(t) if !t.trim().is_empty() => ToolOutput::ok(t.chars().take(20_000).collect::<String>()),
+                    _ => ToolOutput::ok("The clipboard has no text."),
+                },
+                _ => ToolOutput::err("action must be copy or read"),
+            }
+        })
+        .await
+        .unwrap_or_else(|_| ToolOutput::err("Couldn't reach the clipboard."));
+    }
+    #[allow(unreachable_code)]
+    clipboard_mac(action, text).await
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+async fn clipboard_mac(action: &str, text: &str) -> ToolOutput {
     use tokio::io::AsyncWriteExt;
     match action {
         "copy" => {
-            let (cmd, args): (&str, &[&str]) = if cfg!(windows) {
-                ("powershell", &["-NoProfile", "-Command", "$input | Set-Clipboard"])
-            } else {
-                ("/usr/bin/pbcopy", &[])
-            };
-            let child = tokio::process::Command::new(cmd).args(args).stdin(std::process::Stdio::piped()).spawn();
+            let child = tokio::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn();
             let Ok(mut child) = child else { return ToolOutput::err("Couldn't reach the clipboard.") };
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(text.as_bytes()).await;
             }
             match child.wait().await {
-                Ok(s) if s.success() => ToolOutput::ok(format!("Copied {} characters; they can paste with {}.", text.chars().count(), if cfg!(windows) { "Ctrl+V" } else { "⌘V" })),
+                Ok(s) if s.success() => ToolOutput::ok(format!("Copied {} characters; they can paste with ⌘V.", text.chars().count())),
                 _ => ToolOutput::err("Couldn't copy."),
             }
         }
-        "read" => match if cfg!(windows) {
-            tokio::process::Command::new("powershell").args(["-NoProfile", "-Command", "Get-Clipboard -Raw"]).output().await
-        } else {
-            tokio::process::Command::new("/usr/bin/pbpaste").output().await
-        } {
+        "read" => match tokio::process::Command::new("/usr/bin/pbpaste").output().await {
             Ok(o) => {
                 let t = String::from_utf8_lossy(&o.stdout);
                 if t.trim().is_empty() {
@@ -66,6 +87,9 @@ impl Host for AppHost {
         let out: ToolOutput = match name {
             "highlight" => overlay::highlight(app, input).into(),
             "draw" => overlay::draw(app, input).into(),
+            "canvas" => crate::canvas::call(app, input).await.into(),
+            "pixie" => crate::myself::call(app, input).await.into(),
+            "memory" => crate::memory::call(app, input).await.into(),
             "say" => {
                 let text = s(input, "text");
                 let id = format!("say-{}", rand::random::<u32>());
@@ -86,7 +110,39 @@ impl Host for AppHost {
                 if job.is_some() && ctx.mode != Mode::Live && !matches!(action, "open") {
                     return Some(ToolOutput::err("Background jobs don't click around in their apps; start a live agent (start_job kind=live) for that."));
                 }
+                // type with x, y: click into that field first, so it lands in the right pane.
+                let mut clicked = String::new();
+                if action == "type" && input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some() {
+                    let at = json!({ "x": input["x"], "y": input["y"] });
+                    match crate::buddy::act(app, "click", &at).await {
+                        Ok(r) => clicked = r,
+                        Err(e) => return Some(ToolOutput::err(format!("Couldn't click into the field first: {e}"))),
+                    }
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                }
                 match st.helper.call("mac_step", input.clone(), Duration::from_secs(10)).await {
+                    Ok(v) if action == "type" => {
+                        let into = &v["into"];
+                        let f = &into["frame"];
+                        if f.is_object() {
+                            let _ = overlay::highlight(app, &json!({ "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"], "label": "typed here" }));
+                        }
+                        let place = if into.is_object() {
+                            let at = if f.is_object() { format!(" at ({}, {}, {}×{})", f["x"], f["y"], f["w"], f["h"]) } else { String::new() };
+                            format!(
+                                "the focused {} \"{}\"{at}",
+                                into["role"].as_str().unwrap_or("element").trim_start_matches("AX"),
+                                into["label"].as_str().unwrap_or("")
+                            )
+                        } else {
+                            "the focused field".into()
+                        };
+                        let first = if clicked.is_empty() { String::new() } else { format!("{clicked}\n") };
+                        ToolOutput::ok(format!(
+                            "{first}Pasted {} characters into {} in {}. If that isn't the field you meant (another pane, a side panel), say so, click the right field and type again; don't press return until it's in the right place.",
+                            v["inserted"], place, v["app"].as_str().unwrap_or("their app")
+                        ))
+                    }
                     Ok(v) => {
                         // Show where it happened.
                         if let Some(f) = v.get("frame") {
@@ -159,12 +215,17 @@ impl Host for AppHost {
 
     fn extra_tools(&self, mode: Mode) -> Vec<ToolDef> {
         if matches!(mode, Mode::Job | Mode::Voice | Mode::Live) {
-            let mut t = crate::connectors::tools(&self.app);
+            let mut t = vec![crate::myself::tool()];
+            if crate::memory::mode(&self.app) != "off" {
+                t.push(crate::memory::tool());
+            }
+            t.extend(crate::connectors::tools(&self.app));
             t.extend(crate::integrations::tools(&self.app));
             t.extend(crate::google::tools(&self.app));
+            t.push(crate::canvas::tool());
             t
         } else {
-            vec![]
+            vec![crate::myself::tool()]
         }
     }
 }

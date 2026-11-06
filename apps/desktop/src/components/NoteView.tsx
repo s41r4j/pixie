@@ -186,7 +186,7 @@ function Review({ label, attrs, lines, onSay }: { label: string; attrs: Attrs; l
         </label>
       ))}
       {onSay && (
-        <button className="btn btn--ink" onClick={() => onSay(`${attrs.go ?? "Go ahead"} — only these:\n${items.filter((_, i) => on[i]).map((t) => `- ${t}`).join("\n")}`)}>
+        <button className="btn btn--ink" onClick={() => onSay(`${attrs.go ?? "Go ahead"}, only these:\n${items.filter((_, i) => on[i]).map((t) => `- ${t}`).join("\n")}`)}>
           {attrs.go_label ?? "Go"}
         </button>
       )}

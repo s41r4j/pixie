@@ -76,6 +76,14 @@ pub fn parse(s: &str) -> Option<u64> {
 pub fn configure(talk: &str, dictate: &str) {
     let t = parse(talk).unwrap_or(DEFAULT_TALK);
     let d = parse(dictate).filter(|d| *d != t).unwrap_or(if t == DEFAULT_DICTATE { FLAG_FN | FLAG_OPTION } else { DEFAULT_DICTATE });
+    // Windows and Linux can't see fn: a chord with it becomes Ctrl+Win.
+    let (t, d) = if cfg!(target_os = "macos") {
+        (t, d)
+    } else {
+        let no_fn = |m: u64| if m & FLAG_FN != 0 { FLAG_CONTROL | FLAG_COMMAND } else { m };
+        let (t, d) = (no_fn(t), no_fn(d));
+        (t, if d == t { FLAG_CONTROL | FLAG_SHIFT } else { d })
+    };
     TALK.store(t, Ordering::SeqCst);
     DICTATE.store(d, Ordering::SeqCst);
 }

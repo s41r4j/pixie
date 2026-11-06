@@ -8,8 +8,8 @@
     "shelf",
     "settings",
     "note",
-    "board",
-    "guide"
+    "guide",
+    "canvas"
   ],
   "permissions": [
     "core:default",

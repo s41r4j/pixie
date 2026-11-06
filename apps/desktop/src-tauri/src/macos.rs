@@ -23,7 +23,6 @@ struct CGPoint {
 extern "C" {
     fn CGEventSourceFlagsState(state_id: i32) -> u64;
     fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
-    fn CGEventSourceButtonState(state_id: i32, button: u32) -> bool;
     fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
     fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
 }
@@ -47,11 +46,6 @@ pub fn key_down(keycode: u16) -> bool {
 }
 
 /// Mouse location in CG global points. Safe from any thread.
-/// Is the left mouse button down right now (any app)?
-pub fn mouse_down() -> bool {
-    unsafe { CGEventSourceButtonState(COMBINED_SESSION, 0) }
-}
-
 pub fn cursor() -> (f64, f64) {
     unsafe {
         let ev = CGEventCreate(std::ptr::null());
@@ -95,6 +89,8 @@ const CAN_JOIN_ALL_SPACES: usize = 1 << 0;
 const STATIONARY: usize = 1 << 4;
 const IGNORES_CYCLE: usize = 1 << 6;
 const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
+const MOVE_TO_ACTIVE_SPACE: usize = 1 << 1;
+const NS_FLOATING_WINDOW_LEVEL: isize = 3;
 const NS_WINDOW_SHARING_NONE: usize = 0;
 
 fn ns_window<R: Runtime>(win: &WebviewWindow<R>) -> Option<*mut AnyObject> {
@@ -237,6 +233,28 @@ pub fn make_key<R: Runtime>(win: &WebviewWindow<R>) {
             let _: () = msg_send![app, activateIgnoringOtherApps: true];
         }
         let _: () = msg_send![ns, makeKeyAndOrderFront: std::ptr::null::<AnyObject>()];
+    }
+}
+
+/// Bring a normal window up where they are: on the current Space (over a full-screen app too),
+/// in front, with keyboard focus.
+pub fn present<R: Runtime>(win: &WebviewWindow<R>) {
+    let Some(ns) = ns_window(win) else { return };
+    unsafe {
+        let _: () = msg_send![ns, setCollectionBehavior: MOVE_TO_ACTIVE_SPACE | FULL_SCREEN_AUXILIARY];
+        let _: () = msg_send![ns, setLevel: NS_FLOATING_WINDOW_LEVEL];
+        let _: () = msg_send![ns, setHidesOnDeactivate: false];
+    }
+    make_key(win);
+}
+
+/// Pixie is the active app (false once they click another app or the desktop).
+pub fn app_active_in<R: Runtime>(_app: &tauri::AppHandle<R>) -> bool {
+    unsafe {
+        let Some(app_cls) = AnyClass::get(c"NSApplication") else { return true };
+        let app: *mut AnyObject = msg_send![app_cls, sharedApplication];
+        let active: bool = msg_send![app, isActive];
+        active
     }
 }
 

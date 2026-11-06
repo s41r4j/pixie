@@ -1,13 +1,15 @@
 // Settings + first-run welcome: permissions, the model key, voice, sounds, connectors.
+import { MemoryPanel } from "./SettingsMemory";
+import { PERSONAS, personaOf } from "../lib/persona";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, onEvent, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
+import { api, IS_MAC, MACHINE, onEvent, OS, slotUrl, type UpdateStatus, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
 import { Glyph, Mark, Wordmark } from "../components/Mark";
 import { CodingPanel, ModelsPanel, UsagePanel } from "./SettingsModels";
 import { AppsPanel, ConnectorsPanel } from "./SettingsApps";
 import { chordLabel, Kbd, PRESETS, useShortcuts } from "../lib/keys";
 
-type Tab = "welcome" | "general" | "setup" | "ai" | "usage" | "coding" | "voice" | "sounds" | "apps" | "connectors" | "about";
+type Tab = "welcome" | "general" | "setup" | "ai" | "usage" | "coding" | "voice" | "sounds" | "memory" | "apps" | "connectors" | "experimental" | "about";
 
 const PILL: Record<PermState, { text: string; tone: "ok" | "warn" | "muted" }> = {
   granted: { text: "Allowed", tone: "ok" },
@@ -109,6 +111,28 @@ function usePermissions() {
 
 function Permissions() {
   const { perms, refresh } = usePermissions();
+  if (!IS_MAC)
+    return (
+      <div className="stack-gap">
+        <div className="banner banner--muted">
+          {OS === "windows"
+            ? "Windows doesn't ask apps for screen or accessibility access, so there's nothing to switch on here."
+            : "Linux doesn't ask apps for these. Pixie uses grim or scrot for screenshots, tesseract for reading text and xdotool for clicks, if they're installed."}
+        </div>
+        {OS === "windows" && (
+          <ul className="rows">
+            {[
+              ["Microphone", "Privacy & security → Microphone → let desktop apps use your microphone.", "ms-settings:privacy-microphone"],
+              ["Speech recognition", "Privacy & security → Speech → Online speech recognition on. Windows turns your voice into text with it.", "ms-settings:privacy-speech"],
+            ].map(([label, why, url]) => (
+              <SRow key={url} sid={`perm_${label}`} label={label} why={why}>
+                <button className="btn btn--ghost" onClick={() => api.openTarget(url)}>Open Settings</button>
+              </SRow>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
   return (
     <ul className="rows">
       {perms.map((p) => (
@@ -164,7 +188,7 @@ function QuickBrain({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
         </button>
         {test && <span className={test.ok ? "ok-text" : "bad-text"}>{test.text}</span>}
       </div>
-      <p className="muted small">Keys stay on this Mac. You can add the others and pick exact models later in Settings → Models.</p>
+      <p className="muted small">Keys stay on this {MACHINE}. You can add the others and pick exact models later in Settings → Models.</p>
     </div>
   );
 }
@@ -292,7 +316,7 @@ function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
     return () => clearInterval(t);
   }, []);
   const s = view?.settings;
-  const natural = (s?.voice_engine ?? "kokoro") !== "apple";
+  const natural = (s?.voice_engine ?? "kokoro") !== "apple" && vs?.supported !== false;
   const lang = navigator.language.slice(0, 2);
   const mine = voices.filter((v) => v.language.startsWith(lang));
   const sorted = [...mine].sort((a, b) => ({ premium: 0, enhanced: 1, default: 2 })[a.quality] - ({ premium: 0, enhanced: 1, default: 2 })[b.quality]);
@@ -300,13 +324,13 @@ function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
   return (
     <div className="stack-gap">
       <div className="choice-cards choice-cards--2" data-sid="voice_engine">
-        <button className={`choice ${natural ? "choice--on" : ""}`} onClick={() => save({ voice_engine: "kokoro" })}>
+        <button className={`choice ${natural ? "choice--on" : ""}`} disabled={vs?.supported === false} onClick={() => save({ voice_engine: "kokoro" })}>
           <b>Natural voice</b>
-          <span>{vs?.installed ? (vs.ready ? "Ready · runs on this Mac, offline" : "Starting…") : vs?.installing ? "Downloading…" : "Not downloaded yet"}</span>
+          <span>{vs?.supported === false ? "Mac only for now" : vs?.installed ? (vs.ready ? "Ready · runs on this Mac, offline" : "Starting…") : vs?.installing ? "Downloading…" : "Not downloaded yet"}</span>
         </button>
         <button className={`choice ${!natural ? "choice--on" : ""}`} onClick={() => save({ voice_engine: "apple" })}>
           <b>System voice</b>
-          <span>The macOS voice you pick below. Nothing to download.</span>
+          <span>The {IS_MAC ? "macOS" : OS === "windows" ? "Windows" : "system"} voice you pick below. Nothing to download.</span>
         </button>
       </div>
       {natural && <VoiceDownload />}
@@ -368,7 +392,7 @@ const SOUND_GROUPS: { title: string; sounds: [string, string][] }[] = [
   { title: "Notch", sounds: [["agent-launch", "The notch opens"], ["agent-close", "The notch closes"], ["type-keys", "Dictation types your words"], ["nope", "Something went wrong"]] },
   { title: "Agents", sounds: [["paper-place", "An agent starts"], ["badge-pop", "A step is done"], ["agent-needs-you", "An agent has a question"], ["agent-done", "An agent is finished"]] },
   { title: "Buddy & marks", sounds: [["target-ping", "Pointing at something"], ["whoosh", "The buddy flies to a spot"], ["gel-pop", "The buddy clicks"], ["pen-flick", "Drawing a circle or arrow"], ["highlighter", "Underlining or boxing"], ["stamp", "A tick mark"]] },
-  { title: "Board & setup", sounds: [["pencil-paper-bed", "Sketching on the board (loops)"], ["home-reveal", "The welcome window"], ["tada", "Setup finished"]] },
+  { title: "Canvas & setup", sounds: [["pencil-paper-bed", "Drawing on the canvas (loops)"], ["home-reveal", "The welcome window"], ["tada", "Setup finished"]] },
 ];
 
 function fileToBase64(f: File): Promise<string> {
@@ -517,6 +541,7 @@ function GeneralPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (
   const s = view?.settings;
   const save = (patch: Partial<SettingsT>) => api.setSettings(patch).then(onSaved);
   const mode = s?.buddy === false ? "off" : (s?.buddy_mode ?? "always");
+  const persona = personaOf(s?.persona).id;
   return (
     <div className="stack-gap">
       <h3 className="sub">Buddy</h3>
@@ -529,6 +554,38 @@ function GeneralPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (
             </span>
             <b>{m.label}</b>
             <span>{m.why}</span>
+          </button>
+        ))}
+      </div>
+      <h3 className="sub">Personality</h3>
+      <div className="persona-cards" data-sid="persona">
+        {PERSONAS.map((p) => (
+          <button key={p.id} className={`choice persona ${persona === p.id ? "choice--on" : ""}`} onClick={() => save({ persona: p.id })}>
+            <span className="persona__face">
+              <i className="pmark" style={{ width: 34, height: 34, ["--icon" as string]: `url(${slotUrl("icon", p.icon)})` }} aria-hidden />
+            </span>
+            <b>
+              {p.name} <span className="persona__ascii">{p.face}</span>
+            </b>
+            <span className="persona__style">{p.style}</span>
+            <span className="persona__sample">“{p.sample}”</span>
+          </button>
+        ))}
+      </div>
+      {persona === "xtrem" && (
+        <ul className="rows">
+          <SRow sid="spicy" label="Spicy" why="Xtrem may swear a little (damn, hell, crap). Never at you, never slurs, and never around errors, money or deleting.">
+            <Switch label="Spicy" on={!!s?.spicy} onChange={(v) => save({ spicy: v })} />
+          </SRow>
+        </ul>
+      )}
+      <p className="muted small">Personalities change how replies sound, not the voice, what Pixie can do or how careful it is. Documents and reports from agents keep the plain style. Say “be Eon” or “switch to Xtrem” any time.</p>
+      <h3 className="sub">Drawing</h3>
+      <div className="choice-cards choice-cards--plain" data-sid="canvas_use">
+        {DRAWING.map((d) => (
+          <button key={d.id} className={`choice ${(s?.canvas_use ?? "helps") === d.id ? "choice--on" : ""}`} onClick={() => save({ canvas_use: d.id })}>
+            <b>{d.label}</b>
+            <span>{d.why}</span>
           </button>
         ))}
       </div>
@@ -563,7 +620,96 @@ const LINKS: [string, string, string][] = [
   ["Website", "pixie.s41r4j.in", "https://pixie.s41r4j.in"],
 ];
 
-function AboutPanel() {
+/** Experiments: off by default; a tool that's off isn't offered to the model at all. */
+const EXPERIMENTS: { id: string; label: string; why: string }[] = [];
+
+const DRAWING: { id: "asked" | "helps" | "often"; label: string; why: string }[] = [
+  { id: "asked", label: "Only when I ask", why: "Draws on the canvas when you ask for a diagram or sketch." },
+  { id: "helps", label: "When it helps", why: "Also draws on its own when a picture explains it better: flows, steps, how things connect." },
+  { id: "often", label: "Often", why: "Sketches most explanations, even a few boxes and arrows." },
+];
+
+function ExperimentalPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
+  const on = view?.settings.experimental ?? {};
+  const set = (id: string, v: boolean) => api.setSettings({ experimental: { ...on, [id]: v } }).then(onSaved);
+  if (!EXPERIMENTS.length)
+    return (
+      <div className="stack-gap">
+        <div className="banner banner--muted">Nothing to try early right now. The Excalidraw canvas graduated: it's always on, and Settings → General → Drawing sets how often Pixie uses it.</div>
+      </div>
+    );
+  return (
+    <div className="stack-gap">
+      <div className="banner banner--muted">These are early. They can be rough, and they may change or disappear in a later version.</div>
+      <ul className="rows">
+        {EXPERIMENTS.map((x) => (
+          <SRow key={x.id} sid={`exp_${x.id}`} label={x.label} why={x.why}>
+            <Switch on={!!on[x.id]} onChange={(v) => set(x.id, v)} label={x.label} />
+          </SRow>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ago(ts: number | null): string {
+  if (!ts) return "not yet";
+  const m = Math.round((Date.now() / 1000 - ts) / 60);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+}
+
+function Updates({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
+  const [u, setU] = useState<UpdateStatus | null>(null);
+  useEffect(() => {
+    api.updateStatus().then(setU).catch(() => {});
+    const un = onEvent((e) => e.kind === "update.state" && setU(e.payload as UpdateStatus));
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+  const pct = u && u.total ? Math.round((u.done / u.total) * 100) : 0;
+  const line = !u
+    ? ""
+    : u.phase === "checking"
+      ? "Checking GitHub…"
+      : u.phase === "downloading"
+        ? `Downloading ${u.version}${u.total ? ` · ${pct}%` : "…"}`
+        : u.phase === "ready"
+          ? `${u.version} is ready. Pixie switches over when it restarts, on its own once you're not using it.`
+          : u.phase === "up_to_date"
+            ? `You're on the newest version · checked ${ago(u.checked_at)}`
+            : u.phase === "error"
+              ? (u.error ?? "Couldn't check.")
+              : u.supported
+                ? `Checks GitHub on launch and every 6 hours · last ${ago(u.checked_at)}`
+                : "Development build: updates are off.";
+  return (
+    <>
+      <h3 className="sub">Updates</h3>
+      <ul className="rows">
+        <SRow sid="auto_update" label="Update automatically" why="Downloads new versions in the background and installs them when Pixie is idle. Nothing to download by hand.">
+          <Switch on={view?.settings.auto_update ?? true} onChange={(v) => api.setSettings({ auto_update: v }).then(onSaved)} label="Update automatically" />
+        </SRow>
+      </ul>
+      <div className={`banner ${u?.phase === "ready" ? "banner--ok" : u?.phase === "error" ? "banner--warn" : "banner--muted"}`}>{line}</div>
+      {u?.phase === "downloading" && u.total > 0 && (
+        <div className="bar" aria-label="Download progress"><span style={{ width: `${pct}%` }} /></div>
+      )}
+      <div className="row-actions">
+        {u?.phase === "ready" ? (
+          <button className="btn btn--primary" onClick={() => api.updateRestart().catch(console.error)}>Restart now</button>
+        ) : (
+          <button className="btn btn--ghost" disabled={!u?.supported || u.phase === "checking" || u.phase === "downloading"} onClick={() => api.updateCheck().then(setU).catch(console.error)}>
+            Check now
+          </button>
+        )}
+        <button className="btn btn--link" onClick={() => api.openTarget("https://github.com/s41r4j/pixie/releases")}>What's new</button>
+      </div>
+    </>
+  );
+}
+
+function AboutPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
   const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
   useEffect(() => {
     api.status().then(setSt);
@@ -577,6 +723,7 @@ function AboutPanel() {
           <p className="muted">Version {st?.version} · free and open source (MIT)</p>
         </div>
       </div>
+      <Updates view={view} onSaved={onSaved} />
       <h3 className="sub">Made by</h3>
       <div className="dev-card">
         <div className="dev-card__name">s41r4j</div>
@@ -590,7 +737,7 @@ function AboutPanel() {
         </div>
         <p className="muted small">Ideas, bugs and pull requests are welcome on GitHub.</p>
       </div>
-      <h3 className="sub">This Mac</h3>
+      <h3 className="sub">This {MACHINE}</h3>
       <ul className="kv">
         <li><span>Model</span><b>{st?.provider ?? "not set"}</b></li>
         <li><span>Native helper</span><b>{st?.helper ? "running" : "missing"}</b></li>
@@ -709,7 +856,7 @@ function Welcome({ view, onSaved, done }: { view: SettingsView | null; onSaved: 
       {step === 2 && (
         <div className="welcome__step">
           <h2>A few switches</h2>
-          <p className="muted">These let me hear you, see the screen and point at buttons. Everything stays on this Mac unless a question needs a model.</p>
+          <p className="muted">These let me hear you, see the screen and point at buttons. Everything stays on this {MACHINE} unless a question needs a model.</p>
           <ul className="rows">
             {perms.map((p) => (
               <PermRow key={p.id} p={p} onChange={refresh} />
@@ -747,7 +894,7 @@ function Welcome({ view, onSaved, done }: { view: SettingsView | null; onSaved: 
             <li><b>Hover the notch</b> · Chat (this conversation) and Agents (work in the background or on your screen)</li>
             <li><b>“Where's…?” “Circle the total”</b> · the buddy points and draws; marks fade on their own</li>
             <li><b>“Do this for me”</b> · it clicks, types and copies; bigger tasks become a live agent you can watch</li>
-            <li><b>Click anywhere</b> · puts a board diagram away</li>
+            <li><b>“Draw how this works”</b> · it sketches on a canvas you can edit and keep; Show Canvas in the menu bar brings it back</li>
           </ul>
           {nav(4, 6)}
         </div>
@@ -798,6 +945,7 @@ const GROUPS: { title: string; tabs: TabDef[] }[] = [
       { id: "general", label: "General", icon: "sliders", blurb: "The buddy, clicking for you, and how answers come back." },
       { id: "voice", label: "Voice", icon: "speaker", blurb: "How Pixie sounds and which language it listens for." },
       { id: "sounds", label: "Sounds", icon: "waveform", blurb: "Little sounds for starts, finishes and nudges." },
+      { id: "memory", label: "Memory", icon: "chat", blurb: "What Pixie remembers about you, and when a new day's chat starts." },
     ],
   },
   {
@@ -805,16 +953,17 @@ const GROUPS: { title: string; tabs: TabDef[] }[] = [
     tabs: [
       { id: "ai", label: "Models", icon: "sparkle", blurb: "Claude, OpenAI or DeepSeek: live model lists, newest first, with prices." },
       { id: "usage", label: "Usage", icon: "grid", blurb: "Tokens and cost per model, priced from the live price list." },
-      { id: "coding", label: "Coding", icon: "terminal", blurb: "Which coding agent on this Mac takes code tasks, and with which model." },
+      { id: "coding", label: "Coding", icon: "terminal", blurb: `Which coding agent on this ${MACHINE} takes code tasks, and with which model.` },
     ],
   },
   {
-    title: "Mac",
+    title: IS_MAC ? "Mac" : "System",
     tabs: [
-      { id: "setup", label: "Permissions", icon: "lock", blurb: "What Pixie may hear, see and do on this Mac." },
+      { id: "setup", label: "Permissions", icon: "lock", blurb: `What Pixie may hear, see and do on this ${MACHINE}.` },
       { id: "apps", label: "Apps", icon: "grid", blurb: "Calendar, Reminders, Contacts, Mail and your Google account." },
       { id: "connectors", label: "Connectors", icon: "layers", blurb: "GitHub, Notion, Slack, Linear and more in one click, plus Chrome." },
-      { id: "about", label: "About", icon: "eye", blurb: "Version and where Pixie keeps its files." },
+      { id: "experimental", label: "Experimental", icon: "sparkle", blurb: "New things to try early. They may change or go away." },
+      { id: "about", label: "About", icon: "eye", blurb: "Version, updates, and where Pixie keeps its files." },
     ],
   },
 ];
@@ -833,6 +982,12 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "sounds", sid: "master_volume", title: "Overall volume", words: "loud quiet master" },
   { tab: "sounds", title: "Custom sounds", words: "file replace change own default" },
   { tab: "ai", title: "Fallback model", words: "backup failover second model outage" },
+  { tab: "about", sid: "auto_update", title: "Updates: automatic, check now", words: "update upgrade new version download install restart release" },
+  { tab: "memory", sid: "memory_mode", title: "Memory: automatic, only when I ask, off", words: "remember forget notes learn long-term memory about me private" },
+  { tab: "memory", sid: "chat_reset_hour", title: "New chat each day at", words: "chat history conversation reset midnight day new chat continue" },
+  { tab: "memory", sid: "memory_add", title: "Notes Pixie keeps about you", words: "memory notes facts preferences people projects edit delete forget" },
+  { tab: "general", sid: "persona", title: "Personality: Pix, Inos, Xtrem, Eon", words: "persona personality style tone character funny nerdy concise short spicy swear face" },
+  { tab: "general", sid: "canvas_use", title: "Drawing: how often Pixie uses the canvas", words: "canvas excalidraw draw diagram sketch whiteboard board proactive often export png svg" },
   { tab: "about", title: "Made by s41r4j", words: "developer author github x twitter credits" },
   { tab: "voice", title: "Natural voice (Kokoro) or system voice", words: "tts speech speaker download kokoro" },
   { tab: "voice", title: "Voice speed", words: "rate fast slow" },
@@ -883,6 +1038,8 @@ export function Settings() {
     });
     const un = onEvent((e) => {
       if (e.kind === "settings.tab") setTab(e.payload.tab);
+      // Pixie changed a setting itself (the pixie tool): show the new values.
+      if (e.kind === "settings.external") api.settings().then(setView).catch(() => {});
     });
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey && (e.key === "f" || e.key === "k")) || (e.key === "/" && document.activeElement?.tagName !== "INPUT")) {
@@ -1002,7 +1159,9 @@ export function Settings() {
               {tab === "sounds" && <SoundsPanel view={view} onSaved={setView} />}
               {tab === "apps" && <AppsPanel view={view} onSaved={setView} />}
               {tab === "connectors" && <ConnectorsPanel />}
-              {tab === "about" && <AboutPanel />}
+              {tab === "memory" && <MemoryPanel view={view} onSaved={setView} />}
+              {tab === "experimental" && <ExperimentalPanel view={view} onSaved={setView} />}
+              {tab === "about" && <AboutPanel view={view} onSaved={setView} />}
             </div>
           </>
         )}

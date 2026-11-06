@@ -35,10 +35,13 @@ pub struct Coder {
 const KNOWN: [(&str, &str); 3] = [("codex", "Codex CLI"), ("claude", "Claude Code"), ("opencode", "opencode")];
 
 fn search_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var("PATH").unwrap_or_default().split(':').map(PathBuf::from).collect();
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     let home = guard::home();
     for d in ["/opt/homebrew/bin", "/usr/local/bin"] {
         dirs.push(PathBuf::from(d));
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        dirs.push(PathBuf::from(appdata).join("npm"));
     }
     for d in [".local/bin", ".npm-global/bin", ".bun/bin", ".opencode/bin", ".claude/local"] {
         dirs.push(home.join(d));
@@ -52,7 +55,8 @@ pub fn detect() -> Vec<Coder> {
     KNOWN
         .iter()
         .filter_map(|(name, label)| {
-            dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()).map(|path| Coder { name, label, path })
+            let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ""] } else { &[""] };
+            dirs.iter().flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file()).map(|path| Coder { name, label, path })
         })
         .collect()
 }
@@ -143,8 +147,11 @@ pub async fn run(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     let _ = std::fs::create_dir_all(ctx.cwd.join("tmp"));
     let mut cmd = command(&coder, prefs, &task, &dir, &last_message);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).stdin(std::process::Stdio::null()).kill_on_drop(true);
-    let path = format!("/opt/homebrew/bin:/usr/local/bin:{}", std::env::var("PATH").unwrap_or_default());
-    cmd.env("PATH", path);
+    let base = std::env::var_os("PATH").unwrap_or_default();
+    let extra = if cfg!(target_os = "macos") { vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")] } else { vec![] };
+    if let Ok(path) = std::env::join_paths(extra.into_iter().chain(std::env::split_paths(&base))) {
+        cmd.env("PATH", path);
+    }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => return ToolOutput::err(format!("Couldn't start {}: {e}", coder.label)),
