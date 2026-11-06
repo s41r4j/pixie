@@ -52,7 +52,7 @@ pub fn capture() -> Result<Shot, String> {
     let (w, h) = ((size.0 as u32).min(img.width().saturating_sub(x)), (size.1 as u32).min(img.height().saturating_sub(y)));
     let crop = if w > 0 && h > 0 { image::imageops::crop_imm(&img, x, y, w, h).to_image() } else { img };
     let (w, h) = crop.dimensions();
-    let px: Vec<u8> = crop.into_raw().chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let px: Vec<u8> = crop.into_raw().as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
     Ok(Shot { img: Bgra { w, h, px }, display: crate::macos::Rect { x: pos.0 / scale, y: pos.1 / scale, w: w as f64 / scale, h: h as f64 / scale }, scale })
 }
 
@@ -62,14 +62,16 @@ pub fn ocr(shot: &Shot) -> Vec<Value> {
         return vec![];
     }
     let path = std::env::temp_dir().join(format!("pixie-ocr-{}.png", std::process::id()));
-    let rgb: Vec<u8> = shot.img.px.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+    let rgb: Vec<u8> = shot.img.px.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
     let Some(img) = image::RgbImage::from_raw(shot.img.w, shot.img.h, rgb) else { return vec![] };
     if img.save(&path).is_err() {
         return vec![];
     }
     let tsv = run("tesseract", &[&path.to_string_lossy(), "-", "tsv"]).unwrap_or_default();
     let _ = std::fs::remove_file(&path);
-    let mut lines: Vec<(String, (f64, f64, f64, f64), Vec<String>)> = vec![];
+    // (line key, bounding box x y w h, words)
+    type Line = (String, (f64, f64, f64, f64), Vec<String>);
+    let mut lines: Vec<Line> = vec![];
     for row in tsv.lines().skip(1) {
         let c: Vec<&str> = row.split('\t').collect();
         if c.len() < 12 || c[0] != "5" || c[11].trim().is_empty() || c[10].parse::<f64>().unwrap_or(0.0) < 30.0 {

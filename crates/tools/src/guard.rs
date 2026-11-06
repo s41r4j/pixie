@@ -145,6 +145,8 @@ mod tests {
         }
     }
 
+    // Symlinks need special rights on Windows; the check itself is the same everywhere.
+    #[cfg(unix)]
     #[test]
     fn symlink_into_secret_is_denied() {
         let dir = tempfile::tempdir().unwrap();

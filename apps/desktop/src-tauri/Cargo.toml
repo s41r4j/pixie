@@ -52,9 +52,9 @@ tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 arboard = { version = "3", default-features = false }
 rodio = { version = "0.20", default-features = false, features = ["symphonia-wav"] }
-cpal = "0.15"
 
 [target.'cfg(windows)'.dependencies]
+cpal = "0.15"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Graphics_Imaging", "Media_Core", "Media_Ocr", "Media_SpeechRecognition", "Media_SpeechSynthesis", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility"] }
 windows-future = "0.3"

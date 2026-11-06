@@ -14,6 +14,7 @@ use linux as os;
 #[cfg(windows)]
 use win as os;
 
+#[cfg(windows)]
 mod meter;
 mod player;
 
@@ -185,7 +186,8 @@ pub struct Bgra {
 }
 
 impl Bgra {
-    /// Scaled to fit `max` px a side; returns the image and the factor applied.
+    /// Scaled to fit `max` px a side; returns the image and the factor applied (Windows OCR).
+    #[cfg(windows)]
     pub fn fit(&self, max: u32) -> (std::borrow::Cow<'_, Bgra>, f64) {
         if self.w <= max && self.h <= max {
             return (std::borrow::Cow::Borrowed(self), 1.0);
@@ -199,7 +201,7 @@ impl Bgra {
 
     /// JPEG `width` px wide (BGRA → RGB).
     fn jpeg(&self, width: u32, path: &str) -> Result<(u32, u32), String> {
-        let rgb: Vec<u8> = self.px.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+        let rgb: Vec<u8> = self.px.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
         let img = image::RgbImage::from_raw(self.w, self.h, rgb).ok_or("bad image")?;
         let img = if width < self.w {
             let h = (self.h as f64 * width as f64 / self.w as f64).round() as u32;

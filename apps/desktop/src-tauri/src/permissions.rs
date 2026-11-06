@@ -232,11 +232,8 @@ pub async fn permission_request(id: String) -> Result<PermissionInfo, String> {
     let pid = PermId::parse(&id).ok_or_else(|| format!("unknown permission `{id}`"))?;
     tauri::async_runtime::spawn_blocking(move || {
         match pid {
-            PermId::Files => {
-                if check_files() == PermState::Denied {
-                    open_settings(pid);
-                }
-            }
+            PermId::Files if check_files() == PermState::Denied => open_settings(pid),
+            PermId::Files => {}
             #[cfg(target_os = "macos")]
             _ => {
                 if !native::request(pid) {
