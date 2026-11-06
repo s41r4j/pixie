@@ -1,51 +1,41 @@
 # Changelog
 
-## 0.7.7 · unreleased
-- The menu bar menu has a separator above Settings, so Type a Question, Show Jobs and Show Canvas sit in their own group.
+## 0.7.7 · 2026-11-07
+The first release that updates itself, and the first with Windows and Linux builds. Everything from 0.7.0 to 0.7.7 ships here (those versions were only built locally).
 
-## 0.7.6 · unreleased
-- **The canvas is standard**: the Excalidraw canvas is no longer an experiment, and the old board (the sketch that floated over the screen) is gone. On-screen marks (circles, boxes, underlines, arrows) stay.
-- **Draws on its own**: when a picture would explain it better (how things connect, a flow, steps, a comparison, a timeline), Pixie draws it on the canvas without being asked. Settings → General → **Drawing**: Only when I ask, When it helps (the default) or Often; or say "draw more" / "only draw when I ask".
-- **Four personalities**: Settings → General → **Personality**. **Pix** `:)` is Pixie as it always was (nothing added). **Inos** `8)` is intelligent, nerdy and curious. **Xtrem** `XD` is chaotic, witty and mischievous (jokes about the situation, never about you), with a **Spicy** switch for a little swearing. **Eon** `;)` is calm, concise and precise. Each has its own pixel face in the notch, on the buddy and in Settings. They change only the style of replies: same voice, same tools, same care before sending or deleting, and documents that agents write keep the plain style. Switch by asking: "be Eon", "switch to Xtrem", "turn on spicy"; "switch to …" and "be …" work instantly, without asking the model.
-- Show Canvas is always in the menu bar menu. Settings → Experimental is empty for now.
+**New platforms**
+- **Windows**: the Mac helper's work has a Windows twin built in: voice input through Windows speech recognition (with the mic level), Windows voices for answers, screenshots, Windows OCR, the screen's buttons through UI Automation, and clicking, typing, keys, scrolling and drag. Shortcuts read Ctrl / Alt / Win, and dictation is Ctrl+Win (Windows can't see fn). Permissions links straight to the Microphone and Speech privacy pages. Agents use Git Bash when it's installed and PowerShell otherwise, and connectors start properly (`npx.cmd`).
+- **Linux preview**: an AppImage and a .deb. Chat, agents, screenshots (grim, scrot…), tesseract OCR, xdotool clicks and espeak-ng speech; no voice input yet.
+- **CHECKLIST.md** ticks every feature and setting for Mac, Windows and Linux, and CI checks all three on every push.
 
-## 0.7.5 · unreleased
-- **One chat all day**: today's conversation carries on after quiet gaps and after Pixie restarts, until you press New chat (or say "new chat" / "start over") or the day changes. The new day starts at midnight by default; pick another hour in Settings → Memory. After a long gap Pixie knows how long it's been, so an old "this" isn't mixed up with what's on screen now. Older turns are folded into a short running summary in the background, so long days stay fast and cheap.
-- **Long-term memory**: Pixie keeps short notes about you across days: who you are, how you like things, your people, projects and setup. Say "remember that…" or "forget…", or let it learn from a chat once the chat has gone quiet (Automatic). The most useful notes go with every question, and Pixie looks up the rest when they matter. Notes stay on your computer (`memory.json`); passwords, keys and card numbers are refused. The notes jobs used to keep in `memory.md` come over on their own.
-- **Connectors, redone**: GitHub, Slack and Brave Search used npm packages that have been retired and are no longer maintained; they now run on GitHub's own hosted server, the maintained `slack-mcp-server` (marked as a community server; posting stays off) and Brave's own server. Linear and Jira & Confluence use their current endpoints. Connectors you added before move over on their own, keeping their tokens. New: **Sentry** and **Context7** (up-to-date library docs, no key). The page now has a summary (connected, tools, needing attention, Node.js), sections by purpose, how each one signs in, a clear status, the reason in plain words when one can't connect (with Retry and the server's own message), the list of tools each one gives Pixie, and **Add your own server** instead of editing `mcp.json` by hand. Connectors also start properly on Windows (`npx.cmd`).
-- **No em dashes**: the website, the docs and Pixie's own texts don't use them any more, and Pixie is told not to write them.
-- **Settings → Memory**: Automatic / Only when I ask / Off, the hour a new chat starts, and every note: add, edit (click it), forget, search, or forget everything. Pixie can switch these by voice too ("turn memory off", "start a new chat at 4am").
+**Updates itself**
+- Pixie checks GitHub on launch and every 6 hours, downloads a new version quietly, checks its signature, and switches over when you're not using it (nothing running, the notch idle, no window open, 10 quiet minutes). Settings → About has Check now / Restart now; the menu bar menu has Check for Updates / Restart to Update. You can turn it off. This is the last version you download by hand.
 
-## 0.7.4 · unreleased
-- **Pixie knows itself and sets itself up**: ask "what can you do?", "what's my talk shortcut?", "which model are you using?" and Pixie answers from how it's actually set up right now (version, shortcuts, voice, model, permissions, apps, connectors, experiments, updates, usage). Say "talk slower", "use the Emma voice", "stop speaking answers", "turn on the canvas", "call me Sam", "don't click for me", "switch to Claude" or "turn off the Slack connector" and it changes the setting instantly, several at once, without clicking through Settings; an open Settings window updates to match. It can also open any Settings page, check for updates and restart into one. API keys, permissions and sign-ins stay with you on the page.
-- **Quit and stop by asking**: say or type "quit", "exit", "close Pixie" or "turn yourself off" and Pixie says bye and quits; "stop working" / "stop everything" stops every running job and live agent; "never mind" / "stop" just stops. The short ones are handled instantly without asking the model; anything phrased differently ("I'm done with you for today") goes through the pixie tool.
-- "Check for updates" no longer says it couldn't reach GitHub when the newest release simply has no update file yet; it says Pixie is up to date.
+**Canvas**
+- Diagrams and explanations land on a real Excalidraw canvas in its own window instead of a sketch floating over the screen (the old board is gone; on-screen marks stay). Shapes, arrows and text, or a Mermaid flowchart laid out for you. Move and edit anything, rename it, save it as .excalidraw, PNG or SVG (to Downloads, never overwriting).
+- **Draws on its own** when a picture explains it better: Settings → General → **Drawing**: Only when I ask, When it helps (default) or Often; or say "draw more".
+- The window comes up in front of you, also over a full-screen app, and hides when you click outside it. **Show Canvas** in the menu bar menu brings it back. Pixie can open, list, read back, clear and delete canvases when you ask; Delete in the canvas sends one to the Trash.
 
-## 0.7.3 · unreleased
-- **Show Canvas in the menu bar menu**: right under Type a Question… and Show Jobs while the Excalidraw canvas is switched on (Settings → Experimental). It brings back the canvas you were using, or your last one.
+**Memory**
+- **One chat all day**: today's conversation carries on after quiet gaps and restarts until you press New chat (or say "new chat") or the day changes (midnight by default; pick the hour in Settings → Memory). Older turns are folded into a short running summary so long days stay quick.
+- **Long-term notes**: say "remember that…" or "forget…", or let Pixie learn lasting facts from a chat once it's gone quiet. The most useful notes go with every question. Notes stay on your computer (`memory.json`); passwords, keys and card numbers are refused.
+- **Settings → Memory**: Automatic / Only when I ask / Off, the hour a new chat starts, and every note to add, edit, search or forget.
 
-## 0.7.2 · unreleased
-- **Lighter on memory**: the natural voice (Kokoro, ~470 MB loaded) no longer sits in memory all day. It loads in about a second when you start talking or typing to Pixie, so answers aren't slower, and unloads after 5 quiet minutes. Settings is created when you open it and freed when you close it, and a canvas you've put away is freed after 2 minutes. Idle, Pixie went from about 730 MB to about 215 MB.
-- Repo tidy-up: TODO.md became `docs/ROADMAP.md`, the architecture notes describe 0.7 (Windows/Linux layer, Kokoro, updates, canvas), and an unused placeholder crate is gone.
-- The website's release file list shows tiny files as "<1 KB" instead of "0 KB".
+**Pixie knows itself**
+- Ask "what can you do?", "what's my talk shortcut?", "which model are you on?" and Pixie answers from how it's actually set up. Say "talk slower", "use the Emma voice", "stop speaking answers", "call me Sam", "don't click for me", "switch to Claude" or "turn off the Slack connector" and it changes the setting at once, several at a time; an open Settings window updates to match. API keys, permissions and sign-ins stay with you on the page.
+- "Quit" / "exit" / "close Pixie" quits; "stop working" stops every job and live agent; "never mind" stops talking; "new chat" starts fresh. These short ones work instantly, without the model.
 
-## 0.7.1 · unreleased
-- **Canvas opens where you are**: Pixie opens the canvas itself when you ask ("open the canvas", "open my git canvas"), and the window comes up in front of you with focus, on the current desktop and over a full-screen app. Before, it could open behind other windows where you never saw it. Settings → Experimental → Open a canvas brings back your last one.
-- **Click outside to put it away**: clicking another app or the desktop hides the canvas (saved first); asking Pixie, or Open a canvas, brings it back.
-- **Delete canvases**: a Delete button in the canvas (click twice), and Pixie can delete one, or all, when you ask. The files go to the Trash. Pixie can also list your canvases.
-- Exports show a "Show" link instead of opening Finder (which would hide the canvas). Titles are saved with the drawing.
-- **Typing into the right field**: Pixie clicks into the field before typing, and it's told which field the text went into, so a split window (two terminal panes, a chat side panel) no longer gets it in the wrong pane.
-- **Website**: the Download page's Windows link no longer turns into a big grey box (it shared a style name with the illustration on the home page).
+**Four personalities**
+- Settings → General → **Personality**: **Pix** `:)` (default, Pixie as it always was), **Inos** `8)` intelligent and nerdy, **Xtrem** `XD` chaotic and witty with a **Spicy** switch, **Eon** `;)` calm and concise. Each has its own pixel face in the notch, on the buddy and in Settings. Only the style of replies changes: same voice, same tools, same care. "Switch to Eon" works instantly.
 
-## 0.7.0 · built locally, ships with the next release
-- **Windows, for real**: the Mac helper's work now has a Windows twin built in. Voice input through Windows speech recognition (with the mic level), Windows voices for answers, screenshots, Windows OCR, the screen's buttons through UI Automation, and clicking, typing, keys, scrolling and drag for live agents. Shortcuts read Ctrl / Alt / Win, and dictation is Ctrl+Win (Windows can't see fn). Permissions links straight to the Microphone and Speech privacy pages.
-- **Agents on Windows**: the shell tool runs Git Bash when it's installed and PowerShell otherwise; searching files, converting images, copying folders and opening things no longer call Mac programs. Windows credential folders join the list of paths Pixie won't open.
-- **Linux preview**: an AppImage and a .deb from the same pipeline. Chat, agents, screenshots (grim, scrot…), tesseract OCR, xdotool clicks and espeak-ng speech; no voice input yet. The Chrome bridge registers for Linux browsers too.
-- **CHECKLIST.md**: every feature and setting, ticked for Mac, Windows and Linux.
-- CI checks Windows and Linux on every push as well.
-- **Updates itself**: Pixie checks GitHub on launch and every 6 hours, downloads a new version quietly, checks its signature, and switches over when you're not using it (nothing running, the notch idle, no window open, 10 quiet minutes). Settings → About shows it and has Check now / Restart now; the tray menu has Check for Updates / Restart to Update; quitting installs a waiting Windows update. You can turn it off. This is the last version you download by hand.
-- **Settings → Experimental**: early features with an on/off switch each. Tools for features that are off aren't offered to the model.
-- **Excalidraw canvas (experimental)**: diagrams become real Excalidraw drawings in a canvas window instead of a slate in the air. Pixie draws shapes, arrows and text (or a Mermaid flowchart, sequence or class diagram) one by one; you can move and edit everything, rename it, and save it as .excalidraw, PNG or SVG (to Downloads, never overwriting). Canvases are kept on your computer and listed in the canvas menu; Pixie can read the canvas back, including your edits,. Works offline.
+**Connectors**
+- GitHub, Slack and Brave Search moved off retired npm packages to GitHub's own hosted server, the maintained `slack-mcp-server` (a community server; posting stays off) and Brave's own server. Linear and Jira & Confluence use their current endpoints. Connectors you added before move over on their own, keeping their tokens. New: **Sentry** and **Context7** (library docs, no key).
+- The page has a summary, sections by purpose, how each one signs in, a clear status, the reason in plain words when one can't connect (with Retry and the server's own message), the tools each gives Pixie, and **Add your own server**.
+
+**Smaller things**
+- **Lighter**: idle Pixie went from about 730 MB to about 215 MB. The natural voice loads when you start talking (about a second) and unloads after 5 quiet minutes; Settings and the canvas are freed when closed.
+- **Typing into the right field**: Pixie clicks into the field first and is told where the text went, so split windows no longer get it in the wrong pane.
+- No em dashes in the website, docs or Pixie's own texts. The menu bar menu groups Type a Question, Show Jobs and Show Canvas. The Download page's Windows link no longer turns into a grey box. "Check for updates" says you're up to date when the newest release has no update file.
 
 ## 0.6.0 · 2026-11-05
 - **Apps on your Mac** (Settings → Apps): Calendar, Reminders and Contacts through macOS's own frameworks, and Apple Mail through its scripting. Each is off until you switch it on, which asks macOS once. "What's on tomorrow?", "remind me to call Sam at 5", "what's Priya's email?", "draft a reply to the last mail from Alex". Mail drafts open in Mail for you to send; Pixie never sends.
