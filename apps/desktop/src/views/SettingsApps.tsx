@@ -1,5 +1,5 @@
 // Settings → Apps (Calendar, Reminders, Contacts, Mail, Google) and Settings → Connectors
-// (one-click MCP servers, custom ones from mcp.json, and the Chrome extension).
+// (one-click MCP servers and custom ones from mcp.json). The Chrome extension is on Apps.
 import { useEffect, useState } from "react";
 import { api, IS_MAC, MACHINE, onEvent, type AppsStatus, type ConnectorCard, type Gallery, type SettingsView } from "../lib/bridge";
 import { Glyph } from "../components/Mark";
@@ -170,7 +170,41 @@ export function AppsPanel({ view, onSaved }: { view: SettingsView | null; onSave
           </details>
         )}
       </div>
+      <ChromeCard />
     </div>
+  );
+}
+
+/** The Chrome extension (browser control). Lives on Apps so it doesn't depend on connectors. */
+function ChromeCard() {
+  const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
+  useEffect(() => {
+    const tick = () => api.status().then(setSt).catch(() => {});
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <>
+      <h3 className="sub" data-sid="chrome">Chrome</h3>
+      <div className={`banner ${st?.browser ? "banner--ok" : "banner--muted"}`}>
+        <b>Chrome</b> {st?.browser ? "is connected." : "isn't connected yet."}
+      </div>
+      {!st?.browser && (
+        <ol className="steps">
+          <li>
+            Open <code>chrome://extensions</code> and switch on Developer mode.
+          </li>
+          <li>
+            Click <b>Load unpacked</b> and pick the <code>extension</code> folder in Pixie's support folder.
+            <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/extension`)}>
+              Show folder
+            </button>
+          </li>
+          <li>Pixie can then read pages, click and type in your browser when you ask.</li>
+        </ol>
+      )}
+    </>
   );
 }
 
@@ -440,11 +474,9 @@ function AddCustom({ onChange }: { onChange: (g: Gallery) => void }) {
 
 export function ConnectorsPanel() {
   const [g, setG] = useState<Gallery | null>(null);
-  const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
   useEffect(() => {
     const tick = () => {
       api.connectorsGallery().then(setG).catch(() => {});
-      api.status().then(setSt).catch(() => {});
     };
     tick();
     const t = setInterval(tick, 3000);
@@ -528,24 +560,6 @@ export function ConnectorsPanel() {
         </div>
       </section>
 
-      <h3 className="sub">Chrome</h3>
-      <div className={`banner ${st?.browser ? "banner--ok" : "banner--muted"}`}>
-        <b>Chrome</b> {st?.browser ? "is connected." : "isn't connected yet."}
-      </div>
-      {!st?.browser && (
-        <ol className="steps">
-          <li>
-            Open <code>chrome://extensions</code> and switch on Developer mode.
-          </li>
-          <li>
-            Click <b>Load unpacked</b> and pick the <code>extension</code> folder in Pixie's support folder.
-            <button className="btn btn--link" onClick={() => st && api.openTarget(`${st.data_dir}/extension`)}>
-              Show folder
-            </button>
-          </li>
-          <li>Pixie can then read pages, click and type in your browser when you ask.</li>
-        </ol>
-      )}
     </div>
   );
 }

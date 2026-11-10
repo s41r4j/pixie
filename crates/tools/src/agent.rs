@@ -9,11 +9,13 @@ pub struct AgentOptions {
     pub max_steps: usize,
     pub effort: Effort,
     pub max_tokens: u32,
+    /// How many leading messages are earlier conversation (see `Request::history`).
+    pub history: Option<usize>,
 }
 
 impl Default for AgentOptions {
     fn default() -> Self {
-        Self { max_steps: 40, effort: Effort::Deep, max_tokens: 16_000 }
+        Self { max_steps: 40, effort: Effort::Deep, max_tokens: 16_000, history: None }
     }
 }
 
@@ -45,6 +47,61 @@ fn summarize(text: &str) -> String {
     }
 }
 
+/// A single tool result longer than this is cut (the model can ask for a smaller range).
+const RESULT_MAX: usize = 20_000;
+/// From this step on, and every `STUB_EVERY` steps after, tool results older than the last
+/// `KEEP_STEPS` steps become one-line stubs. Done in batches so the prompt prefix stays the same
+/// between them and the provider's cache keeps matching.
+const STUB_FROM: usize = 15;
+const STUB_EVERY: usize = 10;
+const KEEP_STEPS: usize = 6;
+
+fn cap_result(text: String) -> String {
+    if text.len() <= RESULT_MAX {
+        return text;
+    }
+    let mut end = RESULT_MAX;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n… ({} more characters cut; ask for a smaller part if you need it)", &text[..end], text.len() - end)
+}
+
+/// Replace tool results older than the last `keep` model steps with short stubs.
+fn stub_old_results(messages: &mut [Message], keep: usize) {
+    let assistants: Vec<usize> = messages.iter().enumerate().filter(|(_, m)| m.role == openclicky_llm::Role::Assistant).map(|(i, _)| i).collect();
+    if assistants.len() <= keep {
+        return;
+    }
+    let cutoff = assistants[assistants.len() - keep];
+    let mut names = std::collections::HashMap::new();
+    for m in messages.iter() {
+        for c in &m.content {
+            if let Content::ToolUse { id, name, .. } = c {
+                names.insert(id.clone(), name.clone());
+            }
+        }
+    }
+    for m in messages[..cutoff].iter_mut() {
+        for c in m.content.iter_mut() {
+            if let Content::ToolResult { tool_use_id, content, .. } = c {
+                let text: String = content.iter().filter_map(|x| if let Content::Text { text } = x { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
+                let has_image = content.iter().any(|x| matches!(x, Content::Image { .. }));
+                if text.len() <= 300 && !has_image || text.starts_with("[Earlier result") {
+                    continue;
+                }
+                let first: String = text.lines().next().unwrap_or("").chars().take(120).collect();
+                let name = names.get(tool_use_id.as_str()).map(String::as_str).unwrap_or("a tool");
+                *content = vec![Content::text(format!(
+                    "[Earlier result of {name}, trimmed to save space: {first}… ({} characters{}). Run it again if you need it.]",
+                    text.len(),
+                    if has_image { ", and an image" } else { "" }
+                ))];
+            }
+        }
+    }
+}
+
 /// Run until the model stops calling tools, the step limit is reached, or `ctx.cancel` fires.
 pub async fn run(
     provider: &dyn Provider,
@@ -62,10 +119,14 @@ pub async fn run(
             return Err(LlmError::Cancelled);
         }
         step += 1;
+        if step >= STUB_FROM && (step - STUB_FROM).is_multiple_of(STUB_EVERY) {
+            stub_old_results(&mut messages, KEEP_STEPS);
+        }
         let mut req = Request::new(system, messages.clone());
         req.tools = tools.clone();
         req.effort = opts.effort;
         req.max_tokens = opts.max_tokens;
+        req.history = opts.history;
         let resp: Response = {
             let mut forward = |e: StreamEvent| {
                 if let StreamEvent::TextDelta(t) = e {
@@ -106,7 +167,7 @@ pub async fn run(
             on_event(AgentEvent::ToolStart { name: name.clone(), input: input.clone() });
             let out = execute(ctx, &name, &input).await;
             on_event(AgentEvent::ToolEnd { name: name.clone(), ok: !out.is_error, summary: summarize(&out.text) });
-            let mut content = vec![Content::text(if out.text.is_empty() { "done".to_string() } else { out.text })];
+            let mut content = vec![Content::text(if out.text.is_empty() { "done".to_string() } else { cap_result(out.text) })];
             for (media, data) in out.images {
                 content.push(Content::Image {
                     source: openclicky_llm::ImageSource { kind: "base64".into(), media_type: media, data },
@@ -229,5 +290,30 @@ mod tests {
         let provider = ScriptedProvider::new(vec![]);
         let r = run(&provider, "s", vec![], vec![], &ctx, &AgentOptions::default(), &mut |_| {}).await;
         assert!(matches!(r, Err(LlmError::Cancelled)));
+    }
+
+    #[test]
+    fn long_results_are_capped_and_old_ones_stubbed() {
+        let big = "x".repeat(30_000);
+        let c = cap_result(big);
+        assert!(c.len() < 20_200 && c.contains("more characters cut"));
+        let mut msgs = vec![Message::user_text("brief")];
+        for i in 0..10 {
+            msgs.push(Message::assistant(vec![tool(&format!("t{i}"), "read", json!({}))]));
+            msgs.push(Message::user(vec![Content::tool_result(format!("t{i}"), format!("line one of {i}\n{}", "y".repeat(1000)), false)]));
+        }
+        stub_old_results(&mut msgs, 6);
+        let text = |m: &Message| match &m.content[0] {
+            Content::ToolResult { content, .. } => match &content[0] {
+                Content::Text { text } => text.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        assert!(text(&msgs[2]).starts_with("[Earlier result of read") && text(&msgs[2]).contains("line one of 0"));
+        assert!(text(&msgs[8]).starts_with("[Earlier result"), "the 4th of 10 is older than the last 6");
+        assert!(!text(&msgs[10]).starts_with("[Earlier"), "the last 6 steps stay whole");
+        assert_eq!(text(&msgs[1 + 2]), text(&msgs[3]));
+        assert_eq!(msgs[0].text(), "brief");
     }
 }

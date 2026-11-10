@@ -101,16 +101,13 @@ fn handle(cmd: &str, args: &Value) -> Result<Value, String> {
             Ok(json!({ "x": x as i64, "y": y as i64 }))
         }
         "ax_snapshot" => Ok(os::snapshot(160)),
-        "click_at" => {
-            let mut r = os::click(f(args, "x"), f(args, "y"), args.get("button").and_then(Value::as_str).unwrap_or("left"), args.get("count").and_then(Value::as_u64).unwrap_or(1) as u32)?;
-            std::thread::sleep(Duration::from_millis(450));
-            r["after"] = os::controls_after();
-            Ok(r)
-        }
-        "drag" => {
-            let mut r = os::drag(f(args, "x"), f(args, "y"), f(args, "to_x"), f(args, "to_y"))?;
-            r["after"] = os::controls_after();
-            Ok(r)
+        // No snapshot after clicks: Pixie asks for screen_state once the UI settles and keeps
+        // the control ids itself.
+        "click_at" => os::click(f(args, "x"), f(args, "y"), args.get("button").and_then(Value::as_str).unwrap_or("left"), args.get("count").and_then(Value::as_u64).unwrap_or(1) as u32),
+        "drag" => os::drag(f(args, "x"), f(args, "y"), f(args, "to_x"), f(args, "to_y")),
+        "screen_state" => {
+            std::thread::sleep(Duration::from_secs_f64(args.get("settle").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 3.0)));
+            Ok(os::screen_state())
         }
         "insert_text" => insert(s(args, "text")),
         "mac_step" => {
@@ -224,7 +221,9 @@ impl Clone for Bgra {
 
 /// Same answer as the Mac helper's `capture`.
 fn capture(args: &Value) -> Result<Value, String> {
-    let shot = os::capture()?;
+    // A screen other than the pointer's: the helper's `at` point, in global points.
+    let at = args.get("at").and_then(|a| Some((a.get("x")?.as_f64()?, a.get("y")?.as_f64()?)));
+    let shot = os::capture(at)?;
     let (cx, cy) = crate::macos::cursor();
     let d = shot.display;
     let mut out = json!({

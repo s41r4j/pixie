@@ -26,6 +26,10 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 const EVERY: Duration = Duration::from_secs(6 * 3600);
 const FIRST: Duration = Duration::from_secs(25);
 const QUIET_FOR: Duration = Duration::from_secs(10 * 60);
+/// After a check that couldn't fetch latest.json (GitHub's asset servers sometimes answer 504),
+/// try again this soon instead of waiting the full six hours.
+const RETRY: Duration = Duration::from_secs(15 * 60);
+static RETRY_SOON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Clone, Serialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -120,15 +124,24 @@ pub async fn check(app: &AppHandle) -> Result<Value, String> {
 
 async fn run(app: &AppHandle) -> Result<(), String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
+    RETRY_SOON.store(false, std::sync::atomic::Ordering::SeqCst);
     let found = match updater.check().await {
         Ok(f) => f,
-        // No update file on the latest release (one published before auto-update): nothing newer.
+        // latest.json couldn't be fetched: missing on the release, or GitHub failing for a moment
+        // (the updater can't tell which). Treat it as nothing newer and look again soon.
         Err(e) if e.to_string().contains("valid release JSON") => {
-            log::info!("update: no latest.json on the newest release ({e})");
+            log::info!("update: couldn't fetch latest.json ({e}); trying again in 15 minutes");
+            RETRY_SOON.store(true, std::sync::atomic::Ordering::SeqCst);
             None
         }
-        Err(e) => return Err(format!("Couldn't reach GitHub: {e}")),
+        Err(e) => {
+            RETRY_SOON.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Err(format!("Couldn't reach GitHub: {e}"));
+        }
     };
+    let data = app.state::<AppState>().data_dir.clone();
+    // A version that was rolled back isn't offered again; the next release is.
+    let found = found.filter(|u| crate::rollback::skipped(&data).as_deref() != Some(u.version.as_str()));
     let Some(update) = found else {
         with(|s| s.phase = Phase::UpToDate);
         return Ok(());
@@ -164,7 +177,10 @@ async fn run(app: &AppHandle) -> Result<(), String> {
         // Running the installer quits Pixie, so it waits for the restart.
         with(|s| s.pending = Some((update, bytes)));
     } else {
-        // Verified against the public key, then the app on disk is replaced.
+        // Keep this version in case the new one won't start, then replace the app on disk
+        // (after the signature check against the public key).
+        let (d, cur, to) = (data.clone(), update.current_version.clone(), update.version.clone());
+        let _ = tokio::task::spawn_blocking(move || crate::rollback::keep_current(&d, &cur, &to)).await;
         update.install(&bytes).map_err(|e| format!("Installing failed: {e}"))?;
     }
     with(|s| s.phase = Phase::Ready);
@@ -219,7 +235,8 @@ pub fn spawn(app: AppHandle) {
             let auto = app.state::<AppState>().settings.lock().map(|s| s.auto_update).unwrap_or(true);
             if auto && Instant::now() >= next_check {
                 let _ = check(&app).await;
-                next_check = Instant::now() + EVERY;
+                let soon = RETRY_SOON.load(std::sync::atomic::Ordering::SeqCst);
+                next_check = Instant::now() + if soon { RETRY } else { EVERY };
             }
             if auto && ready_version().is_some() && idle(&app) {
                 log::info!("update: idle, restarting into {}", ready_version().unwrap_or_default());

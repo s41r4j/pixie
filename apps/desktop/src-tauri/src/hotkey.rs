@@ -72,6 +72,13 @@ pub fn parse(s: &str) -> Option<u64> {
     (m != 0 && (m.count_ones() >= 2 || m == FLAG_FN)).then_some(m)
 }
 
+/// Dictation shortcut works as a toggle (press to start, press to stop) instead of hold.
+static DICTATE_TOGGLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_dictate_toggle(on: bool) {
+    DICTATE_TOGGLE.store(on, Ordering::SeqCst);
+}
+
 /// Apply the shortcuts from settings (falls back to the defaults; never two equal chords).
 pub fn configure(talk: &str, dictate: &str) {
     let t = parse(talk).unwrap_or(DEFAULT_TALK);
@@ -123,14 +130,46 @@ impl ChordTracker {
     }
 }
 
-/// Spawn the polling thread. Also drives click-through hit testing.
+/// Which poller is the live one, and when it last went round (ms since the first started).
+static POLLER: AtomicU64 = AtomicU64::new(0);
+static TICKED: AtomicU64 = AtomicU64::new(0);
+
+fn clock() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// How long since the poller last went round (the watchdog starts a new one when it's stuck).
+pub fn since_tick() -> Duration {
+    Duration::from_millis(clock().saturating_sub(TICKED.load(Ordering::Relaxed)))
+}
+
+/// Whether the talk or dictate keys are held right now.
+pub fn talk_held() -> bool {
+    talk_chord(crate::macos::modifier_flags())
+}
+pub fn dictate_held() -> bool {
+    dictate_chord(crate::macos::modifier_flags())
+}
+pub fn dictate_is_toggle() -> bool {
+    DICTATE_TOGGLE.load(Ordering::Relaxed)
+}
+
+/// Spawn the polling thread. Also drives click-through hit testing. A new one replaces the
+/// old (which stops at its next round).
 pub fn spawn(app: AppHandle) {
+    let me = POLLER.fetch_add(1, Ordering::SeqCst) + 1;
+    TICKED.store(clock(), Ordering::Relaxed);
     std::thread::Builder::new()
         .name("openclicky-hotkey".into())
         .spawn(move || {
             let mut tracker = ChordTracker::default();
             let mut was_open_at_press = false;
             loop {
+                if POLLER.load(Ordering::SeqCst) != me {
+                    return;
+                }
+                TICKED.store(clock(), Ordering::Relaxed);
                 let flags = crate::macos::modifier_flags();
                 let esc = crate::macos::key_down(KEY_ESCAPE);
                 for ev in tracker.update(flags, esc, Instant::now()) {
@@ -156,6 +195,15 @@ fn handle(app: &AppHandle, ev: HotkeyEvent, was_open_at_press: &mut bool) {
                 session::escape(app);
             }
         }
+        // Hold to dictate (default), or press once to start and again to stop.
+        HotkeyEvent::DictateDown if DICTATE_TOGGLE.load(Ordering::Relaxed) => {
+            if session::dictating(app) {
+                session::dictate_up(app);
+            } else {
+                session::dictate_down(app);
+            }
+        }
+        HotkeyEvent::DictateUp if DICTATE_TOGGLE.load(Ordering::Relaxed) => {}
         HotkeyEvent::DictateDown => session::dictate_down(app),
         HotkeyEvent::DictateUp => session::dictate_up(app),
     }

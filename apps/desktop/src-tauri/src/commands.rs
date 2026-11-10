@@ -100,7 +100,11 @@ pub fn panel_peek(app: AppHandle, on: bool) {
 #[tauri::command]
 pub fn chat_log(state: State<'_, AppState>) -> Vec<crate::session::ChatEntry> {
     let reset = state.settings.lock().map(|s| s.chat_reset_hour).unwrap_or(0);
-    state.session.chat_log(&state.data_dir, reset)
+    let mut log = state.session.chat_log(&state.data_dir, reset);
+    for e in &mut log {
+        e.a = crate::session::strip_tool_note(&e.a);
+    }
+    log
 }
 
 /// "New chat": forget the conversation.
@@ -370,6 +374,8 @@ pub struct SettingsView {
     active: Option<String>,
     /// The models each provider would use (choices, else env, else built-in defaults).
     effective: std::collections::BTreeMap<String, crate::config::ModelChoice>,
+    /// Whether the talk / agent models in use can see screenshots.
+    vision: Value,
 }
 
 fn mask(k: &str) -> String {
@@ -383,10 +389,33 @@ fn mask(k: &str) -> String {
 pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
     let settings = state.settings.lock().unwrap().clone();
     let cfg = crate::config::provider_config(&state.data_dir, &settings);
+    if settings.provider == "opencode" && crate::opencode::binary().is_some() {
+        let m = settings.models.get("opencode").cloned().unwrap_or_default();
+        let pick = |x: &str| if x.trim().is_empty() { crate::opencode::DEFAULT_MODEL.to_string() } else { x.to_string() };
+        let (fast, deep) = (pick(&m.fast), pick(&m.deep));
+        let mut effective = crate::config::effective_models(&state.data_dir, &settings);
+        effective.insert("opencode".into(), crate::config::ModelChoice { fast, deep });
+        let p = state.provider();
+        return SettingsView {
+            provider: p.as_ref().map(|p| p.label()),
+            active: Some("opencode".into()),
+            effective,
+            vision: json!({ "talk": p.as_ref().is_some_and(|p| p.sees_images_at(openclicky_llm::Effort::Fast)), "agents": p.as_ref().is_some_and(|p| p.sees_images_at(openclicky_llm::Effort::Deep)) }),
+            key_hint: String::new(),
+            settings: Settings {
+                deepseek_key: mask_if(&settings.deepseek_key),
+                anthropic_key: mask_if(&settings.anthropic_key),
+                openai_key: mask_if(&settings.openai_key),
+                google_client_secret: mask_if(&settings.google_client_secret),
+                ..settings
+            },
+        };
+    }
     SettingsView {
         provider: state.provider().map(|p| p.label()),
         active: cfg.as_ref().map(|c| c.kind.id().to_string()),
         effective: crate::config::effective_models(&state.data_dir, &settings),
+        vision: cfg.as_ref().map(|c| json!({ "talk": c.kind.sees_images(&c.fast_model), "agents": c.kind.sees_images(&c.deep_model) })).unwrap_or(Value::Null),
         key_hint: cfg.map(|c| mask(&c.api_key)).unwrap_or_default(),
         settings: Settings {
             deepseek_key: mask_if(&settings.deepseek_key),
@@ -403,9 +432,18 @@ fn mask_if(k: &str) -> String {
 }
 
 /// Merge a partial settings object. Masked keys coming back unchanged are ignored.
+/// Connected screens' names (Settings → General → Notch on).
+#[tauri::command]
+pub async fn screen_list(app: AppHandle) -> Vec<String> {
+    crate::screen::displays(&app).into_iter().map(|d| d.name).collect()
+}
+
 #[tauri::command]
 pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String> {
     let state = app.state::<AppState>();
+    let connectors_was = state.settings.lock().map(|s| s.experiment(crate::connectors::FLAG)).unwrap_or(false);
+    let provider_was = state.settings.lock().map(|s| s.provider.clone()).unwrap_or_default();
+    let notch_was = state.settings.lock().map(|s| s.notch_screen.clone()).unwrap_or_default();
     {
         let mut s = state.settings.lock().unwrap();
         let mut cur = serde_json::to_value(&*s).map_err(|e| e.to_string())?;
@@ -423,8 +461,24 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
             crate::config::apply_audio(&mut bus, &s);
         }
         crate::hotkey::configure(&s.shortcut_talk, &s.shortcut_dictate);
+        crate::hotkey::set_dictate_toggle(s.dictate_mode == "toggle");
     }
     state.reload_provider();
+    // Picked another screen for the notch: move the resting notch there now.
+    if state.settings.lock().map(|s| s.notch_screen != notch_was).unwrap_or(false) && crate::panel::mode(&app) == crate::panel::PanelMode::Hidden {
+        crate::panel::rest(&app);
+    }
+    if state.settings.lock().map(|s| s.experiment(crate::connectors::FLAG)).unwrap_or(false) != connectors_was {
+        crate::connectors::switched(&app);
+    }
+    // Switched provider: drop model choices that provider doesn't have.
+    let provider_now = state.settings.lock().map(|s| s.provider.clone()).unwrap_or_default();
+    if provider_now != provider_was && !provider_now.is_empty() {
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::myself::check_choices(&app2, &provider_now).await;
+        });
+    }
     crate::emit(&app, openclicky_core::Event::new("settings.changed", json!({})));
     Ok(settings_get(state))
 }
@@ -471,6 +525,8 @@ pub fn coders_status() -> Value {
                 "installed": c.is_some(),
                 "path": c.map(|c| c.path.display().to_string()),
                 "version": c.map(openclicky_tools::coders::version),
+                // Read from the agent itself where it records it (Codex's session logs).
+                "usage": if *name == "codex" { openclicky_tools::coders::codex_usage().map(|u| json!(u)) } else { None },
             })
         })
         .collect();
@@ -579,6 +635,13 @@ pub fn google_sign_out(app: AppHandle) {
     crate::google::sign_out(&app)
 }
 
+/// Settings → Models → On this computer: opencode found or not, and its models (`start` loads
+/// the server to list them).
+#[tauri::command]
+pub async fn opencode_status(app: AppHandle, start: bool) -> Value {
+    crate::opencode::status(&app, start).await
+}
+
 #[tauri::command]
 pub fn connectors_gallery(app: AppHandle) -> Value {
     crate::connectors::gallery(&app)
@@ -623,4 +686,27 @@ pub async fn update_check(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 pub fn update_restart(app: AppHandle) -> Result<(), String> {
     crate::updates::restart_now(&app)
+}
+
+
+/// Settings → About → Checkup.
+#[tauri::command]
+pub async fn checkup(app: AppHandle) -> Value {
+    crate::heal::value_of(&crate::myself::checkup(&app).await)
+}
+
+/// Settings → About → Report a problem: a filled-in GitHub issue in their browser.
+#[tauri::command]
+pub fn report_problem(app: AppHandle, what: Option<String>) -> Result<String, String> {
+    crate::myself::open_report(&app, what.as_deref().unwrap_or(""), "")
+}
+
+/// Settings → About → Show log: the log folder in Finder.
+#[tauri::command]
+pub fn show_log(app: AppHandle) {
+    let p = crate::heal::log_path(&app.state::<AppState>().data_dir);
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("-R").arg(&p).spawn();
+    #[cfg(not(target_os = "macos"))]
+    let _ = crate::heal::open_in("", &p.parent().map(|d| d.display().to_string()).unwrap_or_default());
 }

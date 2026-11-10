@@ -1,6 +1,6 @@
 // Settings → Models, Usage, Coding.
 import { useEffect, useState } from "react";
-import { api, MACHINE, type Settings, type SettingsView, type UsageSummary } from "../lib/bridge";
+import { api, MACHINE, type OpencodeStatus, type Settings, type SettingsView, type UsageSummary } from "../lib/bridge";
 import { Glyph } from "../components/Mark";
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
@@ -166,6 +166,102 @@ function ProviderPane({ p, view, save, active }: { p: (typeof PROVIDERS)[number]
   );
 }
 
+/** opencode on this computer: free models (and any provider signed in there), no API key. */
+function LocalPane({ view, save, active }: { view: SettingsView; save: Save; active: boolean }) {
+  const s = view.settings;
+  const [st, setSt] = useState<OpencodeStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [freeOnly, setFreeOnly] = useState(true);
+  const choice = s.models?.opencode ?? { fast: "", deep: "" };
+  const fast = choice.fast || DEFAULT_LOCAL;
+  const deep = choice.deep || DEFAULT_LOCAL;
+  const load = (start: boolean) => {
+    setLoading(start);
+    api
+      .opencodeStatus(start)
+      .then(setSt)
+      .catch((e) => setSt({ installed: true, error: String(e) }))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => load(true), []);
+  const setChoice = (k: "fast" | "deep", v: string) => save({ models: { ...(s.models ?? {}), opencode: { ...choice, [k]: v } } });
+  if (st && !st.installed)
+    return (
+      <div className="ppane">
+        <div className="banner banner--muted">
+          <b>opencode</b> isn't on this {MACHINE}. Install it with <code>npm i -g opencode-ai</code> (or <code>brew install opencode</code>), then come back here. Its free models need no account.
+        </div>
+      </div>
+    );
+  const models = (st?.models ?? []).filter((m) => m.tools && (!freeOnly || m.free));
+  return (
+    <div className="ppane">
+      <div className="ppane__key">
+        <div className="muted small">
+          {st ? (
+            <>
+              opencode {st.version?.replace(/^opencode\s*/i, "")} · {st.running ? "running" : "starts when needed"} · Pixie's tools only (opencode's own shell and edits are off)
+            </>
+          ) : (
+            "Looking for opencode…"
+          )}
+        </div>
+        <div className="row-actions">
+          <button className={`btn ${active ? "btn--primary" : ""}`} disabled={active || !st?.installed} onClick={() => save({ provider: "opencode" })}>
+            {active ? "■ In use" : "Use opencode"}
+          </button>
+          <button className="btn btn--ghost" onClick={() => load(true)}>
+            Refresh
+          </button>
+          <label className="small muted">
+            <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> free only
+          </label>
+        </div>
+      </div>
+      {loading && !st?.models && <div className="mlist__empty">Starting opencode to list its models…</div>}
+      {st?.error && <div className="mlist__empty bad-text">{st.error}</div>}
+      {models.length > 0 && (
+        <ul className="mlist">
+          {models.map((m) => {
+            const isFast = fast === m.id;
+            const isDeep = deep === m.id;
+            return (
+              <li key={m.id} className={`mrow ${isFast || isDeep ? "mrow--on" : ""}`}>
+                <div className="mrow__id">
+                  <b>
+                    {m.id}
+                    {m.name && <span className="mrow__name"> · {m.name}</span>}
+                  </b>
+                  <span className="mrow__tags">
+                    {(isFast || isDeep) && <span className={`tag ${active ? "tag--use" : ""}`}>{active ? "■ in use" : "picked"} · {isFast && isDeep ? "talk + agents" : isFast ? "talk" : "agents"}</span>}
+                    {m.free && <span className="tag tag--new">Free</span>}
+                    {m.images && <span className="tag">sees images</span>}
+                    {m.context && <span className="tag">{ctx(m.context)} ctx</span>}
+                  </span>
+                </div>
+                <div className="mrow__price">{m.free ? "$0" : <span className="muted">your {m.provider} plan</span>}</div>
+                <div className="mrow__pick">
+                  <button className={`tagbox ${isFast ? "tagbox--on" : ""}`} title="Talk model" onClick={() => setChoice("fast", m.id)}>
+                    T
+                  </button>
+                  <button className={`tagbox ${isDeep ? "tagbox--on" : ""}`} title="Agents model" onClick={() => setChoice("deep", m.id)}>
+                    A
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="muted small">
+        Free models are opencode's; opencode sets their daily limits and they can change. Screenshots go to whichever model you pick. Models you've signed in to in opencode (DeepSeek, Cloudflare…) show with "free only" off and bill your account there.
+      </p>
+    </div>
+  );
+}
+
+const DEFAULT_LOCAL = "opencode/deepseek-v4.1-flash-free";
+
 export function ModelsPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
   const detected = view?.active ?? "";
   const [open, setOpen] = useState(detected || "claude");
@@ -178,7 +274,7 @@ export function ModelsPanel({ view, onSaved }: { view: SettingsView | null; onSa
       <div className="now now--4" data-sid="models_now">
         <div className="now__cell">
           <span>answering with</span>
-          <b>{PROVIDERS.find((x) => x.id === detected)?.name ?? "nothing yet"}</b>
+          <b>{detected === "opencode" ? "opencode" : (PROVIDERS.find((x) => x.id === detected)?.name ?? "nothing yet")}</b>
         </div>
         <div className="now__cell" title="Answers when you hold the talk keys. Not the speaking voice: that's Settings → Voice.">
           <span>talk model</span>
@@ -200,6 +296,22 @@ export function ModelsPanel({ view, onSaved }: { view: SettingsView | null; onSa
           </b>
         </div>
       </div>
+      {view.vision && (!view.vision.talk || !view.vision.agents) && (
+        <div className="banner banner--warn" data-sid="models_vision">
+          {!view.vision.talk ? (
+            <>
+              The talk model (<b>{eff.fast}</b>) can't see screenshots, so clicking and pointing work from the screen's text and controls only, which misses
+              things shown as pictures.
+            </>
+          ) : (
+            <>
+              The agent model (<b>{eff.deep}</b>) can't see screenshots, so live agents work from the screen's text and controls only.
+            </>
+          )}{" "}
+          For live agents and multi-step clicking, pick a model that sees images for <b>A</b>
+          {!view.vision.talk ? <> and <b>T</b></> : null}: Claude, OpenAI, or DeepSeek's Flash.
+        </div>
+      )}
       <div className="ptabs" role="tablist">
         {PROVIDERS.map((x) => (
           <button key={x.id} data-tip={`${x.name}: key, models and prices`} role="tab" aria-selected={open === x.id} className={`ptab ${open === x.id ? "ptab--on" : ""}`} onClick={() => setOpen(x.id)}>
@@ -207,8 +319,12 @@ export function ModelsPanel({ view, onSaved }: { view: SettingsView | null; onSa
             <span>{detected === x.id ? "■ in use" : view.settings[x.keyField] ? "key set" : "no key"}</span>
           </button>
         ))}
+        <button data-tip="opencode on this computer: free models, no API key" role="tab" aria-selected={open === "opencode"} className={`ptab ${open === "opencode" ? "ptab--on" : ""}`} onClick={() => setOpen("opencode")}>
+          <b>On this {MACHINE}</b>
+          <span>{detected === "opencode" ? "■ in use" : "opencode · free"}</span>
+        </button>
       </div>
-      <ProviderPane key={p.id} p={p} view={view} save={save} active={detected === p.id} />
+      {open === "opencode" ? <LocalPane view={view} save={save} active={detected === "opencode"} /> : <ProviderPane key={p.id} p={p} view={view} save={save} active={detected === p.id} />}
       <p className="muted small">
         Lists come live from each provider, newest first. Prices are USD per million tokens (input / output) from the public price list. Pick <b>T</b> for the talk model (what answers when you hold the talk keys; the speaking voice itself is in Settings → Voice) and <b>A</b> for background and live agents; unpicked means the provider's default, marked "in use". <b>F</b> is one fallback model, from any provider with a key, used only when the main one fails before answering. Some ids are the provider's own aliases for its newest model (DeepSeek's <code>deepseek-flash</code> is V4.1-Flash today); the official name is shown next to them.
       </p>
@@ -344,7 +460,8 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
       </div>
       <div className="stats">
         <div className="stat"><span>requests</span><b>{u.requests}</b></div>
-        <div className="stat"><span>tokens in</span><b>{fmt(u.input)}</b></div>
+        <div className="stat" title="Input at the full price, plus cache writes"><span>tokens in</span><b>{fmt(u.input + (u.cache_write ?? 0))}</b></div>
+        <div className="stat" title="Input read from the provider's prompt cache, billed at a fraction of the price"><span>cached</span><b>{fmt(u.cached ?? 0)}</b></div>
         <div className="stat"><span>tokens out</span><b>{fmt(u.output)}</b></div>
         <div className="stat"><span>cost</span><b>${u.cost.toFixed(u.cost < 1 ? 3 : 2)}</b>{u.unpriced && <i>+ models without a price</i>}</div>
       </div>
@@ -356,7 +473,8 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
               <th>model</th>
               <th className="num">calls</th>
               <th className="num" title="Calls from talking to Pixie / from agents">talk · agents</th>
-              <th className="num">tokens in</th>
+              <th className="num" title="Input at the full price, plus cache writes">tokens in</th>
+              <th className="num" title="Input read from the prompt cache (cheap)">cached</th>
               <th className="num">tokens out</th>
               <th className="num" title="USD per million tokens, input · output">$/M</th>
               <th className="num">cost</th>
@@ -365,7 +483,7 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
           <tbody>
             {u.models.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">Nothing yet. Ask Pixie something.</td>
+                <td colSpan={8} className="muted">Nothing yet. Ask Pixie something.</td>
               </tr>
             )}
             {u.models.map((m) => (
@@ -376,7 +494,8 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
                 </td>
                 <td className="num">{m.requests}</td>
                 <td className="num">{m.voice} · {m.job}</td>
-                <td className="num">{fmt(m.input)}</td>
+                <td className="num">{fmt(m.input + (m.cache_write ?? 0))}</td>
+                <td className="num">{fmt(m.cached ?? 0)}</td>
                 <td className="num">{fmt(m.output)}</td>
                 <td className="num">{m.price ? `${money(m.price.input)} · ${money(m.price.output)}` : <span className="muted">n/a</span>}</td>
                 <td className="num"><b>{m.cost === null ? "n/a" : `$${m.cost.toFixed(m.cost < 1 ? 4 : 2)}`}</b></td>
@@ -436,7 +555,7 @@ export function CodingPanel({ view, onSaved }: { view: SettingsView | null; onSa
     for (const p of ["openai", "claude"]) api.modelsAvailable(p).then((r) => setSuggest((x) => ({ ...x, [p]: r.models.map((m) => m.id) }))).catch(() => {});
   }, []);
   if (!view) return null;
-  const c = view.settings.coding ?? { agent: "", models: {}, codex_sandbox: "", claude_permission: "", dir: "" };
+  const c = view.settings.coding ?? { agent: "", models: {}, codex_sandbox: "", claude_permission: "", dir: "", limits: {} };
   const save = (patch: Partial<typeof c>) => api.setSettings({ coding: { ...c, ...patch } }).then(onSaved);
   const status = (id: string) => st?.agents.find((a) => a.id === id);
   const firstInstalled = AGENTS.find((a) => status(a.id)?.installed)?.id;
@@ -454,9 +573,9 @@ export function CodingPanel({ view, onSaved }: { view: SettingsView | null; onSa
       </div>
 
       <div className="agent-cards">
-        <button className={`acard ${pick === "auto" ? "acard--on" : ""}`} onClick={() => save({ agent: "auto" })} data-tip="Uses the first one installed: Codex, then Claude Code, then opencode.">
+        <button className={`acard ${pick === "auto" ? "acard--on" : ""}`} onClick={() => save({ agent: "auto" })} data-tip="Picks one with usage left: Codex, then Claude Code, then opencode when the paid ones are out.">
           <div className="acard__top"><Glyph name="sparkle" size={16} /><b>Automatic</b></div>
-          <span className="acard__by">first one installed</span>
+          <span className="acard__by">the one with usage left</span>
           <span className="acard__state">{firstInstalled ? `→ ${AGENTS.find((a) => a.id === firstInstalled)?.label}` : "none yet"}</span>
         </button>
         {AGENTS.map((a) => {
@@ -471,6 +590,40 @@ export function CodingPanel({ view, onSaved }: { view: SettingsView | null; onSa
         })}
       </div>
       {st?.t3code && <p className="muted small">T3 Code is installed: it drives these same agents, so its setup carries over.</p>}
+
+      <h3 className="sub" data-sid="coding_limits">Usage left on your plans</h3>
+      <p className="muted small">
+        When a task doesn't name an agent, Pixie picks one with usage left: your default first, then Codex, Claude Code, and opencode's free models when the paid ones are out. Codex reports its own limits; set the others here.
+      </p>
+      <ul className="rows">
+        {AGENTS.filter((a) => a.id !== "opencode" && status(a.id)?.installed).map((a) => {
+          const u = status(a.id)?.usage;
+          const lim = c.limits?.[a.id] ?? { five_hour: "", weekly: "" };
+          const setLim = (k: "five_hour" | "weekly", v: string) => save({ limits: { ...(c.limits ?? {}), [a.id]: { ...lim, [k]: v } } });
+          const reads = (used: number | null | undefined, at: number | null | undefined) =>
+            used == null ? null : `${Math.round(used)}% used${at ? `, resets ${new Date(at * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : ""}`;
+          return (
+            <li key={a.id} className="row">
+              <div className="row__text">
+                <div className="row__label">{a.label}</div>
+                <div className="row__why">
+                  {u ? `From ${a.label}: 5-hour ${reads(u.five_hour_used, u.five_hour_resets) ?? "?"} · weekly ${reads(u.weekly_used, u.weekly_resets) ?? "?"}` : "It doesn't report its limits; set what's left when you know."}
+                </div>
+              </div>
+              <div className="row__control limit-pick">
+                {(["five_hour", "weekly"] as const).map((k) => (
+                  <select key={k} className="mem-select" value={lim[k]} onChange={(e) => setLim(k, e.target.value)} title={k === "five_hour" ? "5-hour window" : "Weekly window"}>
+                    <option value="">{k === "five_hour" ? "5-hour: not set" : "Weekly: not set"}</option>
+                    <option value="ok">{k === "five_hour" ? "5-hour: plenty" : "Weekly: plenty"}</option>
+                    <option value="low">{k === "five_hour" ? "5-hour: running low" : "Weekly: running low"}</option>
+                    <option value="out">{k === "five_hour" ? "5-hour: out" : "Weekly: out"}</option>
+                  </select>
+                ))}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       {!anyInstalled && (
         <div className="banner banner--warn">

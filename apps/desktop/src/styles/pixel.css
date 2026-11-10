@@ -683,3 +683,20 @@ html[data-view="canvas"], html[data-view="canvas"] body, html[data-view="canvas"
 .persona__style { font-size: 11.5px; color: var(--oc-silver); line-height: 1.45; }
 .choice .persona__sample { font-size: 11.5px; color: var(--oc-mid); font-style: italic; line-height: 1.45; }
 @media (max-width: 860px) { .persona-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Settings → Coding: usage left per plan window */
+.limit-pick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* 3D explanations (experimental) */
+.scene3d { position: fixed; inset: 0; background: #0d0d0d; color: #f2f2f2; overflow: hidden; }
+.scene3d__view { position: absolute; inset: 0; }
+.scene3d__view canvas { position: absolute; inset: 0; display: block; }
+.scene3d__labels { position: absolute; inset: 0; }
+.scene3d__top { position: absolute; top: 0; left: 0; right: 0; height: 38px; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.scene3d__title { font: 13px var(--oc-mono, ui-monospace, monospace); letter-spacing: 0.04em; color: #cfcfcf; pointer-events: none; }
+.scene3d__hint { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font: 11px var(--oc-mono, ui-monospace, monospace); color: #6f6f6f; pointer-events: none; }
+/* No transitions here: Three.js moves the labels every frame, and a transition on them makes them trail and stutter. */
+.scene3d__label { font: 12px var(--oc-mono, ui-monospace, monospace); color: #f2f2f2; background: rgba(13, 13, 13, 0.78); border: 1px solid #3a3a3a; padding: 2px 6px; white-space: nowrap; pointer-events: none; will-change: transform; }
+.scene3d__label--link { color: #a8a8a8; border-style: dashed; font-size: 11px; }
+.scene3d__label.is-lit { color: #0d0d0d; background: #f2f2f2; border-color: #f2f2f2; font-weight: 700; }
+.scene3d__label.is-dim { opacity: 0.35; }

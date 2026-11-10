@@ -23,10 +23,11 @@ pub fn init_thread() {
 
 // ---------- screen ----------
 
-/// The monitor under the cursor, physical pixels (BGRA, top-down).
-pub fn capture() -> Result<Shot, String> {
+/// The monitor under the cursor (or containing `at`, in logical points), physical pixels (BGRA,
+/// top-down).
+pub fn capture(at: Option<(f64, f64)>) -> Result<Shot, String> {
     use windows_sys::Win32::Graphics::Gdi::*;
-    let (cx, cy) = phys_cursor();
+    let (cx, cy) = at.map(|(x, y)| crate::macos::to_physical(x, y)).unwrap_or_else(phys_cursor);
     let (pos, size, scale) = crate::macos::phys_monitor_at(cx, cy);
     let (x, y, w, h) = (pos.0 as i32, pos.1 as i32, size.0 as i32, size.1 as i32);
     if w <= 0 || h <= 0 {
@@ -608,10 +609,15 @@ pub fn listen_cancel() {
     }
 }
 
-/// For the snapshot result shape shared with Linux.
-pub fn controls_after() -> Value {
-    let ax = snapshot(60);
-    let controls: Vec<String> = ax["elements"].as_array().map(|a| a.iter().take(25).map(|e| format!("{} {} {}", e["id"].as_str().unwrap_or(""), e["role"].as_str().unwrap_or(""), e["label"].as_str().unwrap_or(""))).collect()).unwrap_or_default();
+/// The screen right now (the helper's `screen_state`): app, window, focused control, controls.
+pub fn screen_state() -> Value {
+    let ax = snapshot(160);
     let f = frontmost();
-    json!({ "app": f["app"], "window": ax["window"], "focused": focused(), "controls": controls })
+    let focus = focused();
+    let (role, label) = focus.split_once(' ').unwrap_or((focus.as_str(), ""));
+    let (x, y) = crate::macos::cursor();
+    json!({
+        "app": f["app"], "bundle": f["bundle"], "window": ax["window"], "elements": ax["elements"], "texts": [],
+        "focused": { "role": role, "label": label }, "cursor": { "x": x as i64, "y": y as i64 },
+    })
 }

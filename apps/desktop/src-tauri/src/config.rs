@@ -29,7 +29,18 @@ pub struct Settings {
     pub voice_engine: String,
     pub kokoro_voice: i32,
     pub voice_speed: f64,
+    /// Natural voice level: "quiet", "normal" or "loud" (leveled to speech loudness in the voice server).
+    pub voice_loudness: String,
     pub speak_answers: bool,
+    /// How a typed question is answered: "spoken" (out loud, like a voice question) or "text".
+    pub typed_answers: String,
+    /// The dictate shortcut: "hold" to talk, or "toggle" (press to start, press again to stop).
+    pub dictate_mode: String,
+    /// Where the notch appears: "follow" (rests on the notch, opens on the screen you're using),
+    /// "builtin", or a screen's name.
+    pub notch_screen: String,
+    /// Text answers to typed questions drop down in the notch to read (else only in Chat).
+    pub show_typed_text: bool,
     pub share_screen: bool,
     pub master_volume: f32,
     /// Per-sound volume, mute and custom file (Settings → Sounds).
@@ -88,6 +99,21 @@ pub struct Price {
     pub input: f64,
     /// USD per million output tokens.
     pub output: f64,
+    /// USD per million input tokens read from the prompt cache (unset: a tenth of input).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read: Option<f64>,
+    /// USD per million input tokens written to the cache (unset: 1.25× input on Claude, else input).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<f64>,
+}
+
+impl Price {
+    pub fn read_rate(&self) -> f64 {
+        self.cache_read.unwrap_or(self.input * 0.1)
+    }
+    pub fn write_rate(&self, model: &str) -> f64 {
+        self.cache_write.unwrap_or(if model.starts_with("claude") { self.input * 1.25 } else { self.input })
+    }
 }
 
 impl Default for Settings {
@@ -105,7 +131,12 @@ impl Default for Settings {
             voice_engine: "kokoro".into(),
             kokoro_voice: 3,
             voice_speed: 1.0,
+            voice_loudness: "normal".into(),
             speak_answers: true,
+            typed_answers: "spoken".into(),
+            dictate_mode: "hold".into(),
+            notch_screen: "follow".into(),
+            show_typed_text: true,
             share_screen: true,
             master_volume: 1.0,
             sounds: BTreeMap::new(),
@@ -139,17 +170,14 @@ impl Settings {
         self.experimental.get(flag).copied().unwrap_or(false)
     }
 
+    /// A damaged file falls back to its last-good copy (and they're told).
     pub fn load(dir: &Path) -> Self {
-        std::fs::read_to_string(dir.join("settings.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        crate::heal::load_safely(&dir.join("settings.json"), "settings").unwrap_or_default()
     }
 
     pub fn save(&self, dir: &Path) {
-        let _ = std::fs::create_dir_all(dir);
         if let Ok(s) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(dir.join("settings.json"), s);
+            let _ = crate::heal::save_safely(&dir.join("settings.json"), &s);
         }
     }
 }

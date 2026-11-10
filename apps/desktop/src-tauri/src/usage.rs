@@ -21,15 +21,30 @@ pub struct Line {
     pub model: String,
     /// "voice" or "job".
     pub kind: String,
+    /// Uncached input (full price).
     pub input: u64,
     pub output: u64,
+    /// Input read from the prompt cache.
+    #[serde(default)]
+    pub cache_read: u64,
+    /// Input written to the prompt cache.
+    #[serde(default)]
+    pub cache_write: u64,
+}
+
+impl Line {
+    /// Every input token the model read, cached or not.
+    pub fn prompt(&self) -> u64 {
+        self.input + self.cache_read + self.cache_write
+    }
 }
 
 /// Built-in prices (USD per million tokens) for models whose public price we know.
 pub fn default_price(model: &str) -> Option<Price> {
-    let p = |i: f64, o: f64| Some(Price { input: i, output: o });
+    let p = |i: f64, o: f64| Some(Price { input: i, output: o, ..Default::default() });
     match model {
-        "claude-opus-5-5" => p(4.0, 20.0),
+        // Opus 5.5 cache reads are 0.05× input.
+        "claude-opus-5-5" => Some(Price { input: 4.0, output: 20.0, cache_read: Some(0.20), cache_write: Some(5.0) }),
         "claude-sonnet-5-5" => p(2.0, 10.0),
         "claude-haiku-5-5" => p(0.10, 0.50),
         "claude-fable-5-1" => p(10.0, 50.0),
@@ -40,12 +55,18 @@ pub fn default_price(model: &str) -> Option<Price> {
 }
 
 pub fn price(settings: &Settings, model: &str) -> Option<Price> {
+    // opencode's free models (through opencode on this computer) cost nothing.
+    if model.starts_with("opencode/") && (model.contains("free") || model.ends_with("big-pickle")) {
+        return Some(Price::default());
+    }
     settings
         .prices
         .get(model)
         .copied()
         .filter(|p| p.input > 0.0 || p.output > 0.0)
-        .or_else(|| catalog().lock().ok().and_then(|c| c.lookup(model)).map(|e| Price { input: e.input, output: e.output }))
+        .or_else(|| {
+            catalog().lock().ok().and_then(|c| c.lookup(model)).map(|e| Price { input: e.input, output: e.output, cache_read: e.cache_read, cache_write: e.cache_write })
+        })
         .or_else(|| default_price(model))
 }
 
@@ -59,6 +80,10 @@ pub struct CatalogEntry {
     pub input: f64,
     pub output: f64,
     pub context: u64,
+    #[serde(default)]
+    pub cache_read: Option<f64>,
+    #[serde(default)]
+    pub cache_write: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -106,7 +131,13 @@ impl Catalog {
             if input < 0.0 || output < 0.0 {
                 continue;
             }
-            let e = CatalogEntry { input, output, context: m["context_length"].as_u64().unwrap_or(0) };
+            let e = CatalogEntry {
+                input,
+                output,
+                context: m["context_length"].as_u64().unwrap_or(0),
+                cache_read: per_m("input_cache_read").filter(|p| *p >= 0.0),
+                cache_write: per_m("input_cache_write").filter(|p| *p >= 0.0),
+            };
             // Keep the first (canonical) entry when variants normalise to the same name.
             models.entry(normalize(id)).or_insert(e);
         }
@@ -207,6 +238,8 @@ impl Provider for Recorded {
                 kind: if req.effort == Effort::Fast { "voice".into() } else { "job".into() },
                 input: resp.usage.input_tokens,
                 output: resp.usage.output_tokens,
+                cache_read: resp.usage.cache_read,
+                cache_write: resp.usage.cache_write,
             };
             if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.file) {
                 let _ = writeln!(f, "{}", serde_json::to_string(&line).unwrap_or_default());
@@ -224,8 +257,12 @@ pub fn read(data: &Path) -> Vec<Line> {
         .collect()
 }
 
+fn cost_of(p: &Price, model: &str, input: u64, output: u64, read: u64, write: u64) -> f64 {
+    (input as f64 * p.input + output as f64 * p.output + read as f64 * p.read_rate() + write as f64 * p.write_rate(model)) / 1e6
+}
+
 fn line_cost(settings: &Settings, l: &Line) -> f64 {
-    price(settings, &l.model).map(|p| (l.input as f64 * p.input + l.output as f64 * p.output) / 1e6).unwrap_or(0.0)
+    price(settings, &l.model).map(|p| cost_of(&p, &l.model, l.input, l.output, l.cache_read, l.cache_write)).unwrap_or(0.0)
 }
 
 /// Filters for [`summary`]: `days` 0 = all time; provider "claude"/"openai"/"deepseek";
@@ -262,6 +299,8 @@ pub fn summary_with(all: &[Line], settings: &Settings, f: &Filter, now_ms: i64) 
         requests: u64,
         input: u64,
         output: u64,
+        read: u64,
+        write: u64,
         voice: u64,
         job: u64,
     }
@@ -273,13 +312,15 @@ pub fn summary_with(all: &[Line], settings: &Settings, f: &Filter, now_ms: i64) 
         a.requests += 1;
         a.input += l.input;
         a.output += l.output;
+        a.read += l.cache_read;
+        a.write += l.cache_write;
         if l.kind == "voice" { a.voice += 1 } else { a.job += 1 }
         let day = chrono::DateTime::from_timestamp_millis(l.ts)
             .map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string())
             .unwrap_or_default();
         let cost = line_cost(settings, l);
         let d = by_day.entry(day).or_default();
-        d.0 += l.input + l.output;
+        d.0 += l.prompt() + l.output;
         d.1 += cost;
     }
     let mut total_cost = 0.0;
@@ -288,30 +329,32 @@ pub fn summary_with(all: &[Line], settings: &Settings, f: &Filter, now_ms: i64) 
         .iter()
         .map(|(m, a)| {
             let p = price(settings, m);
-            let cost = p.map(|p| (a.input as f64 * p.input + a.output as f64 * p.output) / 1e6);
+            let cost = p.map(|p| cost_of(&p, m, a.input, a.output, a.read, a.write));
             match cost {
                 Some(c) => total_cost += c,
                 None => unpriced = true,
             }
             json!({
                 "model": m, "provider": a.provider, "requests": a.requests, "input": a.input, "output": a.output,
+                "cached": a.read, "cache_write": a.write,
                 "voice": a.voice, "job": a.job, "cost": cost, "price": p,
             })
         })
         .collect();
     let (ti, to, tr) = by_model.values().fold((0, 0, 0), |acc, a| (acc.0 + a.input, acc.1 + a.output, acc.2 + a.requests));
+    let (tc, tw) = by_model.values().fold((0, 0), |acc, a| (acc.0 + a.read, acc.1 + a.write));
     let providers: std::collections::BTreeSet<&str> = all.iter().map(|l| l.provider.as_str()).collect();
     let first = all.iter().map(|l| l.ts).min();
     json!({
         "all_time": {
             "requests": all.len(),
-            "tokens": all.iter().map(|l| l.input + l.output).sum::<u64>(),
+            "tokens": all.iter().map(|l| l.prompt() + l.output).sum::<u64>(),
             "cost": all.iter().map(|l| line_cost(settings, l)).sum::<f64>(),
             "since": first,
         },
         "providers": providers.into_iter().collect::<Vec<_>>(),
         "days": days,
-        "requests": tr, "input": ti, "output": to,
+        "requests": tr, "input": ti, "output": to, "cached": tc, "cache_write": tw,
         "cost": total_cost, "unpriced": unpriced,
         "models": models,
         "by_day": by_day.into_iter().map(|(d, (t, c))| json!({ "day": d, "tokens": t, "cost": c })).collect::<Vec<_>>(),
@@ -423,14 +466,14 @@ mod tests {
     #[test]
     fn totals_and_costs() {
         let now = 1_800_000_000_000;
-        let l = |m: &str, i, o, kind: &str| Line { ts: now - 1000, provider: "claude".into(), model: m.into(), kind: kind.into(), input: i, output: o };
+        let l = |m: &str, i, o, kind: &str| Line { ts: now - 1000, provider: "claude".into(), model: m.into(), kind: kind.into(), input: i, output: o, cache_read: 0, cache_write: 0 };
         let lines = vec![l("claude-opus-5-5", 1_000_000, 100_000, "voice"), l("claude-opus-5-5", 0, 0, "job"), l("deepseek-flash", 500, 50, "voice")];
         let mut s = Settings::default();
         let v = summary(&lines, &s, 30, now);
         assert_eq!(v["requests"], 3);
         assert!((v["cost"].as_f64().unwrap() - 6.0).abs() < 1e-9, "4 + 0.1*20");
         assert_eq!(v["unpriced"], true);
-        s.prices.insert("deepseek-flash".into(), Price { input: 1.0, output: 2.0 });
+        s.prices.insert("deepseek-flash".into(), Price { input: 1.0, output: 2.0, ..Default::default() });
         let v = summary(&lines, &s, 30, now);
         assert_eq!(v["unpriced"], false);
         let old = Line { ts: now - 40 * 86_400_000, ..lines[0].clone() };
@@ -439,5 +482,10 @@ mod tests {
         let v = summary_with(&lines, &s, &Filter { days: 30, provider: "claude".into(), kind: "job".into() }, now);
         assert_eq!(v["requests"], 1);
         assert_eq!(v["all_time"]["requests"], 3);
+        // Cache reads and writes are priced at their own rates: Opus 5.5 reads 0.20, writes 5.00.
+        let cached = Line { cache_read: 1_000_000, cache_write: 1_000_000, ..l("claude-opus-5-5", 0, 0, "voice") };
+        let v = summary(&[cached], &s, 30, now);
+        assert!((v["cost"].as_f64().unwrap() - 5.2).abs() < 1e-9);
+        assert_eq!(v["cached"], 1_000_000);
     }
 }

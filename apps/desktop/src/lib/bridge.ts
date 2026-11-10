@@ -144,6 +144,24 @@ export interface CodingPrefs {
   codex_sandbox: string;
   claude_permission: string;
   dir: string;
+  /** Usage left per paid agent: "" | "ok" | "low" | "out" for each window. */
+  limits?: Record<string, { five_hour: string; weekly: string }>;
+}
+export interface PlanUsage {
+  five_hour_used: number | null;
+  five_hour_resets: number | null;
+  weekly_used: number | null;
+  weekly_resets: number | null;
+}
+/** opencode on this computer (Settings → Models → On this computer). */
+export interface OpencodeStatus {
+  installed: boolean;
+  path?: string;
+  version?: string;
+  running?: boolean;
+  selected?: boolean;
+  error?: string;
+  models?: { id: string; name: string; provider: string; free: boolean; images: boolean; tools: boolean; context: number | null }[];
 }
 export interface UsageModel {
   model: string;
@@ -151,6 +169,10 @@ export interface UsageModel {
   requests: number;
   input: number;
   output: number;
+  /** Input read from the provider's prompt cache (cheap). */
+  cached?: number;
+  /** Input written to the cache. */
+  cache_write?: number;
   voice: number;
   job: number;
   cost: number | null;
@@ -161,6 +183,8 @@ export interface UsageSummary {
   requests: number;
   input: number;
   output: number;
+  cached?: number;
+  cache_write?: number;
   cost: number;
   unpriced: boolean;
   models: UsageModel[];
@@ -193,6 +217,11 @@ export interface Settings {
   voice_engine: string;
   kokoro_voice: number;
   voice_speed: number;
+  voice_loudness?: "quiet" | "normal" | "loud";
+  typed_answers?: "spoken" | "text";
+  dictate_mode?: "hold" | "toggle";
+  notch_screen?: string;
+  show_typed_text?: boolean;
   speak_answers: boolean;
   share_screen: boolean;
   master_volume: number;
@@ -229,6 +258,8 @@ export interface SettingsView {
   key_hint: string;
   active?: string | null;
   effective?: Record<string, ModelChoice>;
+  /** Whether the talk / agent models in use can see screenshots. */
+  vision?: { talk: boolean; agents: boolean } | null;
 }
 export type PermWord = "granted" | "denied" | "restricted" | "not_determined" | "write_only" | "ask" | "unknown";
 export interface AppsStatus {
@@ -306,6 +337,11 @@ export function slotUrl(kind: SlotKind, slot: string): string {
 }
 
 export const api = {
+  scene3dGet: () => invoke<Scene3D | null>("scene3d_get"),
+  checkup: () => invoke<CheckItem[]>("checkup"),
+  screenList: () => invoke<string[]>("screen_list"),
+  reportProblem: (what?: string) => invoke<string>("report_problem", { what }),
+  showLog: () => invoke<void>("show_log"),
   panelMode: () => invoke<PanelMode>("panel_mode"),
   panelScreen: () => invoke<ScreenInfo>("panel_screen"),
   hidePanel: () => invoke<void>("hide_panel"),
@@ -375,16 +411,21 @@ export const api = {
   modelsAvailable: (provider: string) =>
     invoke<{ models: { id: string; name: string; vision: boolean | null; created: number | null; price: { input: number; output: number } | null; context: number | null }[]; prices_at: number }>("models_available", { provider }),
   pricesRefresh: () => invoke<{ models: number; fetched_at: number }>("prices_refresh"),
+  opencodeStatus: (start: boolean) => invoke<OpencodeStatus>("opencode_status", { start }),
   usageSummary: (days: number, provider = "", kind = "") => invoke<UsageSummary>("usage_summary", { days, provider, kind }),
   soundCustom: (slot: string, name: string, data: string) => invoke<SettingsView>("sound_custom", { slot, name, data }),
   micTestStart: () => invoke<void>("mic_test_start"),
   micTestStop: () => invoke<string>("mic_test_stop"),
   codersStatus: () =>
-    invoke<{ agents: { id: string; label: string; installed: boolean; path: string | null; version: string | null }[]; t3code: boolean }>("coders_status"),
+    invoke<{ agents: { id: string; label: string; installed: boolean; path: string | null; version: string | null; usage?: PlanUsage | null }[]; t3code: boolean }>("coders_status"),
   guideShow: (id: string) => invoke<void>("guide_show", { id }),
   guideHide: () => invoke<void>("guide_hide"),
   resetPermission: (id: string) => invoke<PermissionInfo>("permission_reset", { id }),
 };
+
+export type CheckItem = { name: string; ok: boolean; detail: string };
+export type Scene3DObject = { name: string; shape: string; at: number[]; size: number[]; color: string; label: string };
+export type Scene3D = { title: string; objects: Scene3DObject[]; links: { from: string; to: string; label?: string }[] };
 
 export function onEvent(cb: (e: CoreEvent) => void): Promise<UnlistenFn> {
   return listen<CoreEvent>(EVENT_CHANNEL, (e) => cb(e.payload));

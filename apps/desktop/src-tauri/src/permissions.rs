@@ -54,11 +54,11 @@ impl PermId {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PermissionInfo {
-    id: &'static str,
-    label: &'static str,
+    pub id: &'static str,
+    pub label: &'static str,
     why: &'static str,
-    required: bool,
-    state: PermState,
+    pub required: bool,
+    pub state: PermState,
     /// Screen Recording only takes effect after a relaunch.
     restart_hint: bool,
 }
@@ -84,6 +84,20 @@ fn state(id: PermId) -> PermState {
         _ => native::state(id),
         #[cfg(not(target_os = "macos"))]
         _ => PermState::Granted,
+    }
+}
+
+/// A permission's label and whether it's on, by id ("accessibility", "screen", "microphone",
+/// "speech"), for the watchdog.
+pub fn check(id: &str) -> Option<(&'static str, bool)> {
+    let p = PermId::parse(id)?;
+    Some((p.meta().1, state(p) == PermState::Granted))
+}
+
+/// Open a permission's page in System Settings.
+pub fn open_pane(id: &str) {
+    if let Some(p) = PermId::parse(id) {
+        open_settings(p);
     }
 }
 

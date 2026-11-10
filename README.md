@@ -70,15 +70,19 @@ On a Mac with a notch, Pixie rests invisibly over it. Voice turns stay in the no
 it widens while listening, thinking and speaking, and never shows the answer as text. **Hover
 the notch** for two tabs: **Chat** (today's conversation; type a follow-up or start a new chat) and
 **Agents** (plans, progress, questions to answer, stop). Hold ⌃⌥ any time to talk; it opens on
-whichever screen you're using.
+whichever screen you're using, or on the one you pick in Settings → General → Notch on. Its content
+fades in once it has slid out of the camera housing, and out before it slides back.
 
 ## Voice
 
 Answers are spoken by **Kokoro**, a natural neural voice that runs offline (sherpa-onnx). Get it
 from Settings → Voice → Download natural voice (~350 MB, from the k2-fsa/sherpa-onnx GitHub
 releases, stored in `~/Library/Application Support/com.openclicky.app/voices`). Pick from eight
-voices and set the speed there; the system voice is the fallback. The model loads when you start
-talking (about a second) and unloads after five quiet minutes, so idle Pixie stays near 215 MB.
+voices and set the speed and loudness (Quiet / Normal / Loud) there; the system voice is the
+fallback. Pixie turns text into Kokoro's sounds itself (`crates/voice/src/say.rs`): numbers, times
+and prices are written out, and words missing from Kokoro's word list are still spoken instead of
+skipped. The model loads when you start talking (about a second) and unloads after five quiet
+minutes, so idle Pixie stays near 215 MB.
 
 ## Memory
 
@@ -99,17 +103,21 @@ talking (about a second) and unloads after five quiet minutes, so idle Pixie sta
 | "Where's the share button?" | The buddy flies to the button and circles it |
 | "Circle the total" | Hand-drawn marks on the screen that fade away |
 | "Click Export for me" | `mac_step` presses it through Accessibility |
+| "Open System Settings, go to General → About" | Several steps in one go: each action comes back with the fresh screen, and control ids stay the same for the request |
 | "Make me a one-page PDF about tea" | A background agent starts; hover the notch → Agents for its plan; the note fills live |
 | "Rename these slides for me" | A live agent does it on screen, explaining each step |
 | An agent asks something | The Agents tab shows the question with tap answers |
 | Tap **⌃⌥** (or click the menu-bar `:)`) | A text box to type instead of talk |
-| Hold **fn⌃** and talk | Dictation: cleaned-up text is typed into whatever field has focus |
+| Hold **fn⌃** and talk | Dictation: cleaned-up text is typed into whatever field has focus (Experimental: as you speak, wherever the text cursor is). Settings → General can make it press to start, press to stop |
 | **esc** | Stops speech, the turn and closes the notch |
 | "What can you do?" / "What's my talk shortcut?" | Answers from its live setup (the `pixie` tool) |
+| "Check yourself" / "Report this" | A checkup that fixes what it can, or a filled-in GitHub issue for you to submit. Pixie also restarts parts that hang and rolls back an update that won't start |
 | "Talk slower and use the Emma voice" | Changes its own settings at once, no clicking through Settings |
 | "Remember that my manager is Priya" | A long-term note; "forget…" removes it |
 | "Quit" / "Stop working" / "Never mind" / "New chat" | Quits / stops every job / stops talking / starts a fresh chat, instantly |
 | "Draw how OAuth works" | An Excalidraw canvas comes up with the diagram; edit it, keep it, export it. Show Canvas in the menu brings it back |
+| "Explain this toolbar" | A fuller explanation, pointing and circling each part as it's said |
+| "Show me how a heart pumps, in 3D" (Experimental) | A 3D model you can spin; the view turns to each part as Pixie names it |
 | "Switch to Eon" / "Be Xtrem" | Changes the personality (Pix, Inos, Xtrem, Eon) and the face in the notch |
 
 ## Keys and models
@@ -124,7 +132,17 @@ Keys are read from (first wins): Settings → Models, the process environment,
 takes screenshots); `OPENAI_API_KEY` → OpenAI. Settings → Models lists each provider's models
 live (newest first, with context size and price) and lets you pick one for voice and one for
 agents. Settings → Usage prices every call from the public model price list (OpenRouter's
-catalogue, cached in `prices.json`, refreshed daily). See `.env.example` for overrides.
+catalogue, cached in `prices.json`, refreshed daily), with tokens read from the provider's prompt
+cache counted and priced separately. Prompts are built for caching: the system prompt holds only
+what stays the same, and the time, front app and screen lead the newest message. See
+`.env.example` for overrides.
+
+No API key? Install [opencode](https://opencode.ai) and pick **Settings → Models → On this
+computer**: Pixie runs on opencode's free models (or any provider you signed in to there), with
+opencode's own tools off and Pixie's tools given to it.
+
+Typed questions can get typed answers: Settings → General → **Typed questions get typed
+answers**, and **Show typed answers in the notch** to read them there.
 
 ## Releases
 
@@ -160,9 +178,11 @@ same build (Settings → Pages → Source: GitHub Actions).
   extension once: `chrome://extensions` → Developer mode → Load unpacked →
   `~/Library/Application Support/com.openclicky.app/extension`. Then "what tabs do I have open",
   "fill this form with…", "compare these two pages" work. Details: `apps/extension/README.md`.
-- **Apps (MCP)**: add servers to `~/Library/Application Support/com.openclicky.app/mcp.json`
-  (Claude Desktop format, examples inside) and restart. Their tools show up as
-  `mcp__<server>__<tool>`.
+- **Connectors (MCP)**: turn them on in Settings → Experimental → Connectors (off by default since
+  0.8.0 unless you'd already added one; off means no connector servers run). Then pick them in
+  Settings → Connectors, or add servers to
+  `~/Library/Application Support/com.openclicky.app/mcp.json` (Claude Desktop format, examples
+  inside). Their tools show up as `mcp__<server>__<tool>`.
 - **Playbooks**: `skills/<name>/SKILL.md`; add your own in the support folder's `skills/`.
 
 ## Media

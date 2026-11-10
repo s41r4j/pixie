@@ -20,7 +20,8 @@ fn run(bin: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
-pub fn capture() -> Result<Shot, String> {
+/// The monitor under the cursor, or the one containing `at` (logical points).
+pub fn capture(at: Option<(f64, f64)>) -> Result<Shot, String> {
     let path = std::env::temp_dir().join(format!("pixie-shot-{}.png", std::process::id()));
     let p = path.to_string_lossy().to_string();
     let tries: [(&str, Vec<&str>); 5] = [
@@ -44,8 +45,8 @@ pub fn capture() -> Result<Shot, String> {
     }
     let img = image::open(&path).map_err(|e| format!("Couldn't read the screenshot: {e}"))?.to_rgba8();
     let _ = std::fs::remove_file(&path);
-    // The tools capture every monitor; crop to the one under the cursor.
-    let (cx, cy) = crate::macos::cursor();
+    // The tools capture every monitor; crop to the one asked for (else under the cursor).
+    let (cx, cy) = at.unwrap_or_else(crate::macos::cursor);
     let (cpx, cpy) = crate::macos::to_physical(cx, cy);
     let (pos, size, scale) = crate::macos::phys_monitor_at(cpx, cpy);
     let (x, y) = (pos.0.max(0.0) as u32, pos.1.max(0.0) as u32);
@@ -182,9 +183,11 @@ pub fn frontmost() -> Value {
     json!({ "app": app, "bundle": exe, "pid": pid, "secure": false, "window": window })
 }
 
-pub fn controls_after() -> Value {
+/// The screen right now (the helper's `screen_state`); no control tree on Linux yet.
+pub fn screen_state() -> Value {
     let f = frontmost();
-    json!({ "app": f["app"], "window": f["window"], "focused": "", "controls": [] })
+    let (x, y) = crate::macos::cursor();
+    json!({ "app": f["app"], "bundle": f["bundle"], "window": f["window"], "elements": [], "texts": [], "cursor": { "x": x as i64, "y": y as i64 } })
 }
 
 pub fn open(target: &str) -> Result<(), String> {

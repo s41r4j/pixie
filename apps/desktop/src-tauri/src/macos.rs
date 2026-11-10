@@ -144,6 +144,24 @@ pub fn screens() -> Vec<ScreenInfo> {
         .collect()
 }
 
+/// Each screen's name ("Built-in Retina Display", "LG HDR 4K"), in the order of [`screens`].
+/// Main thread.
+pub fn screen_names() -> Vec<String> {
+    ns_screens()
+        .iter()
+        .enumerate()
+        .map(|(i, s)| unsafe {
+            let name: *mut AnyObject = msg_send![*s, localizedName];
+            let c: *const std::os::raw::c_char = if name.is_null() { std::ptr::null() } else { msg_send![name, UTF8String] };
+            if c.is_null() {
+                format!("Screen {}", i + 1)
+            } else {
+                std::ffi::CStr::from_ptr(c).to_string_lossy().into_owned()
+            }
+        })
+        .collect()
+}
+
 /// The screen under the mouse (falls back to the primary). Main thread.
 pub fn screen_at_cursor() -> ScreenInfo {
     let (x, y) = cursor();

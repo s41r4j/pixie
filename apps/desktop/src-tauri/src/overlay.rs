@@ -127,6 +127,11 @@ fn locate(app: &AppHandle, input: &Value, label: &str) -> Result<Rect, String> {
     Err("I couldn't find that on screen. Give target (an element id like e12 or the exact text from the lists) or the x, y, w, h from the lists.".into())
 }
 
+/// Where a target (id, on-screen text or x, y, w, h) is on screen.
+pub fn rect_of(app: &AppHandle, input: &Value) -> Result<Rect, String> {
+    locate(app, input, "")
+}
+
 pub fn highlight(app: &AppHandle, input: &Value) -> Result<String, String> {
     let label = input.get("label").and_then(Value::as_str).unwrap_or("");
     let r = locate(app, input, label)?;

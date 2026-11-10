@@ -54,7 +54,8 @@ fn hover_state() -> &'static std::sync::Mutex<Hover> {
 }
 
 /// Native hover for the notch (WebKit doesn't track hover in an inactive app):
-/// rest over the notch → peek after 90 ms; leave the peek → close after 350 ms.
+/// rest over the notch → peek after 40 ms (two polls, so passing across the menu bar doesn't
+/// open it); leave the peek → close after 120 ms.
 fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
     use crate::panel::{self, PanelMode};
     let st = app.state::<AppState>();
@@ -104,8 +105,8 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
     let out_for = h.outside_since.map(|t| now - t).unwrap_or_default();
     drop(h);
     match mode {
-        PanelMode::Hidden if inside && in_for >= Duration::from_millis(90) => panel::set_mode(app, PanelMode::Peek),
-        PanelMode::Peek if !inside && out_for >= Duration::from_millis(350) => panel::set_mode(app, PanelMode::Hidden),
+        PanelMode::Hidden if inside && in_for >= Duration::from_millis(40) => panel::set_mode(app, PanelMode::Peek),
+        PanelMode::Peek if !inside && out_for >= Duration::from_millis(120) => panel::set_mode(app, PanelMode::Hidden),
         _ => {}
     }
 }

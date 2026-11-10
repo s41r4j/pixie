@@ -5,6 +5,7 @@
 //! the browser, connectors) are delegated to the [`Host`].
 
 pub mod agent;
+pub mod children;
 pub mod coders;
 pub mod defs;
 mod exec;

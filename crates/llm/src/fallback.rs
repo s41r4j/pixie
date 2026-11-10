@@ -17,6 +17,10 @@ impl Provider for Fallback {
     fn supports_images(&self) -> bool {
         self.primary.supports_images()
     }
+
+    fn sees_images_at(&self, effort: crate::Effort) -> bool {
+        self.primary.sees_images_at(effort)
+    }
     async fn complete(&self, req: &Request, on_event: OnEvent<'_>) -> Result<Response, LlmError> {
         let mut spoke = false;
         let r = {

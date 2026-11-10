@@ -37,6 +37,14 @@ const CanvasView = () => (
   </Suspense>
 );
 
+// Three.js only loads in the 3D window.
+const LazyScene = lazy(() => import("./views/Scene3D").then((m) => ({ default: m.Scene3D })));
+const SceneView = () => (
+  <Suspense fallback={<div className="canvas-empty">Opening the 3D view…</div>}>
+    <LazyScene />
+  </Suspense>
+);
+
 const VIEWS: Record<string, () => React.JSX.Element> = {
   panel: Panel,
   overlay: Overlay,
@@ -45,6 +53,7 @@ const VIEWS: Record<string, () => React.JSX.Element> = {
   note: NoteWindow,
   guide: Guide,
   canvas: CanvasView,
+  scene: SceneView,
 };
 const View = VIEWS[label] ?? Settings;
 

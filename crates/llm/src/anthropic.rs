@@ -24,6 +24,29 @@ impl AnthropicProvider {
         Self { cfg, http }
     }
 
+    /// Claude's prompt cache (DeepSeek and OpenAI cache matching prefixes on their own). Four
+    /// breakpoints at most: the last tool, the system prompt, the end of earlier conversation,
+    /// and automatic caching for the rest (the turn's own tool loop).
+    fn cache_marks(body: &mut Value, req: &Request) {
+        let mark = json!({ "type": "ephemeral" });
+        body["system"] = json!([{ "type": "text", "text": req.system, "cache_control": mark }]);
+        if let Some(last) = body["tools"].as_array_mut().and_then(|t| t.last_mut()) {
+            last["cache_control"] = mark.clone();
+        }
+        if let Some(n) = req.history.filter(|n| *n > 0 && *n < req.messages.len()) {
+            // Messages are merged by role before sending; count what the history became.
+            let at = crate::repair(&req.messages[..n]).len();
+            if let Some(msg) = body["messages"].as_array_mut().and_then(|m| m.get_mut(at.wrapping_sub(1))).filter(|_| at > 0) {
+                if let Some(block) = msg["content"].as_array_mut().and_then(|c| {
+                    c.iter_mut().rev().find(|b| matches!(b["type"].as_str(), Some("text" | "image" | "tool_use" | "tool_result")))
+                }) {
+                    block["cache_control"] = mark.clone();
+                }
+            }
+        }
+        body["cache_control"] = mark;
+    }
+
     /// Request body. Kept separate so tests can snapshot it.
     pub fn body(&self, req: &Request) -> Value {
         let model = req.model.clone().unwrap_or_else(|| self.cfg.model_for(req.effort).to_string());
@@ -40,6 +63,7 @@ impl AnthropicProvider {
         match self.cfg.kind {
             // Claude Opus 5.5: thinking can't be disabled; effort is the control.
             ProviderKind::Claude => {
+                Self::cache_marks(&mut body, req);
                 let effort = match req.effort {
                     Effort::Fast => "low",
                     Effort::Balanced => "medium",
@@ -116,8 +140,11 @@ impl Provider for AnthropicProvider {
     }
 
     fn supports_images(&self) -> bool {
-        // deepseek-v4-pro is text-only; flash and Claude take images.
-        !self.cfg.fast_model.contains("v4-pro")
+        self.cfg.kind.sees_images(&self.cfg.fast_model)
+    }
+
+    fn sees_images_at(&self, effort: Effort) -> bool {
+        self.cfg.kind.sees_images(self.cfg.model_for(effort))
     }
 
     async fn complete(&self, req: &Request, on_event: OnEvent<'_>) -> Result<Response, LlmError> {
@@ -157,13 +184,26 @@ enum Block {
 }
 
 impl Accumulator {
+    /// Usage arrives in message_start and again (final counts) in message_delta; a field
+    /// that's present wins. `input_tokens` excludes cache reads and writes, so they're kept apart.
+    fn read_usage(&mut self, u: &Value) {
+        if let Some(n) = u["input_tokens"].as_u64() {
+            self.usage.input_tokens = n;
+        }
+        if let Some(n) = u["output_tokens"].as_u64() {
+            self.usage.output_tokens = n;
+        }
+        if let Some(n) = u["cache_read_input_tokens"].as_u64() {
+            self.usage.cache_read = n;
+        }
+        if let Some(n) = u["cache_creation_input_tokens"].as_u64() {
+            self.usage.cache_write = n;
+        }
+    }
+
     pub(crate) fn apply(&mut self, v: &Value, on_event: OnEvent<'_>) -> Result<(), LlmError> {
         match v["type"].as_str().unwrap_or("") {
-            "message_start" => {
-                if let Some(n) = v["message"]["usage"]["input_tokens"].as_u64() {
-                    self.usage.input_tokens = n;
-                }
-            }
+            "message_start" => self.read_usage(&v["message"]["usage"]),
             "content_block_start" => {
                 let b = &v["content_block"];
                 let block = match b["type"].as_str().unwrap_or("") {
@@ -219,9 +259,7 @@ impl Accumulator {
                 if let Some(s) = v["delta"]["stop_reason"].as_str() {
                     self.stop = serde_json::from_value(Value::String(s.into())).unwrap_or(StopReason::Other);
                 }
-                if let Some(n) = v["usage"]["output_tokens"].as_u64() {
-                    self.usage.output_tokens = n;
-                }
+                self.read_usage(&v["usage"]);
             }
             "error" => {
                 let message = v["error"]["message"].as_str().unwrap_or("stream error").to_string();
@@ -265,7 +303,7 @@ mod tests {
     #[test]
     fn accumulates_text_and_tool_use() {
         let events = [
-            json!({"type":"message_start","message":{"usage":{"input_tokens":12}}}),
+            json!({"type":"message_start","message":{"usage":{"input_tokens":12,"cache_read_input_tokens":900,"cache_creation_input_tokens":40}}}),
             json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
             json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi "}}),
             json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"there."}}),
@@ -286,7 +324,7 @@ mod tests {
         assert_eq!(r.text(), "Hi there.");
         assert_eq!(r.stop_reason, StopReason::ToolUse);
         assert_eq!(r.tool_uses(), vec![("t1".into(), "highlight".into(), json!({"x":1,"y":2}))]);
-        assert_eq!(r.usage, Usage { input_tokens: 12, output_tokens: 30 });
+        assert_eq!(r.usage, Usage { input_tokens: 12, output_tokens: 30, cache_read: 900, cache_write: 40 });
         assert!(seen.contains(&StreamEvent::TextDelta("Hi ".into())));
         assert!(seen.iter().any(|e| matches!(e, StreamEvent::ToolDone { name, .. } if name == "highlight")));
     }
@@ -305,5 +343,31 @@ mod tests {
         req.effort = Effort::Deep;
         let ds = AnthropicProvider::new(ProviderConfig::deepseek("k".into())).body(&req);
         assert!(ds.get("thinking").is_none());
+        assert!(ds.get("cache_control").is_none() && ds["system"].is_string(), "DeepSeek caches on its own");
+    }
+
+    #[test]
+    fn claude_cache_breakpoints() {
+        let mut req = Request::new(
+            "sys",
+            vec![
+                Message::user_text("q1"),
+                Message::assistant(vec![Content::text("a1")]),
+                Message::user_text("RIGHT NOW … q2"),
+            ],
+        );
+        req.tools = vec![
+            ToolDef { name: "a".into(), description: "d".into(), input_schema: json!({"type":"object"}) },
+            ToolDef { name: "b".into(), description: "d".into(), input_schema: json!({"type":"object"}) },
+        ];
+        req.history = Some(2);
+        let b = AnthropicProvider::new(ProviderConfig::claude("k".into())).body(&req);
+        let eph = json!({"type":"ephemeral"});
+        assert_eq!(b["system"][0]["cache_control"], eph);
+        assert!(b["tools"][0].get("cache_control").is_none());
+        assert_eq!(b["tools"][1]["cache_control"], eph);
+        assert_eq!(b["messages"][1]["content"][0]["cache_control"], eph, "end of the earlier conversation");
+        assert!(b["messages"][2]["content"][0].get("cache_control").is_none());
+        assert_eq!(b["cache_control"], eph, "automatic caching for the turn's own steps");
     }
 }

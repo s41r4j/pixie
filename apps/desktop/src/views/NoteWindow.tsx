@@ -151,6 +151,20 @@ export function NoteWindow() {
         if (j.id === idRef.current) setJob(j);
       }
       if (e.kind === "job.note" && e.job_id === idRef.current) setDoc(e.payload.doc);
+      // Deleted (here, in the notch or by Pixie): gone from the list at once.
+      if (e.kind === "job.removed" && e.job_id) {
+        const gone = e.job_id;
+        setJobs((js) => {
+          const rest = js.filter((x) => x.id !== gone);
+          if (idRef.current === gone) setId(rest[0]?.id ?? "");
+          return rest;
+        });
+      }
+      if (e.kind === "shelf.jobs" && Array.isArray(e.payload?.jobs)) {
+        const list = e.payload.jobs as Job[];
+        setJobs(list);
+        if (idRef.current && !list.some((x) => x.id === idRef.current)) setId(list[0]?.id ?? "");
+      }
     });
     return () => {
       un.then((f) => f());

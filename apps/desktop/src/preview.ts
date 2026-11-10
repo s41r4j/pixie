@@ -1,7 +1,8 @@
 // Browser preview of every view with mocked IPC, for design work outside the app:
 //   npm run dev -w apps/desktop, then open http://localhost:1420/?preview=panel&mode=answer
 // Views: panel (modes: listening, thinking, answer, idle, toast, dictating), overlay, shelf,
-// settings (tab=welcome|setup|ai|voice|sounds|connectors|about), note.
+// settings (tab=welcome|setup|ai|voice|sounds|connectors|apps|experimental|about; exp=on shows Connectors,
+// novision=1 the Models warning), note.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { Job, NoteDoc } from "./lib/bridge";
@@ -103,7 +104,7 @@ export function installPreview() {
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz", auto_update: true, experimental: { excalidraw: params.get("exp") === "on" }, memory: "auto", chat_reset_hour: 0, persona: (params.get("persona") ?? "pix"), spicy: false, canvas_use: "helps" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } } };
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz", auto_update: true, experimental: { connectors: params.get("exp") === "on" }, voice_loudness: "normal", memory: "auto", chat_reset_hour: 0, persona: (params.get("persona") ?? "pix"), spicy: false, canvas_use: "helps" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } }, vision: params.get("novision") ? { talk: false, agents: true } : { talk: true, agents: true } };
         case "permissions_status": if (previewView === "guide") return []; return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
@@ -121,6 +122,12 @@ export function installPreview() {
           { id: "claude-opus-5", name: "Claude Opus 5", vision: true, created: now - 5e9, price: { input: 5, output: 25 }, context: 1000000 },
         ] };
         case "prices_refresh": return { models: 120, fetched_at: now };
+        case "opencode_status": return { installed: true, version: "opencode v2.2.5", running: true, selected: false, models: [
+          { id: "opencode/deepseek-v4.1-flash-free", name: "DeepSeek V4.1 Flash Free", provider: "opencode", free: true, images: true, tools: true, context: 200000 },
+          { id: "opencode/glm-5.3-flash-free", name: "GLM 5.3 Flash Free", provider: "opencode", free: true, images: true, tools: true, context: 200000 },
+          { id: "opencode/big-pickle", name: "Big Pickle", provider: "opencode", free: true, images: false, tools: true, context: 200000 },
+          { id: "deepseek/deepseek-flash", name: "DeepSeek Flash", provider: "deepseek", free: false, images: true, tools: true, context: 1048576 },
+        ] };
         case "usage_summary": return { days: 30, requests: 128, input: 1840000, output: 96000, cost: 2.41, unpriced: true, models: [
           { model: "claude-opus-5-5", provider: "claude", requests: 40, input: 520000, output: 16000, voice: 30, job: 10, cost: 2.4, price: { input: 4, output: 20 } },
           { model: "deepseek-flash", provider: "deepseek", requests: 88, input: 1320000, output: 80000, voice: 80, job: 8, cost: 0.1, price: { input: 0.045, output: 0.5 } } ],
@@ -141,6 +148,18 @@ export function installPreview() {
         case "memory_delete": case "memory_clear": return null;
         case "canvas_list": return [{ id: "demo", title: "Signup flow", modified: Math.floor(Date.now() / 1000), shapes: 7 }];
         case "canvas_load": return null;
+        case "screen_list": return ["Built-in Retina Display", "LG UltraFine"];
+        case "checkup": return [{ name: "Screen and speech helper", ok: true, detail: "answering" }, { name: "Permissions", ok: false, detail: "Accessibility not allowed (Settings → Permissions)" }, { name: "Model", ok: true, detail: "DeepSeek · deepseek-flash answered in 0.9 s" }, { name: "Voice", ok: true, detail: "natural voice installed" }, { name: "Disk space", ok: true, detail: "112.4 GB free" }, { name: "Problems today", ok: true, detail: "none" }];
+        case "report_problem": return "Google Chrome";
+        case "show_log": return null;
+        case "scene3d_get": return { title: "The inner planets", objects: [
+          { name: "sun", shape: "sphere", at: [0, 0, 0], size: [2.2], color: "yellow", label: "Sun" },
+          { name: "mercury", shape: "sphere", at: [2.4, 0, 0], size: [0.35], color: "grey", label: "Mercury" },
+          { name: "venus", shape: "sphere", at: [3.6, 0, 0.8], size: [0.6], color: "orange", label: "Venus" },
+          { name: "earth", shape: "sphere", at: [5, 0, -0.6], size: [0.65], color: "blue", label: "Earth" },
+          { name: "mars", shape: "sphere", at: [6.6, 0, 0.4], size: [0.45], color: "red", label: "Mars" },
+          { name: "orbit", shape: "ring", at: [0, 0, 0], size: [10], color: "grey", label: "" } ],
+          links: [{ from: "earth", to: "mars", label: "farther out" }] };
         case "canvas_take_ops": {
           if ((window as unknown as { __tookOps?: boolean }).__tookOps) return [];
           (window as unknown as { __tookOps?: boolean }).__tookOps = true;

@@ -3,7 +3,7 @@ import { MemoryPanel } from "./SettingsMemory";
 import { PERSONAS, personaOf } from "../lib/persona";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, IS_MAC, MACHINE, onEvent, OS, slotUrl, type UpdateStatus, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
+import { api, IS_MAC, MACHINE, onEvent, OS, slotUrl, type CheckItem, type UpdateStatus, type PermissionInfo, type PermState, type ResourcesReport, type Settings as SettingsT, type SettingsView, type Voice } from "../lib/bridge";
 import { Glyph, Mark, Wordmark } from "../components/Mark";
 import { CodingPanel, ModelsPanel, UsagePanel } from "./SettingsModels";
 import { AppsPanel, ConnectorsPanel } from "./SettingsApps";
@@ -352,6 +352,20 @@ function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
             <span>Speed · {(s?.voice_speed ?? 1).toFixed(2)}×</span>
             <input type="range" min={0.8} max={1.3} step={0.05} value={s?.voice_speed ?? 1} onChange={(e) => save({ voice_speed: parseFloat(e.target.value) })} />
           </label>
+          <label className="field" data-sid="voice_loudness">
+            <span>Loudness</span>
+            <select
+              value={s?.voice_loudness ?? "normal"}
+              onChange={(e) => {
+                const l = e.target.value as "quiet" | "normal" | "loud";
+                save({ voice_loudness: l }).then(() => api.voiceTest(l === "loud" ? "This is loud, for a busy room." : l === "quiet" ? "This is quiet." : "This is my normal level."));
+              }}
+            >
+              <option value="quiet">Quiet</option>
+              <option value="normal">Normal</option>
+              <option value="loud">Loud, for a busy room</option>
+            </select>
+          </label>
         </>
       )}
       {!natural && (
@@ -519,6 +533,36 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
   );
 }
 
+/** Which screen the notch uses; only shown with more than one screen connected. */
+function NotchScreen({ value, onPick }: { value: string; onPick: (v: string) => void }) {
+  const [screens, setScreens] = useState<string[]>([]);
+  useEffect(() => {
+    api.screenList().then(setScreens).catch(() => {});
+  }, []);
+  if (screens.length < 2 && value === "follow") return null;
+  return (
+    <>
+      <h3 className="sub">Screens</h3>
+      <ul className="rows">
+        <SRow sid="notch_screen" label="Notch on" why="Where Pixie opens when you talk or type. The screen you're using follows you; pick one to keep it there. Screens without a camera notch get the same bar at the top centre.">
+          <select className="mem-select" value={value} onChange={(e) => onPick(e.target.value)}>
+            <option value="follow">The screen I'm using</option>
+            <option value="builtin">The built-in screen</option>
+            {screens
+              .filter((n) => !/built.?in/i.test(n))
+              .map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            {value !== "follow" && value !== "builtin" && !screens.includes(value) && <option value={value}>{value} (not connected)</option>}
+          </select>
+        </SRow>
+      </ul>
+    </>
+  );
+}
+
 function SRow({ sid, label, why, children }: { sid: string; label: string; why?: string; children: React.ReactNode }) {
   return (
     <li className="row" data-sid={sid}>
@@ -600,10 +644,17 @@ function GeneralPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (
           <Switch label="Look at the screen" on={s?.share_screen ?? true} onChange={(v) => save({ share_screen: v })} />
         </SRow>
       </ul>
+      <NotchScreen value={s?.notch_screen ?? "follow"} onPick={(v) => save({ notch_screen: v })} />
       <h3 className="sub">Answers</h3>
       <ul className="rows">
         <SRow sid="speak_answers" label="Speak answers out loud" why="Voice answers are spoken and never shown as text; the notch just widens while Pixie talks. Past answers are in the notch's Chat tab.">
           <Switch label="Speak answers" on={s?.speak_answers ?? true} onChange={(v) => save({ speak_answers: v })} />
+        </SRow>
+        <SRow sid="typed_answers" label="Typed questions get typed answers" why="Reply the way you asked: talk and Pixie talks back; type and it writes back, without saying anything out loud.">
+          <Switch label="Typed answers" on={(s?.typed_answers ?? "spoken") === "text"} onChange={(v) => save({ typed_answers: v ? "text" : "spoken" })} />
+        </SRow>
+        <SRow sid="show_typed_text" label="Show typed answers in the notch" why={(s?.typed_answers ?? "spoken") === "text" ? "The notch drops down with the whole answer to read; it stays while you hover and Esc closes it. Off: answers wait in the notch's Chat tab." : "For typed answers (switch on the one above first)."}>
+          <Switch label="Show typed answers" on={s?.show_typed_text ?? true} onChange={(v) => save({ show_typed_text: v })} />
         </SRow>
         <SRow sid="user_name" label="What should I call you?">
           <input className="inline-input" placeholder="Your name" defaultValue={s?.user_name ?? ""} onBlur={(e) => save({ user_name: e.target.value })} />
@@ -621,7 +672,23 @@ const LINKS: [string, string, string][] = [
 ];
 
 /** Experiments: off by default; a tool that's off isn't offered to the model at all. */
-const EXPERIMENTS: { id: string; label: string; why: string }[] = [];
+const EXPERIMENTS: { id: string; label: string; why: string }[] = [
+  {
+    id: "connectors",
+    label: "Connectors",
+    why: "GitHub, Notion, Slack, Linear, Jira and more as tools Pixie can use. Shows Settings → Connectors. Off: no connector servers run and their tools aren't offered.",
+  },
+  {
+    id: "3d",
+    label: "3D explanations",
+    why: "For things easier to grasp in 3D (the heart, a molecule, an engine, the planets), Pixie builds a model you can spin and turns to each part as it explains. Opens in its own window; closing it frees the memory.",
+  },
+  {
+    id: "type_live",
+    label: "Type as you speak",
+    why: "Dictated words appear wherever your text cursor is while you talk, terminals included, and the tidied text replaces them when you stop. With no text cursor they go on the clipboard. Off: the text goes in when you stop.",
+  },
+];
 
 const DRAWING: { id: "asked" | "helps" | "often"; label: string; why: string }[] = [
   { id: "asked", label: "Only when I ask", why: "Draws on the canvas when you ask for a diagram or sketch." },
@@ -648,6 +715,20 @@ function ExperimentalPanel({ view, onSaved }: { view: SettingsView | null; onSav
           </SRow>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ConnectorsOff({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="stack-gap">
+      <div className="banner banner--muted">
+        Connectors are switched off. Turn them on in{" "}
+        <button className="btn btn--link" onClick={onOpen}>
+          Experimental
+        </button>
+        .
+      </div>
     </div>
   );
 }
@@ -709,6 +790,40 @@ function Updates({ view, onSaved }: { view: SettingsView | null; onSaved: (v: Se
   );
 }
 
+/** Settings → About → Health: a checkup, a report the user posts, and the log. */
+function Health() {
+  const [checks, setChecks] = useState<CheckItem[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [opened, setOpened] = useState("");
+  const run = () => {
+    setBusy(true);
+    api.checkup().then(setChecks).catch(console.error).finally(() => setBusy(false));
+  };
+  const bad = checks?.filter((c) => !c.ok).length ?? 0;
+  return (
+    <>
+      <h3 className="sub" data-sid="health">Health</h3>
+      <p className="muted small">Pixie notes problems it worked around on this computer. Nothing is sent anywhere: a report opens a filled-in GitHub issue for you to read and submit yourself.</p>
+      {checks && (
+        <>
+          <div className={`banner ${bad ? "banner--warn" : "banner--ok"}`}>{bad ? `${bad} problem${bad > 1 ? "s" : ""} found` : "Everything checked out."}</div>
+          <ul className="kv">
+            {checks.map((c) => (
+              <li key={c.name}><span style={{ whiteSpace: "nowrap" }}>{c.ok ? "✓" : "✗"} {c.name}</span><b>{c.detail}</b></li>
+            ))}
+          </ul>
+        </>
+      )}
+      {opened && <div className="banner banner--muted">The issue is open in {opened}. Check it, then press Submit there.</div>}
+      <div className="row-actions">
+        <button className="btn btn--ghost" disabled={busy} onClick={run}>{busy ? "Checking…" : "Run a checkup"}</button>
+        <button className="btn btn--ghost" onClick={() => api.reportProblem().then(setOpened).catch(console.error)}>Report a problem</button>
+        <button className="btn btn--link" onClick={() => api.showLog()}>Show log</button>
+      </div>
+    </>
+  );
+}
+
 function AboutPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
   const [st, setSt] = useState<Awaited<ReturnType<typeof api.status>> | null>(null);
   useEffect(() => {
@@ -724,6 +839,7 @@ function AboutPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
         </div>
       </div>
       <Updates view={view} onSaved={onSaved} />
+      <Health />
       <h3 className="sub">Made by</h3>
       <div className="dev-card">
         <div className="dev-card__name">s41r4j</div>
@@ -789,8 +905,11 @@ function ShortcutRows({ view, onSaved }: { view: SettingsView | null; onSaved: (
       <SRow sid="shortcut_talk" label="Talk to Pixie" why="Hold to talk, let go to send. A quick tap opens the text box.">
         <ShortcutPicker value={talk} other={dictate} onPick={(c) => api.setSettings({ shortcut_talk: c }).then(onSaved)} />
       </SRow>
-      <SRow sid="shortcut_dictate" label="Dictate" why="Hold and speak: clean text is typed into whatever field has focus.">
+      <SRow sid="shortcut_dictate" label="Dictate" why={s?.dictate_mode === "toggle" ? "Press once and speak, press again to stop: clean text is typed into whatever field has focus." : "Hold and speak: clean text is typed into whatever field has focus."}>
         <ShortcutPicker value={dictate} other={talk} onPick={(c) => api.setSettings({ shortcut_dictate: c }).then(onSaved)} />
+      </SRow>
+      <SRow sid="dictate_mode" label="Press to start, press to stop" why="Dictate without holding the keys: press the dictate shortcut once to start, again to stop. Off: hold while you speak.">
+        <Switch label="Dictate toggle" on={s?.dictate_mode === "toggle"} onChange={(v) => api.setSettings({ dictate_mode: v ? "toggle" : "hold" }).then(onSaved)} />
       </SRow>
       <SRow sid="shortcut_esc" label="Stop" why="Stops speaking, the answer and any live agent, and closes the notch.">
         <kbd>esc</kbd>
@@ -951,7 +1070,7 @@ const GROUPS: { title: string; tabs: TabDef[] }[] = [
   {
     title: "Brains",
     tabs: [
-      { id: "ai", label: "Models", icon: "sparkle", blurb: "Claude, OpenAI or DeepSeek: live model lists, newest first, with prices." },
+      { id: "ai", label: "Models", icon: "sparkle", blurb: "Claude, OpenAI or DeepSeek with a key, or opencode's free models on this computer." },
       { id: "usage", label: "Usage", icon: "grid", blurb: "Tokens and cost per model, priced from the live price list." },
       { id: "coding", label: "Coding", icon: "terminal", blurb: `Which coding agent on this ${MACHINE} takes code tasks, and with which model.` },
     ],
@@ -960,7 +1079,7 @@ const GROUPS: { title: string; tabs: TabDef[] }[] = [
     title: IS_MAC ? "Mac" : "System",
     tabs: [
       { id: "setup", label: "Permissions", icon: "lock", blurb: `What Pixie may hear, see and do on this ${MACHINE}.` },
-      { id: "apps", label: "Apps", icon: "grid", blurb: "Calendar, Reminders, Contacts, Mail and your Google account." },
+      { id: "apps", label: "Apps", icon: "grid", blurb: "Calendar, Reminders, Contacts, Mail, your Google account and Chrome." },
       { id: "connectors", label: "Connectors", icon: "layers", blurb: "GitHub, Notion, Slack, Linear and more in one click, plus Chrome." },
       { id: "experimental", label: "Experimental", icon: "sparkle", blurb: "New things to try early. They may change or go away." },
       { id: "about", label: "About", icon: "eye", blurb: "Version, updates, and where Pixie keeps its files." },
@@ -975,9 +1094,15 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "general", sid: "can_click", title: "Let Pixie click and type for me", words: "computer use control mouse keyboard type copy clipboard live agent pointer only" },
   { tab: "general", sid: "share_screen", title: "Look at the screen when I ask", words: "screenshot privacy see vision" },
   { tab: "general", sid: "speak_answers", title: "Speak answers out loud", words: "voice text mute talk" },
+  { tab: "general", sid: "typed_answers", title: "Typed questions get typed answers", words: "reply text written type answer same way silent read" },
+  { tab: "general", sid: "show_typed_text", title: "Show typed answers in the notch", words: "text reply show read display answer" },
+  { tab: "voice", sid: "voice_loudness", title: "Voice loudness", words: "volume loud quiet louder hear level" },
   { tab: "general", sid: "user_name", title: "What should I call you?", words: "name" },
   { tab: "general", sid: "shortcut_talk", title: "Talk shortcut", words: "hotkey keys keyboard shortcut ctrl option hold push to talk" },
   { tab: "general", sid: "shortcut_dictate", title: "Dictate shortcut", words: "hotkey keys keyboard shortcut fn dictation" },
+  { tab: "general", sid: "dictate_mode", title: "Dictate: press to start, press to stop", words: "dictation toggle hold tap start stop hands free" },
+  { tab: "general", sid: "notch_screen", title: "Notch on: which screen Pixie uses", words: "screen display monitor external second built-in laptop notch where multiple displays" },
+  { tab: "experimental", sid: "exp_type_live", title: "Type as you speak (Experimental)", words: "dictation live typing words appear while talking realtime stt speech to text" },
   { tab: "voice", sid: "locale", title: "Test my mic", words: "microphone check hear listen" },
   { tab: "sounds", sid: "master_volume", title: "Overall volume", words: "loud quiet master" },
   { tab: "sounds", title: "Custom sounds", words: "file replace change own default" },
@@ -1001,7 +1126,10 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "usage", title: "Refresh prices", words: "openrouter price list cost per million" },
   { tab: "coding", title: "Coding agent: Codex, Claude Code, opencode", words: "code harness t3 local agent model sandbox permissions folder" },
   { tab: "setup", title: "Microphone, Speech, Screen Recording, Accessibility", words: "permission privacy allow reset tcc" },
-  { tab: "connectors", title: "Chrome extension", words: "browser tabs extension" },
+  { tab: "apps", sid: "chrome", title: "Chrome extension", words: "browser tabs extension" },
+  { tab: "experimental", sid: "exp_connectors", title: "Connectors switch (Experimental)", words: "mcp connectors integrations github notion slack linear turn on show" },
+  { tab: "about", sid: "health", title: "Checkup, report a problem, log", words: "health checkup check yourself problem bug report issue github log crash broken fix" },
+  { tab: "experimental", sid: "exp_3d", title: "3D explanations (Experimental)", words: "3d three model spin rotate anatomy molecule explain" },
   { tab: "connectors", title: "Connectors: GitHub, Notion, Slack, Linear, Jira, Brave Search", words: "mcp notion github slack linear jira confluence atlassian brave search folder connectors integrations" },
   { tab: "apps", sid: "app_calendar", title: "Calendar", words: "events meetings schedule eventkit icloud google calendar" },
   { tab: "apps", sid: "app_reminders", title: "Reminders", words: "todo tasks remind list" },
@@ -1012,10 +1140,10 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "usage", title: "Filter by provider or voice/agents", words: "filter all time total spent" },
 ];
 
-function search(q: string) {
+function search(q: string, hidden: Tab[]) {
   const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
-  return INDEX.map((e) => {
+  return INDEX.filter((e) => !hidden.includes(e.tab)).map((e) => {
     const tab = TABS.find((t) => t.id === e.tab)!;
     const hay = `${e.title} ${e.words} ${tab.label}`.toLowerCase();
     const score = terms.every((t) => hay.includes(t)) ? terms.reduce((n, t) => n + (e.title.toLowerCase().includes(t) ? 2 : 1), 0) : 0;
@@ -1077,7 +1205,9 @@ export function Settings() {
     );
   }
 
-  const results = search(q);
+  // Connectors only show when their Experimental switch is on.
+  const hidden: Tab[] = view?.settings.experimental?.connectors ? [] : ["connectors"];
+  const results = search(q, hidden);
   const go = (t: Tab, sid?: string) => {
     setTab(t);
     setQ("");
@@ -1110,7 +1240,7 @@ export function Settings() {
         {GROUPS.map((g) => (
           <div key={g.title} className="navgroup">
             <div className="navgroup__title">{g.title}</div>
-            {g.tabs.map((t) => (
+            {g.tabs.filter((t) => !hidden.includes(t.id)).map((t) => (
               <button key={t.id} className={`navbtn ${tab === t.id && !q ? "is-on" : ""}`} onClick={() => go(t.id)} data-tip={t.blurb}>
                 <Glyph name={t.icon} size={14} />
                 {t.label}
@@ -1158,7 +1288,7 @@ export function Settings() {
               {tab === "voice" && <VoicePanel view={view} onSaved={setView} />}
               {tab === "sounds" && <SoundsPanel view={view} onSaved={setView} />}
               {tab === "apps" && <AppsPanel view={view} onSaved={setView} />}
-              {tab === "connectors" && <ConnectorsPanel />}
+              {tab === "connectors" && (hidden.includes("connectors") ? <ConnectorsOff onOpen={() => go("experimental", "exp_connectors")} /> : <ConnectorsPanel />)}
               {tab === "memory" && <MemoryPanel view={view} onSaved={setView} />}
               {tab === "experimental" && <ExperimentalPanel view={view} onSaved={setView} />}
               {tab === "about" && <AboutPanel view={view} onSaved={setView} />}

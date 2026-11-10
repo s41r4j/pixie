@@ -48,6 +48,31 @@ pub struct JobView {
     /// "background" works on its own; "live" works on their screen while explaining.
     #[serde(default = "background")]
     pub kind: String,
+    /// Coding agents this job handed work to ("Codex CLI"), so they and Pixie can see who did it.
+    #[serde(default)]
+    pub coders: Vec<String>,
+}
+
+impl JobView {
+    /// One line for Pixie's context: title, state, progress, who coded.
+    pub fn line(&self) -> String {
+        let state = match self.state {
+            JobState::Running => format!("running, step {}", self.steps),
+            JobState::WaitingOnUser => "waiting for their answer".into(),
+            JobState::Done => "done".into(),
+            JobState::Failed => if self.error.as_deref() == Some("Stopped.") { "stopped".into() } else { "failed".into() },
+            _ => format!("{:?}", self.state).to_lowercase(),
+        };
+        let mut s = format!("\"{}\" ({} job {}, {state}", self.title, self.kind, self.id);
+        if matches!(self.state, JobState::Running) && !self.progress.is_empty() {
+            s.push_str(&format!(": {}", self.progress));
+        }
+        if !self.coders.is_empty() {
+            s.push_str(&format!("; coded by {}", self.coders.join(", ")));
+        }
+        s.push(')');
+        s
+    }
 }
 
 fn background() -> String {
@@ -211,6 +236,7 @@ pub fn start(app: &AppHandle, title: &str, instructions: &str, kind: &str) -> Re
         unread: true,
         steps: 0,
         kind: kind.to_string(),
+        coders: vec![],
     };
     st.jobs.map.lock().unwrap().insert(
         id.clone(),
@@ -312,7 +338,15 @@ pub fn set_plan(app: &AppHandle, id: &str, input: &Value) -> Result<String, Stri
 }
 
 pub fn set_progress(app: &AppHandle, id: &str, note: &str) -> Result<String, String> {
-    app.state::<AppState>().jobs.update(app, id, |e| e.view.progress = note.to_string());
+    app.state::<AppState>().jobs.update(app, id, |e| {
+        e.view.progress = note.to_string();
+        // "Codex CLI is coding" (from the code tool): remember who did the work.
+        if let Some(label) = note.strip_suffix(" is coding") {
+            if !e.view.coders.iter().any(|c| c == label) {
+                e.view.coders.push(label.to_string());
+            }
+        }
+    });
     Ok("Shown.".into())
 }
 
@@ -397,7 +431,7 @@ fn drive(app: AppHandle, id: String) {
             });
             return;
         };
-        let Some((view, messages, cancel)) = st.jobs.map.lock().unwrap().get(&id).map(|e| (e.view.clone(), e.messages.clone(), e.cancel.clone())) else {
+        let Some((view, mut messages, cancel)) = st.jobs.map.lock().unwrap().get(&id).map(|e| (e.view.clone(), e.messages.clone(), e.cancel.clone())) else {
             return;
         };
         let host = Arc::new(AppHost { app: app.clone() });
@@ -413,6 +447,7 @@ fn drive(app: AppHandle, id: String) {
             coding: st.settings.lock().map(|s| s.coding.clone()).unwrap_or_default(),
         };
         let env = prompt::Environment {
+            version: app.package_info().version.to_string(),
             cwd: view.cwd.display().to_string(),
             os: st.os_version.clone(),
             now: chrono::Local::now().format("%A %-d %B %Y, %H:%M").to_string(),
@@ -429,21 +464,33 @@ fn drive(app: AppHandle, id: String) {
             persona: st.settings.lock().map(|s| s.persona.clone()).unwrap_or_default(),
             spicy: st.settings.lock().map(|s| s.spicy).unwrap_or(false),
             canvas: st.settings.lock().map(|s| s.canvas_use.clone()).unwrap_or_default(),
+            jobs: vec![],
+            screens: String::new(),
         };
         let task = format!("Title: {}\n\n{}", view.title, view.instructions);
-        let system = prompt::assemble(&PromptInput { mode, env, task });
+        let input = PromptInput { mode, env, task };
+        let system = prompt::assemble(&input);
+        // The time and front app lead the message this run answers (the system prompt stays fixed).
+        if let Some(last) = messages.last_mut().filter(|m| m.role == openclicky_llm::Role::User) {
+            if let Some(Content::Text { text }) = last.content.first_mut() {
+                if !text.starts_with("RIGHT NOW") {
+                    *text = format!("{}\n\n{text}", prompt::context(&input));
+                }
+            }
+        }
         let mut tools = openclicky_tools::defs::for_mode(mode, crate::browser::connected(&app));
         tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), mode));
+        crate::connectors::trim(&mut tools, &format!("{} {}", view.title, view.instructions));
         // Live agents are watched: quicker model calls, fewer steps.
         let opts = if mode == Mode::Live {
-            AgentOptions { max_steps: 40, effort: Effort::Balanced, max_tokens: 4_000 }
+            AgentOptions { max_steps: 40, effort: Effort::Balanced, max_tokens: 4_000, history: Some(messages.len().saturating_sub(1)) }
         } else {
-            AgentOptions { max_steps: 60, effort: Effort::Deep, max_tokens: 16_000 }
+            AgentOptions { max_steps: 60, effort: Effort::Deep, max_tokens: 16_000, history: Some(messages.len().saturating_sub(1)) }
         };
 
         let app_ev = app.clone();
         let id_ev = id.clone();
-        let result = openclicky_tools::run(provider.as_ref(), &system, messages, tools, &ctx, &opts, &mut |e| match e {
+        let result = crate::opencode::run_agent(&app, provider.as_ref(), &system, messages, tools, &ctx, &opts, &mut |e| match e {
             AgentEvent::ToolStart { name, input } => {
                 if let Some(p) = friendly_progress(&name, &input) {
                     let st = app_ev.state::<AppState>();

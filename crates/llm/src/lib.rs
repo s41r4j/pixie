@@ -137,6 +137,9 @@ pub struct Request {
     pub effort: Effort,
     /// Override the provider's default model.
     pub model: Option<String>,
+    /// How many leading messages are earlier conversation, unchanged since the last turn.
+    /// Claude gets a cache breakpoint at the end of them, so the next turn reads them from cache.
+    pub history: Option<usize>,
 }
 
 impl Request {
@@ -148,6 +151,7 @@ impl Request {
             max_tokens: 4096,
             effort: Effort::Fast,
             model: None,
+            history: None,
         }
     }
 }
@@ -168,8 +172,15 @@ pub enum StopReason {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
+    /// Input billed at the full price (not read from or written to the cache).
     pub input_tokens: u64,
     pub output_tokens: u64,
+    /// Input served from the provider's prompt cache (billed at a fraction of the price).
+    #[serde(default)]
+    pub cache_read: u64,
+    /// Input written to the cache this request (Claude bills it at 1.25×).
+    #[serde(default)]
+    pub cache_write: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -231,6 +242,11 @@ pub trait Provider: Send + Sync {
     /// Human name, e.g. "DeepSeek · deepseek-flash".
     fn label(&self) -> String;
     fn supports_images(&self) -> bool;
+    /// Whether the model used at this effort sees images (voice turns use the fast model, jobs and
+    /// live agents the deep one).
+    fn sees_images_at(&self, _effort: Effort) -> bool {
+        self.supports_images()
+    }
     /// Stream one response. `on_event` sees deltas as they arrive.
     async fn complete(&self, req: &Request, on_event: OnEvent<'_>) -> Result<Response, LlmError>;
 }

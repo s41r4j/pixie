@@ -23,6 +23,142 @@ pub struct Prefs {
     pub claude_permission: String,
     /// Default folder when a job doesn't name one.
     pub dir: String,
+    /// What they say is left on each paid agent's plan (Settings → Coding), per agent name.
+    pub limits: std::collections::BTreeMap<String, Limit>,
+}
+
+/// Usage left on a plan, per window: "" (not set), "ok", "low" or "out".
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Limit {
+    pub five_hour: String,
+    pub weekly: String,
+}
+
+/// How much of a plan's windows is used, read from the agent itself (Codex writes it to its
+/// session logs): percent used and when each window resets (unix seconds).
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Usage {
+    pub five_hour_used: Option<f64>,
+    pub five_hour_resets: Option<i64>,
+    pub weekly_used: Option<f64>,
+    pub weekly_resets: Option<i64>,
+}
+
+/// Codex's latest rate-limit reading from `~/.codex/sessions` (no request made).
+pub fn codex_usage() -> Option<Usage> {
+    let root = guard::home().join(".codex/sessions");
+    // sessions/YYYY/MM/DD/rollout-….jsonl: walk to the newest day, then the newest file.
+    let newest_dir = |d: &std::path::Path| -> Option<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(d).ok()?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        v.sort();
+        v.pop()
+    };
+    let day = newest_dir(&newest_dir(&newest_dir(&root)?)?)?;
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&day)
+        .ok()?
+        .flatten()
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(_, p)| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    files.sort();
+    for (_, f) in files.iter().rev().take(3) {
+        let text = std::fs::read_to_string(f).ok()?;
+        for line in text.lines().rev().filter(|l| l.contains("\"rate_limits\"")) {
+            let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+            if let Some(rl) = find_key(&v, "rate_limits") {
+                return Some(usage_from(rl));
+            }
+        }
+    }
+    None
+}
+
+fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
+    match v {
+        Value::Object(m) => m.get(key).or_else(|| m.values().find_map(|x| find_key(x, key))),
+        Value::Array(a) => a.iter().find_map(|x| find_key(x, key)),
+        _ => None,
+    }
+}
+
+fn usage_from(rl: &Value) -> Usage {
+    let now = chrono_now();
+    let window = |w: &Value| -> (Option<f64>, Option<i64>) {
+        let resets = w["resets_at"].as_i64();
+        // A window that has reset since the reading starts empty again.
+        let used = w["used_percent"].as_f64().map(|u| if resets.is_some_and(|r| r <= now) { 0.0 } else { u });
+        (used, resets)
+    };
+    let (fu, fr) = window(&rl["primary"]);
+    let (wu, wr) = window(&rl["secondary"]);
+    Usage { five_hour_used: fu, five_hour_resets: fr, weekly_used: wu, weekly_resets: wr }
+}
+
+fn chrono_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// How usable an agent is now: 2 plenty, 1 running low, 0 out. opencode's free models count as
+/// plenty but come last in the order.
+pub fn headroom(name: &str, prefs: &Prefs, usage: Option<&Usage>) -> u8 {
+    let mut level = 2u8;
+    if let Some(l) = prefs.limits.get(name) {
+        for w in [&l.five_hour, &l.weekly] {
+            level = level.min(match w.as_str() {
+                "out" => 0,
+                "low" => 1,
+                _ => 2,
+            });
+        }
+    }
+    if let Some(u) = usage {
+        for used in [u.five_hour_used, u.weekly_used].into_iter().flatten() {
+            level = level.min(if used >= 95.0 { 0 } else if used >= 80.0 { 1 } else { 2 });
+        }
+    }
+    level
+}
+
+/// The agent for a task nobody named: their default first, then Codex, Claude Code, opencode;
+/// skipping one that's out of usage and preferring one that isn't running low. Falls back to
+/// opencode when the paid ones are out.
+pub fn choose<'a>(coders: &'a [Coder], prefs: &Prefs, usage_of: &dyn Fn(&str) -> Option<Usage>) -> Option<(&'a Coder, String)> {
+    let mut order: Vec<&Coder> = Vec::new();
+    if let Some(c) = coders.iter().find(|c| c.name == prefs.agent) {
+        order.push(c);
+    }
+    for name in ["codex", "claude", "opencode"] {
+        if let Some(c) = coders.iter().find(|c| c.name == name && !order.iter().any(|o| o.name == name)) {
+            order.push(c);
+        }
+    }
+    let rated: Vec<(&Coder, u8, String)> = order
+        .into_iter()
+        .map(|c| {
+            let u = usage_of(c.name);
+            let h = headroom(c.name, prefs, u.as_ref());
+            let why = match (&u, h) {
+                (Some(u), _) => format!(
+                    "{}: 5-hour {}, weekly {}",
+                    c.label,
+                    u.five_hour_used.map(|x| format!("{x:.0}% used")).unwrap_or_else(|| "?".into()),
+                    u.weekly_used.map(|x| format!("{x:.0}% used")).unwrap_or_else(|| "?".into())
+                ),
+                (None, 0) => format!("{}: out of usage (Settings → Coding)", c.label),
+                (None, 1) => format!("{}: running low (Settings → Coding)", c.label),
+                _ => format!("{}: no limit known", c.label),
+            };
+            (c, h, why)
+        })
+        .collect();
+    let notes = rated.iter().map(|r| r.2.clone()).collect::<Vec<_>>().join("; ");
+    rated
+        .iter()
+        .find(|r| r.1 == 2)
+        .or_else(|| rated.iter().find(|r| r.1 == 1))
+        .map(|r| (r.0, notes.clone()))
+        .or_else(|| rated.iter().find(|r| r.0.name == "opencode").map(|r| (r.0, notes.clone())))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -125,8 +261,18 @@ pub async fn run(ctx: &ToolCtx, input: &Value) -> ToolOutput {
         return ToolOutput::err("No local coding agent is installed (Codex CLI, Claude Code or opencode). Do the work with bash/write instead.");
     }
     let prefs = &ctx.coding;
-    let wanted = input.get("agent").and_then(Value::as_str).filter(|a| *a != "auto").unwrap_or(or(&prefs.agent, "auto"));
-    let coder = coders.iter().find(|c| c.name == wanted).or(coders.first()).cloned().unwrap();
+    // Named in the task: that one. Otherwise the one with usage left (see `choose`).
+    let named = input.get("agent").and_then(Value::as_str).filter(|a| *a != "auto" && !a.is_empty());
+    let (coder, why) = match named.and_then(|n| coders.iter().find(|c| c.name == n)) {
+        Some(c) => (c.clone(), format!("{} (asked for)", c.label)),
+        None => match choose(&coders, prefs, &|name| if name == "codex" { codex_usage() } else { None }) {
+            Some((c, notes)) => (c.clone(), notes),
+            None => {
+                let c = coders.first().cloned().unwrap();
+                (c, "every agent is out of usage; trying anyway".into())
+            }
+        },
+    };
     let dir = match input.get("dir").and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {
         Some(d) => {
             let p = guard::expand(d);
@@ -145,6 +291,9 @@ pub async fn run(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     let minutes = input.get("timeout_minutes").and_then(Value::as_u64).unwrap_or(20).clamp(1, 120);
     let last_message = ctx.cwd.join("tmp").join(format!("{}-last.txt", coder.name));
     let _ = std::fs::create_dir_all(ctx.cwd.join("tmp"));
+    // Paths in the brief are relative to where the agent runs; say so, or "output/x" ends up in
+    // output/output/x.
+    let task = format!("You are working in {} (your current folder). Paths in this task are relative to it; don't add the folder's own name again.\n\n{task}", dir.display());
     let mut cmd = command(&coder, prefs, &task, &dir, &last_message);
     cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).stdin(std::process::Stdio::null()).kill_on_drop(true);
     let base = std::env::var_os("PATH").unwrap_or_default();
@@ -152,10 +301,13 @@ pub async fn run(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     if let Ok(path) = std::env::join_paths(extra.into_iter().chain(std::env::split_paths(&base))) {
         cmd.env("PATH", path);
     }
+    crate::children::prepare(&mut cmd);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => return ToolOutput::err(format!("Couldn't start {}: {e}", coder.label)),
     };
+    // Ends the agent and everything it started if this returns early (stopped, timed out).
+    let guard = crate::children::add(child.id());
     let _ = ctx.host.call(ctx, "progress", &json!({ "note": format!("{} is coding", coder.label) })).await;
     let mut out = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut err = BufReader::new(child.stderr.take().unwrap()).lines();
@@ -191,16 +343,62 @@ pub async fn run(ctx: &ToolCtx, input: &Value) -> ToolOutput {
             }
         }
     };
+    guard.done();
     let ok = status.map(|s| s.success()).unwrap_or(false);
     let summary = std::fs::read_to_string(&last_message).unwrap_or_default();
     let body = if summary.trim().is_empty() { tail(&log, 20_000) } else { format!("{}\n\n(log tail)\n{}", summary.trim(), tail(&log, 4000)) };
-    let text = format!("{} worked in {} for {}s and {}.\n\n{}", coder.label, dir.display(), started.elapsed().as_secs(), if ok { "finished" } else { "exited with an error" }, body);
+    let text = format!(
+        "{} worked in {} for {}s and {}. (Chosen: {why}.)\n\n{}",
+        coder.label,
+        dir.display(),
+        started.elapsed().as_secs(),
+        if ok { "finished" } else { "exited with an error" },
+        body
+    );
     if ok { ToolOutput::ok(text) } else { ToolOutput::err(text) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picks_the_agent_with_usage_left() {
+        let coders = vec![
+            Coder { name: "codex", label: "Codex CLI", path: "/x".into() },
+            Coder { name: "claude", label: "Claude Code", path: "/y".into() },
+            Coder { name: "opencode", label: "opencode", path: "/z".into() },
+        ];
+        let mut p = Prefs::default();
+        let busy = |used: f64| Some(Usage { five_hour_used: Some(used), five_hour_resets: Some(i64::MAX), weekly_used: Some(10.0), weekly_resets: Some(i64::MAX) });
+        assert_eq!(choose(&coders, &p, &|_| None).unwrap().0.name, "codex");
+        // Codex out (from its logs): Claude Code.
+        assert_eq!(choose(&coders, &p, &|n| if n == "codex" { busy(99.0) } else { None }).unwrap().0.name, "claude");
+        // Claude Code out too (from Settings): opencode.
+        p.limits.insert("claude".into(), Limit { five_hour: "ok".into(), weekly: "out".into() });
+        assert_eq!(choose(&coders, &p, &|n| if n == "codex" { busy(99.0) } else { None }).unwrap().0.name, "opencode");
+        // Their default comes first when it has usage.
+        p.agent = "claude".into();
+        p.limits.clear();
+        assert_eq!(choose(&coders, &p, &|_| None).unwrap().0.name, "claude");
+        // Running low loses to plenty.
+        p.limits.insert("claude".into(), Limit { five_hour: "low".into(), weekly: String::new() });
+        assert_eq!(choose(&coders, &p, &|_| None).unwrap().0.name, "codex");
+    }
+
+    #[test]
+    #[ignore]
+    fn print_codex_usage_here() {
+        println!("{:?}", codex_usage());
+    }
+
+    #[test]
+    fn codex_limits_parse() {
+        let v: Value = serde_json::from_str(r#"{"payload":{"rate_limits":{"primary":{"used_percent":11.0,"window_minutes":300,"resets_at":99999999999},"secondary":{"used_percent":7.0,"resets_at":1}}}}"#).unwrap();
+        let u = usage_from(find_key(&v, "rate_limits").unwrap());
+        assert_eq!(u.five_hour_used, Some(11.0));
+        assert_eq!(u.weekly_used, Some(0.0), "a window that already reset counts as unused");
+    }
 
     #[test]
     fn command_lines() {

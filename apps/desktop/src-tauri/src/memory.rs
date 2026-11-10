@@ -70,7 +70,7 @@ pub fn mode(app: &AppHandle) -> String {
 }
 
 pub fn load(data: &Path) -> Vec<Note> {
-    if let Some(v) = std::fs::read_to_string(path(data)).ok().and_then(|s| serde_json::from_str::<Vec<Note>>(&s).ok()) {
+    if let Some(v) = crate::heal::load_safely::<Vec<Note>>(&path(data), "memory") {
         return v;
     }
     // First run with notes: bring over the old memory.md lines (from jobs).
@@ -99,12 +99,8 @@ fn strip_date(l: &str) -> &str {
 }
 
 fn save(data: &Path, notes: &[Note]) {
-    let _ = std::fs::create_dir_all(data);
     if let Ok(s) = serde_json::to_string_pretty(notes) {
-        let tmp = path(data).with_extension("json.tmp");
-        if std::fs::write(&tmp, s).is_ok() {
-            let _ = std::fs::rename(tmp, path(data));
-        }
+        let _ = crate::heal::save_safely(&path(data), &s);
     }
 }
 
@@ -275,6 +271,9 @@ pub fn core(data: &Path) -> Vec<Note> {
     let t = now();
     notes.sort_by(|a, b| score(b, t).total_cmp(&score(a, t)));
     notes.truncate(CORE);
+    // The prompt lists them oldest first, so the order doesn't shift as scores move and the
+    // provider's prompt cache keeps matching.
+    notes.sort_by(|a, b| a.created.cmp(&b.created).then_with(|| a.id.cmp(&b.id)));
     notes
 }
 
@@ -297,9 +296,7 @@ pub fn prompt_lines(app: &AppHandle) -> Vec<String> {
 pub fn tool() -> ToolDef {
     ToolDef {
         name: "memory".into(),
-        description: "Your long-term memory of them: short notes kept across days, on their computer. The most useful ones are already in your prompt.\n\
-action=remember text=<one short fact in third person, e.g. \"Prefers short answers\", \"Their manager is Priya\"> kind=about|preference|person|project|howto|other: when they say remember/note that, or tell you something lasting about themselves, their people, projects or setup. Never passwords, keys or card numbers.\n\
-action=forget text=<what to forget> (or id): when they ask you to forget something. action=search query=<words>: look up what you know (people, projects, how they like things). action=list: everything.".into(),
+        description: "Your long-term notes about them, kept across days (the most useful are already in your prompt). remember text=<one short third-person fact, e.g. \"Prefers short answers\"> kind: when they say remember, or tell you something lasting about themselves, their people, projects or setup; never passwords, keys or card numbers. forget text=<what> (or id). search query=<words>. list.".into(),
         input_schema: json!({
             "type": "object",
             "properties": {

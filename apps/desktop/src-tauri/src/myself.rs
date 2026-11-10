@@ -10,6 +10,7 @@
 use crate::{commands, AppState};
 use openclicky_llm::ToolDef;
 use serde_json::{json, Map, Value};
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 const TABS: &[(&str, &str)] = &[
@@ -33,18 +34,22 @@ const TABS: &[(&str, &str)] = &[
 pub fn tool() -> ToolDef {
     ToolDef {
         name: "pixie".into(),
-        description: "You, Pixie: your own settings and facts about you, changed instantly in-process. Never click through your own Settings window to change something; use this.\n\
-action=about: everything about you right now (version, what you can do, shortcuts, voice, model, permissions, apps, connectors, experiments, updates, usage, every setting with its value). Use it when they ask about you or before answering how you're set up.\n\
-action=set with changes={key: value, …} (several at once). Keys: speak_answers, look_at_screen, can_click (click and type for them), auto_update, muted (bool) · buddy (always | idle | off) · name (what to call them) · voice (a natural voice: Heart, Bella, Nicole, Sarah, Michael, Fenrir, Emma, George; or \"system\") · voice_speed (natural voice, 0.8–1.3) · speech_rate (system voice, 0.4–0.65) · volume (sounds, 0–1.5) · language (listening locale like en-US, or auto) · talk_shortcut, dictate_shortcut (chords like ctrl+option, fn+ctrl, cmd+shift) · provider (claude | openai | deepseek, needs its key) · model, agents_model (model ids for voice / background work) · backup_model (provider:model, or none) · coding_agent (auto | codex | claude | opencode) · coding_folder · memory (auto = also learns from chats | manual = only when they say remember | off) · new_chat_at (when today's chat ends and a new one starts: an hour like 0 or \"midnight\", \"4am\", \"06:00\") · persona (Pix = friendly default | Inos = nerdy | Xtrem = chaotic and witty | Eon = concise) · spicy (Xtrem may swear mildly) · drawing (how readily you draw on the canvas: asked | helps | often) · calendar, reminders, contacts, mail (Apps, Mac) · connector:<id> (switch an added connector on/off). Say what changed in a few words.\n\
-action=open page=general | voice | sounds | memory | models | usage | coding | permissions | apps | connectors | experimental | about | canvas: open that page for them (API keys, permissions and sign-ins are done there by them).\n\
-action=check_updates, action=restart_to_update. action=new_chat: start a fresh conversation (\"new chat\", \"start over\"); today's chat otherwise carries on all day.\n\
-action=quit: quit Pixie (when they say quit, exit, close or turn off Pixie, or that they're done with you for now); say a short goodbye, it quits once you've said it. action=stop_all: stop every running job and live agent (\"stop working\", \"stop everything\").".into(),
+        description: "You, Pixie: your own settings and facts, changed instantly (never click through your own Settings window).\n\
+about: everything about you now (version, abilities, shortcuts, voice, model, permissions, apps, connectors, updates, usage, every setting and value). Use it before answering how you're set up.\n\
+set changes={key: value, …}: speak_answers, look_at_screen, can_click, auto_update, muted, spicy (Xtrem swears mildly), connectors (the Experimental switch) as bools · buddy (always|idle|off) · name (what to call them) · voice (Heart, Bella, Nicole, Sarah, Michael, Fenrir, Emma, George, system) · voice_speed (0.8–1.3) · voice_loudness (quiet|normal|loud) · speech_rate (system voice 0.4–0.65) · volume (sounds 0–1.5) · language (en-US… or auto) · talk_shortcut, dictate_shortcut (ctrl+option, fn+ctrl…) · dictate_mode (hold|toggle: press to start, press to stop) · dictate_live (bool, the Experimental switch: type as you speak, else typed when done) · notch_screen (follow|builtin|external|a screen's name: where the notch opens) · typed_answers (spoken|text: how typed questions are answered) · show_typed_text (bool) · provider (claude|openai|deepseek|opencode = free models through opencode on this computer) · model, agents_model, backup_model (provider:model or none) · coding_agent (auto|codex|claude|opencode), coding_folder · memory (auto|manual|off) · new_chat_at (an hour) · persona (pix friendly|inos nerdy|xtrem witty|eon concise) · drawing (asked|helps|often) · calendar, reminders, contacts, mail · connector:<id>. Say what changed in a few words; never claim a change this call didn't make.\n\
+open page=general|voice|sounds|memory|models|usage|coding|permissions|apps|connectors|experimental|about|canvas (keys, permissions and sign-ins are theirs to do there).\n\
+jobs (every job: state, progress, plan, which coding agent did the work, report, errors; id=<job id or title> adds its note): use it before answering how a job is going or what it did.\n\
+check_updates, restart_to_update, new_chat (fresh conversation), stop_all (every job and live agent), quit (when they say quit, exit or close you; say a short bye first).\n\
+checkup (\"check yourself\", \"is everything working?\"): helper, permissions, model, voice, disk, recent problems; it fixes what it can. issues: problems you worked around lately. report what=<their words> browser=<chrome|safari|arc|firefox…>: opens a GitHub issue in their browser, filled in with what happened, your version and log lines (personal paths, keys and emails removed); they read it and press Submit themselves. Ask which browser they're signed in to GitHub in if they haven't said.".into(),
         input_schema: json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["about", "set", "open", "check_updates", "restart_to_update", "quit", "stop_all", "new_chat"] },
+                "action": { "type": "string", "enum": ["about", "set", "open", "jobs", "check_updates", "restart_to_update", "quit", "stop_all", "new_chat", "checkup", "issues", "report"] },
                 "changes": { "type": "object", "description": "set: key → new value" },
-                "page": { "type": "string" }
+                "what": { "type": "string", "description": "report: what went wrong, in their words" },
+                "browser": { "type": "string", "description": "report: the browser they use GitHub in" },
+                "page": { "type": "string" },
+                "id": { "type": "string", "description": "jobs: one job's id or title" }
             },
             "required": ["action"]
         }),
@@ -54,6 +59,7 @@ action=quit: quit Pixie (when they say quit, exit, close or turn off Pixie, or t
 pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
     match input.get("action").and_then(Value::as_str).unwrap_or("about") {
         "about" => Ok(about(app).await),
+        "jobs" => Ok(jobs_report(app, input.get("id").and_then(Value::as_str).unwrap_or(""))),
         "set" => {
             let changes = input.get("changes").and_then(Value::as_object).cloned().unwrap_or_default();
             if changes.is_empty() {
@@ -83,6 +89,13 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         "stop_all" => {
             let n = stop_jobs(app);
             Ok(if n == 0 { "Nothing was running.".into() } else { format!("Stopped {n} job(s).") })
+        }
+        "checkup" => Ok(crate::heal::summary(&checkup(app).await)),
+        "issues" => Ok(issues_report(app)),
+        "report" => {
+            let s = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            let opened = open_report(app, &s("what"), &s("browser"))?;
+            Ok(format!("The issue page is open in {opened}, filled in. Tell them to read it, change anything they like, and press Submit if they're happy; you don't post it."))
         }
         other => Err(format!("Unknown action \"{other}\".")),
     }
@@ -169,6 +182,190 @@ fn on_off(b: bool) -> &'static str {
 }
 
 /// Apply changes; every key is checked first, the good ones are applied, the bad ones explained.
+/// Their jobs for Pixie: every job with state, progress, plan, who coded, the report and any
+/// error; with an id, that job's note too.
+fn jobs_report(app: &AppHandle, id: &str) -> String {
+    let st = app.state::<AppState>();
+    let all = st.jobs.list();
+    if all.is_empty() {
+        return "No jobs yet.".into();
+    }
+    let detail = |j: &crate::jobs::JobView, full: bool| {
+        let mut s = format!("{}\n  brief: {}", j.line(), j.instructions.chars().take(if full { 1200 } else { 160 }).collect::<String>());
+        if !j.plan.is_empty() {
+            let steps: Vec<String> = j.plan.iter().map(|p| format!("{} [{:?}]", p.label, p.status).to_lowercase()).collect();
+            s.push_str(&format!("\n  plan: {}", steps.join("; ")));
+        }
+        if let Some(q) = &j.question {
+            s.push_str(&format!("\n  asking them: {}", q.question));
+        }
+        if let Some(r) = &j.report {
+            s.push_str(&format!("\n  report: {}", r.body.chars().take(if full { 1500 } else { 300 }).collect::<String>()));
+            if !r.artifacts.is_empty() {
+                s.push_str(&format!("\n  made: {}", r.artifacts.join(", ")));
+            }
+        }
+        if let Some(e) = &j.error {
+            s.push_str(&format!("\n  error: {e}"));
+        }
+        if full {
+            let note = std::fs::read_to_string(j.cwd.join("note.md")).unwrap_or_default();
+            if !note.trim().is_empty() {
+                s.push_str(&format!("\n  note:\n{}", note.chars().take(3000).collect::<String>()));
+            }
+        }
+        s
+    };
+    if !id.is_empty() {
+        return match all.iter().find(|j| j.id == id || j.title.eq_ignore_ascii_case(id)) {
+            Some(j) => detail(j, true),
+            None => format!("No job {id}. Jobs: {}", all.iter().map(|j| format!("{} ({})", j.title, j.id)).collect::<Vec<_>>().join(", ")),
+        };
+    }
+    all.iter().take(10).map(|j| detail(j, false)).collect::<Vec<_>>().join("\n")
+}
+
+/// Pick the provider's real model for what they said: an exact id, the same id or official name
+/// ignoring case and punctuation ("deepseek v4.1 flash" → deepseek-flash, whose name is
+/// DeepSeek-V4.1-Flash), else the first model (newest) whose id and name hold every word.
+pub fn pick_model(list: &[(String, String)], wanted: &str) -> Option<String> {
+    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let w = wanted.trim();
+    if let Some((id, _)) = list.iter().find(|(id, _)| id == w) {
+        return Some(id.clone());
+    }
+    let nw = norm(w);
+    if let Some((id, _)) = list.iter().find(|(id, name)| norm(id) == nw || (!name.is_empty() && norm(name) == nw)) {
+        return Some(id.clone());
+    }
+    let words: Vec<String> = w.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|x| !x.is_empty()).map(str::to_string).collect();
+    if words.is_empty() {
+        return None;
+    }
+    list.iter()
+        .find(|(id, name)| {
+            let hay = format!("{id} {name}").to_lowercase();
+            words.iter().all(|x| hay.contains(x.as_str()))
+        })
+        .map(|(id, _)| id.clone())
+}
+
+/// What they named → that provider's real model id, from its live list. An error lists a few
+/// it does have, so a name from another provider (an opencode id on DeepSeek) is never saved.
+pub async fn resolve_model(app: &AppHandle, provider: &str, wanted: &str) -> Result<String, String> {
+    let st = app.state::<AppState>();
+    let list: Vec<(String, String)> = if provider == "opencode" {
+        crate::opencode::refresh_models(app).await?.iter().map(|m| (m["id"].as_str().unwrap_or("").to_string(), m["name"].as_str().unwrap_or("").to_string())).collect()
+    } else {
+        let settings = st.settings.lock().map(|s| s.clone()).unwrap_or_default();
+        crate::usage::fetch_models(&st.data_dir, &settings, provider)
+            .await?
+            .iter()
+            .map(|m| (m["id"].as_str().unwrap_or("").to_string(), m["name"].as_str().unwrap_or("").to_string()))
+            .collect()
+    };
+    pick_model(&list, wanted).ok_or_else(|| {
+        let some: Vec<&str> = list.iter().take(6).map(|(id, _)| id.as_str()).collect();
+        format!("{provider} has no model like \"{wanted}\"; it has {}", some.join(", "))
+    })
+}
+
+/// Drop talk / agents model choices the provider doesn't have (a name left from another
+/// provider, or a model it retired), so it falls back to its default. True when one was dropped.
+pub async fn check_choices(app: &AppHandle, provider: &str) -> bool {
+    let st = app.state::<AppState>();
+    let cur = st.settings.lock().map(|s| s.clone()).unwrap_or_default();
+    let Some(choice) = cur.models.get(provider).cloned().filter(|c| !c.fast.is_empty() || !c.deep.is_empty()) else { return false };
+    let ids: Vec<String> = if provider == "opencode" {
+        match crate::opencode::refresh_models(app).await {
+            Ok(m) => m.iter().filter_map(|x| x["id"].as_str().map(str::to_string)).collect(),
+            Err(_) => return false,
+        }
+    } else {
+        match crate::usage::fetch_models(&st.data_dir, &cur, provider).await {
+            Ok(m) => m.iter().filter_map(|x| x["id"].as_str().map(str::to_string)).collect(),
+            Err(_) => return false,
+        }
+    };
+    if ids.is_empty() {
+        return false;
+    }
+    let mut fixed = choice.clone();
+    let mut gone = Vec::new();
+    for (slot, label) in [(&mut fixed.fast, "talk"), (&mut fixed.deep, "agents")] {
+        if !slot.is_empty() && !ids.contains(slot) {
+            // A retired model: the newest of the same family takes over; else the default.
+            match successor(slot, &ids) {
+                Some(next) => {
+                    gone.push(format!("The {label} model {slot} is retired on {provider}; using {next}, the newest of its family"));
+                    *slot = next;
+                }
+                None => {
+                    gone.push(format!("The {label} model {slot} isn't available on {provider}; using its default"));
+                    slot.clear();
+                }
+            }
+        }
+    }
+    if gone.is_empty() {
+        return false;
+    }
+    let mut models = cur.models.clone();
+    models.insert(provider.to_string(), fixed);
+    if commands::settings_set(app.clone(), json!({ "models": models })).is_ok() {
+        crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
+        let msg = format!("{}.", gone.join(". "));
+        crate::heal::note("model", &msg, "Switched the model", "");
+        log::warn!("models: {msg}");
+        crate::jobs::toast(app, &msg, "info", None);
+    }
+    true
+}
+
+/// A model id's family and version: `claude-sonnet-4-5-20250929` is (claude sonnet, [4, 5]);
+/// `gpt-5.1-mini` is (gpt mini, [5, 1]). Dates and other long numbers aren't the version.
+fn family(id: &str) -> (String, Vec<u32>) {
+    let id = id.rsplit('/').next().unwrap_or(id).to_lowercase();
+    let mut words = vec![];
+    let mut version = vec![];
+    for part in id.split(['-', '.', '_', ':', ' ']).filter(|p| !p.is_empty()) {
+        if part.chars().all(|c| c.is_ascii_digit()) {
+            if part.len() <= 3 {
+                version.push(part.parse().unwrap_or(0));
+            }
+        } else if let Some(n) = part.strip_prefix('v').filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
+            version.push(n.parse().unwrap_or(0));
+        } else {
+            // "4o" and the like: keep the word, the number is part of the name.
+            words.push(part.to_string());
+        }
+    }
+    (words.join(" "), version)
+}
+
+/// The newest model of `old`'s family in `ids` (for a retired id), preferring the plain alias
+/// over a dated snapshot of the same version.
+pub fn successor(old: &str, ids: &[String]) -> Option<String> {
+    let (fam, _) = family(old);
+    if fam.is_empty() {
+        return None;
+    }
+    ids.iter()
+        .filter(|id| id.as_str() != old)
+        .filter_map(|id| {
+            let (f, v) = family(id);
+            (f == fam).then(|| (v, std::cmp::Reverse(id.len()), id.clone()))
+        })
+        .max()
+        .map(|(_, _, id)| id)
+}
+
+/// The provider said the model doesn't exist (a wrong or retired model id).
+pub fn model_missing(e: &str) -> bool {
+    let e = e.to_lowercase();
+    e.contains("model") && ["not exist", "not found", "does not exist", "invalid model", "unknown model", "unavailable", "no such model"].iter().any(|k| e.contains(k))
+}
+
 async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, String> {
     let st = app.state::<AppState>();
     let data = st.data_dir.clone();
@@ -183,6 +380,71 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
         let key = raw.trim().to_lowercase().replace([' ', '-'], "_");
         let mut fail = |why: String| bad.push(format!("{raw}: {why}"));
         match key.as_str() {
+            "dictate_mode" | "dictation_mode" | "dictate_toggle" => {
+                let w = v.as_str().map(str::to_lowercase).unwrap_or_default();
+                let mode = match (w.as_str(), as_bool(v)) {
+                    ("toggle" | "press" | "tap" | "start stop" | "hands free", _) | (_, Some(true)) => Some("toggle"),
+                    ("hold" | "push" | "push to talk", _) | (_, Some(false)) => Some("hold"),
+                    _ => None,
+                };
+                match mode {
+                    Some(m) => {
+                        patch.insert("dictate_mode".into(), json!(m));
+                        done.push(if m == "toggle" { "dictation now starts and stops with a press".into() } else { "dictation is hold to talk again".to_string() });
+                    }
+                    None => fail("hold or toggle".into()),
+                }
+            }
+            "typed_answers" | "typed_replies" | "reply_mode" => {
+                let w = v.as_str().map(str::to_lowercase).unwrap_or_default();
+                let mode = match (w.as_str(), as_bool(v)) {
+                    ("text" | "typed" | "written" | "write" | "same", _) | (_, Some(true)) => Some("text"),
+                    ("spoken" | "voice" | "speak" | "out loud" | "aloud", _) | (_, Some(false)) => Some("spoken"),
+                    _ => None,
+                };
+                match mode {
+                    Some(m) => {
+                        patch.insert("typed_answers".into(), json!(m));
+                        done.push(if m == "text" { "typed questions get typed answers".into() } else { "typed questions are answered out loud".to_string() });
+                    }
+                    None => fail("text or spoken".into()),
+                }
+            }
+            "notch_screen" | "notch_on" | "notch_display" => {
+                let w = v.as_str().unwrap_or("").trim().to_lowercase();
+                let pick = match w.as_str() {
+                    "follow" | "auto" | "current" | "the one i'm using" | "mine" | "" => Some("follow".to_string()),
+                    "builtin" | "built-in" | "built in" | "laptop" | "internal" | "main" => Some("builtin".to_string()),
+                    other => crate::screen::displays(app).into_iter().map(|d| d.name).find(|n| n.to_lowercase().contains(other)).or_else(|| (other == "external" || other == "monitor").then(|| crate::screen::displays(app).into_iter().find(|d| !d.name.to_lowercase().contains("built")).map(|d| d.name)).flatten()),
+                };
+                match pick {
+                    Some(p) => {
+                        done.push(match p.as_str() {
+                            "follow" => "the notch now opens on the screen you're using".to_string(),
+                            "builtin" => "the notch stays on the built-in screen".to_string(),
+                            n => format!("the notch stays on {n}"),
+                        });
+                        patch.insert("notch_screen".into(), json!(p));
+                    }
+                    None => fail("follow, builtin, or a connected screen's name".into()),
+                }
+            }
+            "dictate_live" | "type_as_you_speak" | "live_dictation" | "live_typing" => match as_bool(v) {
+                Some(b) => {
+                    let mut ex = app.state::<AppState>().settings.lock().map(|s| s.experimental.clone()).unwrap_or_default();
+                    ex.insert(crate::session::LIVE_TYPING.into(), b);
+                    patch.insert("experimental".into(), json!(ex));
+                    done.push(if b { "dictated words now appear as you speak".into() } else { "dictation types when you're done".to_string() });
+                }
+                None => fail("on or off".into()),
+            },
+            "show_typed_text" | "show_text" | "show_answers" => match as_bool(v) {
+                Some(b) => {
+                    patch.insert("show_typed_text".into(), json!(b));
+                    done.push(format!("showing typed answers in the notch {}", on_off(b)));
+                }
+                None => fail("on or off".into()),
+            },
             "speak_answers" | "speak" | "talk_back" => match as_bool(v) {
                 Some(b) => {
                     patch.insert("speak_answers".into(), json!(b));
@@ -283,6 +545,22 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
                 }
                 None => fail("a number 0.8–1.3".into()),
             },
+            "voice_loudness" | "loudness" | "voice_volume" | "speech_volume" => {
+                let l = v.as_str().unwrap_or("").to_lowercase();
+                let level = match l.as_str() {
+                    "quiet" | "low" | "soft" | "quieter" | "softer" => Some("quiet"),
+                    "normal" | "medium" | "default" => Some("normal"),
+                    "loud" | "high" | "louder" | "max" => Some("loud"),
+                    _ => None,
+                };
+                match level {
+                    Some(l) => {
+                        patch.insert("voice_loudness".into(), json!(l));
+                        done.push(format!("voice loudness {l}"));
+                    }
+                    None => fail("quiet, normal or loud".into()),
+                }
+            }
             "speech_rate" | "system_voice_speed" => match as_num(v) {
                 Some(n) => {
                     let n = n.clamp(0.4, 0.65);
@@ -328,10 +606,18 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
                 let p = match p.as_str() {
                     "anthropic" => "claude".to_string(),
                     "chatgpt" | "gpt" => "openai".to_string(),
+                    "open code" | "open-code" | "local" | "free" => "opencode".to_string(),
                     _ => p,
                 };
-                if !matches!(p.as_str(), "claude" | "openai" | "deepseek") {
-                    fail("claude, openai or deepseek".into());
+                if p == "opencode" {
+                    if crate::opencode::binary().is_some() {
+                        patch.insert("provider".into(), json!("opencode"));
+                        done.push("using opencode on this computer (free models)".into());
+                    } else {
+                        fail("opencode isn't installed on this computer".into());
+                    }
+                } else if !matches!(p.as_str(), "claude" | "openai" | "deepseek") {
+                    fail("claude, openai, deepseek or opencode".into());
                 } else if crate::config::key_for(&data, &cur, &p).is_none() {
                     fail(format!("there's no {p} key yet; they add it in Settings → Models"));
                 } else {
@@ -339,22 +625,32 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
                     done.push(format!("using {p}"));
                 }
             }
-            "model" | "voice_model" | "agents_model" | "deep_model" | "jobs_model" => match as_str(v).filter(|s| !s.is_empty() && !s.contains(char::is_whitespace)) {
+            "model" | "voice_model" | "agents_model" | "deep_model" | "jobs_model" => match as_str(v).filter(|s| !s.trim().is_empty()) {
                 Some(m) => {
-                    let provider = patch.get("provider").and_then(Value::as_str).map(str::to_string).or_else(|| crate::config::provider_config(&data, &cur).map(|c| c.kind.id().to_string()));
+                    let provider = patch
+                        .get("provider")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        .or_else(|| (cur.provider == "opencode").then(|| "opencode".to_string()))
+                        .or_else(|| crate::config::provider_config(&data, &cur).map(|c| c.kind.id().to_string()));
                     match provider {
-                        Some(p) => {
-                            let mut models = cur.models.clone();
-                            let e = models.entry(p.clone()).or_default();
-                            let deep = matches!(key.as_str(), "agents_model" | "deep_model" | "jobs_model");
-                            if deep {
-                                e.deep = m.clone();
-                            } else {
-                                e.fast = m.clone();
+                        Some(p) => match resolve_model(app, &p, &m).await {
+                            Ok(id) => {
+                                // Build on models already changed in this call (talk and agents at once).
+                                let mut models: std::collections::BTreeMap<String, crate::config::ModelChoice> =
+                                    patch.get("models").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_else(|| cur.models.clone());
+                                let e = models.entry(p.clone()).or_default();
+                                let deep = matches!(key.as_str(), "agents_model" | "deep_model" | "jobs_model");
+                                if deep {
+                                    e.deep = id.clone();
+                                } else {
+                                    e.fast = id.clone();
+                                }
+                                patch.insert("models".into(), serde_json::to_value(models).unwrap_or_default());
+                                done.push(format!("{} model {id} ({p})", if deep { "agents" } else { "voice" }));
                             }
-                            patch.insert("models".into(), serde_json::to_value(models).unwrap_or_default());
-                            done.push(format!("{} model {m} ({p})", if deep { "agents" } else { "voice" }));
-                        }
+                            Err(e) => bad.push(format!("{key}: {e}")),
+                        },
                         None => fail("no model provider is set up yet".into()),
                     }
                 }
@@ -480,6 +776,15 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
                 Some(_) => fail("Mac only; on Windows and Linux use the Google account".into()),
                 None => fail("on or off".into()),
             },
+            "connectors" | "connectors_enabled" | "experimental_connectors" => match as_bool(v) {
+                Some(b) => {
+                    let mut ex = app.state::<AppState>().settings.lock().map(|s| s.experimental.clone()).unwrap_or_default();
+                    ex.insert(crate::connectors::FLAG.into(), b);
+                    patch.insert("experimental".into(), json!(ex));
+                    done.push(format!("connectors {}", on_off(b)));
+                }
+                None => fail("on or off".into()),
+            },
             k if k.starts_with("connector:") || k.starts_with("connector_") => match as_bool(v) {
                 Some(b) => connectors.push((raw.trim()[10..].to_string(), b)),
                 None => fail("on or off".into()),
@@ -563,7 +868,7 @@ async fn about(app: &AppHandle) -> String {
         format!("system voice (rate {:.2}){}", s.speech_rate, if crate::kokoro::installed(&data) { "" } else { "; the natural voice isn't downloaded" })
     } else {
         let name = crate::kokoro::VOICES.iter().find(|v| v.0 == s.kokoro_voice).map(|v| v.1).unwrap_or("Heart");
-        format!("natural voice {name}, speed {:.2}×", s.voice_speed)
+        format!("natural voice {name}, speed {:.2}×, loudness {}", s.voice_speed, s.voice_loudness)
     };
     let perms = crate::permissions::permissions_status(app.clone())
         .await
@@ -613,7 +918,7 @@ WHAT YOU DO\n\
 \n\
 HOW YOU'RE SET UP NOW\n\
 - Model: {model}; backup {fallback}. Providers: Claude, OpenAI, DeepSeek (keys in Settings → Models).\n\
-- Voice: {voice}; speak answers {speak}; listening language {locale}.\n\
+- Voice: {voice}; speak answers {speak}; typed questions answered {typed}; listening language {locale}.\n\
 - Buddy pointer: {buddy}; click and type for them: {click}; look at the screen when asked: {screen}.\n\
 - Sounds: volume {vol}%, {muted}.\n\
 - Calling them: {name}.\n\
@@ -629,6 +934,7 @@ HOW YOU'RE SET UP NOW\n\
 \n\
 Change any of it with action=set; API keys, permissions and sign-ins are done by them on the page (action=open).",
         speak = on_off(s.speak_answers),
+        typed = if s.typed_answers == "text" { format!("in text ({} in the notch)", if s.show_typed_text { "shown" } else { "not shown" }) } else { "out loud".to_string() },
         buddy = if !s.buddy { "off" } else { s.buddy_mode.as_str() },
         click = on_off(s.can_click),
         screen = on_off(s.share_screen),
@@ -636,7 +942,13 @@ Change any of it with action=set; API keys, permissions and sign-ins are done by
         muted = if s.muted { "muted" } else { "not muted" },
         name = if s.user_name.is_empty() { "no name set" } else { &s.user_name },
         google = if google["signed_in"].as_bool().unwrap_or(false) { "signed in" } else { "not signed in" },
-        conns = if conns.is_empty() { "none added".to_string() } else { conns.join(", ") },
+        conns = if !s.experiment(crate::connectors::FLAG) {
+            "switched off (Settings → Experimental → Connectors; set connectors=true to show and run them)".to_string()
+        } else if conns.is_empty() {
+            "on, none added".to_string()
+        } else {
+            conns.join(", ")
+        },
         persona = persona_name(&s.persona),
         spicy = if s.persona == "xtrem" { if s.spicy { ", spicy" } else { ", clean" } } else { "" },
         drawing = match s.canvas_use.as_str() { "asked" => "only when asked", "often" => "often", _ => "when it helps" },
@@ -734,23 +1046,102 @@ pub fn quick(text: &str) -> Option<Quick> {
     }
 }
 
-/// "switch to Eon", "switch back to Pix", "be Xtrem", "use Inos", "Inos mode".
-fn persona_command(clean: &str) -> Option<&'static str> {
-    let words: Vec<&str> = clean.split_whitespace().collect();
-    let id = |w: &str| match w {
-        "pix" | "pixie" | "pixi" => Some("pix"),
-        "inos" | "eenos" | "inose" => Some("inos"),
-        "xtrem" | "extreme" | "xtreme" => Some("xtrem"),
-        "eon" | "ion" | "eeon" => Some("eon"),
+/// A persona named in speech: the names (and how speech recognition tends to hear them), or a
+/// description followed by "one", "mode" or "personality" ("the calm one").
+fn persona_word(words: &[&str], i: usize) -> Option<&'static str> {
+    let w = words[i];
+    let next = words.get(i + 1).copied().unwrap_or("");
+    let prev = if i > 0 { words[i - 1] } else { "" };
+    let by_name = match w {
+        "pix" | "pics" | "picks" | "pixs" => Some("pix"),
+        "inos" | "eenos" | "inose" | "ino's" | "enos" | "eno's" | "eanos" | "inos's" | "ee-nos" | "inous" | "eno" => Some("inos"),
+        "xtrem" | "extreme" | "xtreme" | "extrem" | "x-trem" => Some("xtrem"),
+        "eon" | "eeon" | "aeon" | "ion" | "eon's" | "eons" => Some("eon"),
+        // "Pixie" is how they address it; it names the default only as "back to Pixie" / "be Pixie".
+        "pixie" | "pixi" if matches!(prev, "to" | "be" | "become" | "normal" | "regular" | "usual" | "old" | "original") && i + 1 == words.len() => Some("pix"),
         _ => None,
     };
-    const VERB: &[&str] = &["switch", "change", "be", "become", "use", "go", "turn"];
-    const FILL: &[&str] = &["hey", "ok", "okay", "please", "now", "back", "to", "into", "the", "can", "you", "could", "would", "your", "personality", "persona", "mode", "style", "set", "as", "and", "just", "again", "pixie", "pixi"];
-    let target = words.iter().rev().find_map(|w| id(w))?;
-    let has_verb = words.iter().any(|w| VERB.contains(w));
-    let mode_word = words.last().is_some_and(|w| matches!(*w, "mode" | "personality"));
-    let rest_ok = words.iter().all(|w| VERB.contains(w) || FILL.contains(w) || id(w).is_some());
-    (rest_ok && (has_verb || mode_word) && words.len() <= 8).then_some(target)
+    if by_name.is_some() {
+        return by_name;
+    }
+    if !matches!(next, "one" | "mode" | "personality" | "persona" | "version" | "self" | "pixie" | "you") && !matches!(prev, "to" | "be") {
+        return None;
+    }
+    match w {
+        "normal" | "default" | "regular" | "usual" | "friendly" | "original" | "old" | "warm" => Some("pix"),
+        "nerdy" | "nerd" | "geeky" | "geek" | "smart" | "intelligent" | "curious" => Some("inos"),
+        "chaotic" | "funny" | "witty" | "crazy" | "wild" | "mischievous" | "spicy" => Some("xtrem"),
+        "calm" | "concise" | "brief" | "short" | "precise" | "minimal" | "quiet" => Some("eon"),
+        _ => None,
+    }
+}
+
+const SWITCH: &[&str] = &["switch", "change", "be", "become", "use", "go", "turn", "talk", "sound", "act", "set", "make", "want", "bring", "put"];
+
+/// The whole request is a persona switch: "switch to Eon", "switch back to Pix", "be Xtrem",
+/// "Inos mode", "talk like the nerdy one", "go back to normal Pixie".
+fn persona_command(clean: &str) -> Option<&'static str> {
+    let words: Vec<&str> = clean.split_whitespace().collect();
+    const FILL: &[&str] = &[
+        "hey", "hi", "ok", "okay", "please", "now", "back", "to", "into", "the", "can", "you", "could", "would", "your", "personality", "persona", "mode", "style",
+        "as", "and", "just", "again", "pixie", "pixi", "like", "one", "version", "self", "yourself", "i", "i'd", "let's", "lets", "me", "my", "it", "a", "bit", "more", "of",
+        "with", "on", "from", "for", "time", "instead", "voice", "be", "switch",
+    ];
+    if words.len() > 12 || words.first().is_some_and(|w| matches!(*w, "what" | "who" | "why" | "how" | "does" | "is" | "tell" | "explain" | "which")) {
+        return None;
+    }
+    let target = (0..words.len()).rev().find_map(|i| persona_word(&words, i))?;
+    let has_verb = words.iter().any(|w| SWITCH.contains(w));
+    let mode_word = words.last().is_some_and(|w| matches!(*w, "mode" | "personality" | "persona"));
+    let rest_ok = words.iter().enumerate().all(|(i, w)| SWITCH.contains(w) || FILL.contains(w) || persona_word(&words, i).is_some() || DESCRIBE.contains(w));
+    (rest_ok && (has_verb || mode_word)).then_some(target)
+}
+
+const DESCRIBE: &[&str] = &[
+    "normal", "default", "regular", "usual", "friendly", "original", "old", "warm", "nerdy", "nerd", "geeky", "geek", "smart", "intelligent", "curious", "chaotic", "funny", "witty", "crazy",
+    "wild", "mischievous", "spicy", "calm", "concise", "brief", "short", "precise", "minimal", "quiet",
+];
+
+/// A persona switch asked for inside a longer request ("ok switch back to Pix and tell me a
+/// joke"): a switch word a few words before the persona. Used after the model's turn, so the
+/// setting really changes even when the model only said it did.
+pub fn persona_intent(text: &str) -> Option<&'static str> {
+    let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '\'' || c == '-' { c } else { ' ' }).collect();
+    let words: Vec<&str> = clean.split_whitespace().collect();
+    if words.first().is_some_and(|w| matches!(*w, "what" | "who" | "why" | "how" | "does" | "is" | "which")) {
+        return None;
+    }
+    (0..words.len()).find_map(|i| {
+        let p = persona_word(&words, i)?;
+        let from = i.saturating_sub(5);
+        let before = &words[from..i];
+        let asked = before.iter().any(|w| matches!(*w, "switch" | "change" | "become" | "personality" | "persona"))
+            || before.windows(2).any(|w| matches!(w[0], "talk" | "sound" | "act") && w[1] == "like")
+            || i > 0 && words[i - 1] == "be";
+        asked.then_some(p)
+    })
+}
+
+/// Switch personality now (Settings, the notch face and every open window follow).
+pub fn set_persona(app: &AppHandle, p: &str) -> Result<(), String> {
+    commands::settings_set(app.clone(), json!({ "persona": p }))?;
+    crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
+    Ok(())
+}
+
+/// After a turn: they asked for a personality in a longer request and the model didn't switch
+/// (or only said it did). Make it true.
+pub fn ensure_persona(app: &AppHandle, asked: &str) {
+    let Some(p) = persona_intent(asked) else { return };
+    let cur = app.state::<AppState>().settings.lock().map(|s| s.persona.clone()).unwrap_or_default();
+    let cur = if cur.is_empty() { "pix".to_string() } else { cur };
+    if cur == p {
+        return;
+    }
+    log::info!("persona: asked for {p} but it's still {cur}; switching");
+    if set_persona(app, p).is_ok() {
+        crate::jobs::toast(app, &format!("Personality: {}", persona_name(p)), "info", None);
+    }
 }
 
 pub fn run_quick(app: &AppHandle, q: Quick) {
@@ -765,11 +1156,10 @@ pub fn run_quick(app: &AppHandle, q: Quick) {
         }
         Quick::Hush => crate::session::escape(app),
         Quick::Persona(p) => {
-            if let Err(e) = commands::settings_set(app.clone(), json!({ "persona": p })) {
+            if let Err(e) = set_persona(app, p) {
                 crate::jobs::toast(app, &e, "error", None);
                 return;
             }
-            crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
             let line = match p {
                 "inos" => "Inos here. Ask me anything.",
                 "xtrem" => "Xtrem's in the house.",
@@ -814,11 +1204,34 @@ mod tests {
         assert_eq!(quick("switch back to pixie"), Some(Quick::Persona("pix")));
         assert_eq!(quick("what does eon mean"), None);
         assert_eq!(quick("use the eon theme in VS Code"), None);
+        assert_eq!(quick("talk like the nerdy one"), Some(Quick::Persona("inos")));
+        assert_eq!(quick("go back to normal pixie"), Some(Quick::Persona("pix")));
+        assert_eq!(quick("can you be the calm one please"), Some(Quick::Persona("eon")));
+        assert_eq!(quick("switch to extreme mode"), Some(Quick::Persona("xtrem")));
+        assert_eq!(quick("Switch to Eno's."), Some(Quick::Persona("inos")));
+        assert_eq!(quick("hey pixie what's the weather"), None);
+        assert_eq!(quick("who is inos"), None);
+        assert_eq!(persona_intent("ok switch back to Pix and tell me a joke"), Some("pix"));
+        assert_eq!(persona_intent("change your personality to Eon, then open Safari"), Some("eon"));
+        assert_eq!(persona_intent("open the extreme sports video"), None);
+        assert_eq!(persona_intent("put on the extreme sports video"), None);
+        assert_eq!(persona_intent("what does eon mean"), None);
         assert_eq!(hour_of(&json!("midnight")), Some(0));
         assert_eq!(hour_of(&json!("4am")), Some(4));
         assert_eq!(hour_of(&json!("6 pm")), Some(18));
         assert_eq!(hour_of(&json!("06:00")), Some(6));
         assert_eq!(hour_of(&json!(25)), None);
+    }
+
+    #[test]
+    fn model_names_resolve_to_real_ids() {
+        let list = vec![("deepseek-flash".to_string(), "DeepSeek-V4.1-Flash".to_string()), ("deepseek-v4-pro".to_string(), "DeepSeek V4 Pro".to_string())];
+        assert_eq!(pick_model(&list, "deepseek-flash").as_deref(), Some("deepseek-flash"));
+        assert_eq!(pick_model(&list, "deepseek v4.1 flash").as_deref(), Some("deepseek-flash"));
+        assert_eq!(pick_model(&list, "DeepSeek V4 Pro").as_deref(), Some("deepseek-v4-pro"));
+        assert_eq!(pick_model(&list, "pro").as_deref(), Some("deepseek-v4-pro"));
+        // An opencode id isn't a DeepSeek model.
+        assert_eq!(pick_model(&list, "opencode/deepseek-v4.1-flash-free"), None);
     }
 
     #[test]
@@ -837,5 +1250,136 @@ mod tests {
         for page in ["general", "voice", "sounds", "models", "usage", "coding", "permissions", "apps", "connectors", "experimental", "about"] {
             assert!(TABS.iter().any(|(k, _)| *k == page), "{page}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tool_sizes {
+    #[test]
+    #[ignore]
+    fn print_voice_tool_sizes() {
+        let mut tools = openclicky_tools::defs::for_mode(openclicky_core::prompt::Mode::Voice, true);
+        tools.push(super::tool());
+        tools.push(crate::memory::tool());
+        tools.push(crate::canvas::tool());
+        let mut total = 0;
+        for t in &tools {
+            let n = serde_json::to_string(t).unwrap().len();
+            total += n;
+            println!("{:>6} {}", n, t.name);
+        }
+        println!("{total:>6} total");
+    }
+}
+
+
+/// Problems Pixie worked around lately, for "what went wrong?" and before a report.
+fn issues_report(app: &AppHandle) -> String {
+    let st = app.state::<AppState>();
+    let v = crate::heal::recent(&st.data_dir, 8);
+    if v.is_empty() {
+        return "No problems noted lately.".into();
+    }
+    v.iter()
+        .rev()
+        .map(|i| format!("{} · {}{}: {}. Workaround: {}", i.when, i.kind, if i.times > 1 { format!(" ({}x)", i.times) } else { String::new() }, i.what, i.workaround))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Open a pre-filled GitHub issue in their browser. They post it, not Pixie.
+pub fn open_report(app: &AppHandle, what: &str, browser: &str) -> Result<String, String> {
+    let st = app.state::<AppState>();
+    let (title, body) = crate::heal::draft(&st.data_dir, &st.os_version, what);
+    let url = crate::heal::issue_url(&title, &body);
+    log::info!("heal: report drafted ({} chars), opening in {}", url.len(), if browser.is_empty() { "default" } else { browser });
+    crate::heal::open_in(browser, &url)
+}
+
+/// "Check yourself": each part, fixing what can be fixed on the spot.
+pub async fn checkup(app: &AppHandle) -> Vec<crate::heal::Check> {
+    use crate::heal::Check;
+    let st = app.state::<AppState>();
+    let mut out = vec![];
+    // The helper: screen, speech, clicks (on Windows and Linux they're built in).
+    if cfg!(target_os = "macos") {
+        let ok = st.helper.call("cursor", json!({}), Duration::from_secs(2)).await.is_ok();
+        if ok {
+            out.push(Check { name: "Screen and speech helper", ok: true, detail: "answering".into() });
+        } else {
+            crate::helper::force_restart(app);
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            let again = st.helper.call("cursor", json!({}), Duration::from_secs(3)).await.is_ok();
+            crate::heal::note("helper", "The helper didn't answer a checkup", if again { "Restarted it" } else { "Restarted it; still not answering" }, "");
+            out.push(Check { name: "Screen and speech helper", ok: again, detail: if again { "wasn't answering; restarted it".into() } else { "not answering even after a restart; quit and reopen Pixie".into() } });
+        }
+    }
+    // Permissions.
+    let perms = crate::permissions::permissions_status(app.clone()).await;
+    let missing: Vec<String> = perms.iter().filter(|p| p.required && p.state != crate::permissions::PermState::Granted).map(|p| p.label.to_string()).collect();
+    out.push(Check {
+        name: "Permissions",
+        ok: missing.is_empty(),
+        detail: if missing.is_empty() { "all allowed".into() } else { format!("{} not allowed (Settings → Permissions)", missing.join(", ")) },
+    });
+    // One tiny model call.
+    match st.provider() {
+        None => out.push(Check { name: "Model", ok: false, detail: "no model set up (Settings → Models)".into() }),
+        Some(p) => {
+            let mut req = openclicky_llm::Request::new("Reply with the single word ok.", vec![openclicky_llm::Message::user_text("ok?")]);
+            req.max_tokens = 5;
+            req.effort = openclicky_llm::Effort::Fast;
+            let started = std::time::Instant::now();
+            let r = tokio::time::timeout(Duration::from_secs(25), p.complete(&req, &mut |_| {})).await;
+            let label = p.label();
+            out.push(match r {
+                Ok(Ok(_)) => Check { name: "Model", ok: true, detail: format!("{label} answered in {:.1} s", started.elapsed().as_secs_f64()) },
+                Ok(Err(e)) => {
+                    let why = crate::heal::classify(&e.to_string()).map(|(w, f)| format!("{w}. {f}")).unwrap_or_else(|| e.to_string().chars().take(160).collect());
+                    Check { name: "Model", ok: false, detail: format!("{label}: {why}") }
+                }
+                Err(_) => Check { name: "Model", ok: false, detail: format!("{label} didn't answer in 25 s") },
+            });
+        }
+    }
+    // The voice.
+    let s = st.settings.lock().map(|s| s.clone()).unwrap_or_default();
+    let v = crate::kokoro::status(app);
+    out.push(if s.voice_engine == "apple" || !v.supported {
+        Check { name: "Voice", ok: true, detail: "system voice".into() }
+    } else if v.ready {
+        Check { name: "Voice", ok: true, detail: "natural voice installed".into() }
+    } else {
+        Check { name: "Voice", ok: true, detail: "natural voice not installed, using the system voice (Settings → Voice)".into() }
+    });
+    // Connectors.
+    if crate::connectors::enabled(app) {
+        let n = crate::connectors::connected_names().len();
+        out.push(Check { name: "Connectors", ok: true, detail: format!("{n} connected") });
+    }
+    out.push(crate::heal::disk_check(&st.data_dir));
+    // What went wrong lately.
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let recent: Vec<_> = crate::heal::recent(&st.data_dir, 20).into_iter().filter(|i| i.when.starts_with(&today)).collect();
+    out.push(Check {
+        name: "Problems today",
+        ok: recent.is_empty(),
+        detail: if recent.is_empty() { "none".into() } else { recent.iter().map(|i| i.what.clone()).collect::<Vec<_>>().join("; ") },
+    });
+    log::info!("heal: checkup done, {} problem(s)", out.iter().filter(|c| !c.ok).count());
+    out
+}
+
+#[cfg(test)]
+mod successor_tests {
+    use super::successor;
+
+    #[test]
+    fn retired_models_go_to_the_newest_of_their_family() {
+        let ids: Vec<String> = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-5", "claude-sonnet-5-5-20260801", "claude-haiku-5-5", "deepseek-chat", "deepseek-flash"].map(String::from).to_vec();
+        assert_eq!(successor("claude-sonnet-4-5-20250929", &ids).as_deref(), Some("claude-sonnet-5-5"));
+        assert_eq!(successor("claude-3-5-haiku-20241022", &ids).as_deref(), Some("claude-haiku-5-5"));
+        assert_eq!(successor("deepseek-chat-v2", &ids).as_deref(), Some("deepseek-chat"));
+        assert_eq!(successor("gpt-4o", &ids), None);
     }
 }

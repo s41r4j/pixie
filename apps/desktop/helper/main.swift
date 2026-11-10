@@ -59,29 +59,66 @@ final class Listener {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var latest = ""
+    /// Earlier pieces of this hold. On-device recognition starts its transcript over after a
+    /// pause (and can end the task mid-hold); without this only the last sentence was kept.
+    private var committed = ""
+    private var current = ""
+    private var recognizer: SFSpeechRecognizer?
+    private var restarts = 0
     private var pendingStop: Any?
     private var running = false
     private var session = 0
     private var lastLevel = Date.distantPast
+    /// Type as you speak: partials go into the focused field as they come.
+    private var live = false
+    private var cachedRecognizer: (String, SFSpeechRecognizer)?
+    private var liveAsked = false
 
-    func start(locale: String?, onDevice: Bool, id: Any) {
+    /// Make the recognizer ahead of the first press (no microphone; Speech access already given).
+    func prewarm(locale: String?) {
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
+        let loc = locale.flatMap { $0.isEmpty ? nil : Locale(identifier: $0) } ?? Locale.current
+        if cachedRecognizer?.0 != loc.identifier, let r = SFSpeechRecognizer(locale: loc) ?? SFSpeechRecognizer() {
+            cachedRecognizer = (loc.identifier, r)
+        }
+        // The first touch of the input sets up the audio unit (~140 ms); it doesn't record, and
+        // the mic indicator stays off until a press starts the engine.
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized, !running {
+            _ = engine.inputNode.outputFormat(forBus: 0)
+        }
+    }
+
+    func start(locale: String?, onDevice: Bool, liveType: Bool = false, id: Any) {
         stopEngine()
         cancelTask()
         session += 1
         let mySession = session
         latest = ""
+        committed = ""
+        current = ""
+        restarts = 0
         pendingStop = nil
+        liveAsked = liveType
+        live = liveType && liveTyper.begin()
 
+        let t0 = Date()
         let begin = { [self] in
+            let tAuth = Date().timeIntervalSince(t0)
             let loc = locale.flatMap { $0.isEmpty ? nil : Locale(identifier: $0) } ?? Locale.current
-            guard let rec = SFSpeechRecognizer(locale: loc) ?? SFSpeechRecognizer(), rec.isAvailable else {
+            // Made once per language: creating one took most of the time from key press to mic on.
+            let rec: SFSpeechRecognizer?
+            if let c = cachedRecognizer, c.0 == loc.identifier {
+                rec = c.1
+            } else {
+                rec = SFSpeechRecognizer(locale: loc) ?? SFSpeechRecognizer()
+                if let r = rec { cachedRecognizer = (loc.identifier, r) }
+            }
+            guard let rec, rec.isAvailable else {
                 fail(id, "Speech recognition isn't available right now.")
                 return
             }
-            let req = SFSpeechAudioBufferRecognitionRequest()
-            req.shouldReportPartialResults = true
-            req.addsPunctuation = true
-            if onDevice && rec.supportsOnDeviceRecognition { req.requiresOnDeviceRecognition = true }
+            recognizer = rec
+            let req = makeRequest(rec, onDevice: onDevice)
             request = req
 
             let input = engine.inputNode
@@ -92,33 +129,98 @@ final class Listener {
             }
             input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                req.append(buffer)
+                // The current request: it's replaced when recognition restarts mid-hold.
+                self?.request?.append(buffer)
                 self?.meter(buffer)
             }
+            let tSetup = Date().timeIntervalSince(t0)
             engine.prepare()
             do { try engine.start() } catch {
                 fail(id, "Couldn't start the microphone: \(error.localizedDescription)")
                 return
             }
             running = true
-            task = rec.recognitionTask(with: req) { [weak self] result, error in
-                DispatchQueue.main.async {
-                    guard let self, self.session == mySession else { return }
-                    if let result {
-                        self.latest = result.bestTranscription.formattedString
-                        emit("partial", ["text": self.latest])
-                        if result.isFinal { self.finish() }
-                    }
-                    if error != nil { self.finish() }
-                }
-            }
-            reply(id, ["on_device": req.requiresOnDeviceRecognition])
+            recognize(rec, req, session: mySession, onDevice: onDevice)
+            let tEngine = Date().timeIntervalSince(t0)
+            reply(id, ["on_device": req.requiresOnDeviceRecognition, "live": live, "live_reason": liveTyper.stopReason, "live_how": liveTyper.how, "live_app": liveTyper.appName,
+                       "ms": ["auth": Int(tAuth * 1000), "setup": Int(tSetup * 1000), "engine": Int(tEngine * 1000)]])
         }
 
         authorize { ok in
             DispatchQueue.main.async {
                 guard self.session == mySession else { return }
                 if ok { begin() } else { fail(id, "openclicky needs Microphone and Speech Recognition access.") }
+            }
+        }
+    }
+
+    private func makeRequest(_ rec: SFSpeechRecognizer, onDevice: Bool) -> SFSpeechAudioBufferRecognitionRequest {
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        req.addsPunctuation = true
+        if onDevice && rec.supportsOnDeviceRecognition { req.requiresOnDeviceRecognition = true }
+        return req
+    }
+
+    private static func join(_ a: String, _ b: String) -> String {
+        let a = a.trimmingCharacters(in: .whitespaces), b = b.trimmingCharacters(in: .whitespaces)
+        if a.isEmpty { return b }
+        if b.isEmpty { return a }
+        return a + " " + b
+    }
+
+    private static func firstWord(_ s: String) -> String {
+        s.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first.map(String.init) ?? ""
+    }
+
+    /// A new partial that doesn't continue the last one: the recognizer started over.
+    private static func restarted(old: String, new: String) -> Bool {
+        guard !old.isEmpty, !new.isEmpty else { return false }
+        return firstWord(old) != firstWord(new) && new.count < old.count / 2 + 4
+    }
+
+    private func recognize(_ rec: SFSpeechRecognizer, _ req: SFSpeechAudioBufferRecognitionRequest, session mySession: Int, onDevice: Bool) {
+        task = rec.recognitionTask(with: req) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self, self.session == mySession else { return }
+                if let result {
+                    let text = result.bestTranscription.formattedString
+                    if Self.restarted(old: self.current, new: text) {
+                        self.committed = Self.join(self.committed, self.current)
+                    }
+                    self.current = text
+                    self.latest = Self.join(self.committed, self.current)
+                    emit("partial", ["text": self.latest])
+                    if self.live { liveTyper.update(self.latest) }
+                    if result.isFinal {
+                        if self.pendingStop != nil {
+                            self.finish()
+                        } else if self.running && self.restarts < 20 {
+                            self.restarts += 1
+                            // Recognition ended while they're still talking: keep what we have
+                            // and listen on with a fresh request.
+                            self.committed = self.latest
+                            self.current = ""
+                            let next = self.makeRequest(rec, onDevice: onDevice)
+                            self.request = next
+                            self.recognize(rec, next, session: mySession, onDevice: onDevice)
+                        }
+                        return
+                    }
+                }
+                if error != nil {
+                    if self.pendingStop != nil || !self.running || self.restarts >= 20 {
+                        self.finish()
+                    } else {
+                        // Same as above: an error mid-hold (often "no speech" after a pause).
+                        self.restarts += 1
+                        self.committed = self.latest
+                        self.current = ""
+                        let next = self.makeRequest(rec, onDevice: onDevice)
+                        self.request = next
+                        self.recognize(rec, next, session: mySession, onDevice: onDevice)
+                    }
+                }
             }
         }
     }
@@ -158,7 +260,7 @@ final class Listener {
     /// End of speech: flush audio and reply with the final transcript (or the latest partial).
     func stop(id: Any) {
         guard running || task != nil else {
-            reply(id, ["text": latest])
+            reply(id, result())
             return
         }
         pendingStop = id
@@ -174,6 +276,7 @@ final class Listener {
 
     func cancel() {
         session += 1
+        if live { liveTyper.end(); live = false }
         stopEngine()
         cancelTask()
         if let id = pendingStop { reply(id, ["text": ""]) }
@@ -182,10 +285,16 @@ final class Listener {
 
     private func finish() {
         if let id = pendingStop {
-            reply(id, ["text": latest])
+            reply(id, result())
             pendingStop = nil
             cancelTask()
         }
+    }
+
+    /// The transcript, and with type as you speak, what's in the field and whether it still is.
+    private func result() -> [String: Any] {
+        guard live else { return ["text": latest, "no_surface": liveAsked && liveTyper.noSurface] }
+        return ["text": latest, "live": ["active": liveTyper.active, "typed": liveTyper.typed, "reason": liveTyper.stopReason]]
     }
 
     private func stopEngine() {
@@ -344,8 +453,55 @@ enum AX {
         return out
     }
 
+    /// Titles of an app's windows that aren't on screen: on another desktop (Space) or minimized.
+    /// One window list, no Accessibility calls.
+    static func elsewhere(_ pid: pid_t) -> [String] {
+        guard let all = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        var out: [String] = []
+        for w in all {
+            guard (w[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                  (w[kCGWindowLayer as String] as? Int) == 0,
+                  (w[kCGWindowIsOnscreen as String] as? Bool) != true,
+                  let name = w[kCGWindowName as String] as? String, !name.isEmpty,
+                  let b = w[kCGWindowBounds as String] as? [String: Any],
+                  ((b["Height"] as? NSNumber)?.doubleValue ?? 0) > 60 else { continue }
+            if !out.contains(name) { out.append(String(name.prefix(60))) }
+            if out.count >= 8 { break }
+        }
+        return out
+    }
+
+    /// Menu bar status items with their owners' labels. Only apps that have a window in the menu
+    /// bar strip are asked (one window list, then a quick Accessibility call each), at most 40.
+    static func extras(on screenRect: CGRect?) -> [(label: String, frame: CGRect, element: AXUIElement)] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        var owners: [pid_t: String] = [:]
+        for w in list {
+            guard let layer = w[kCGWindowLayer as String] as? Int, layer == 25,
+                  let pid = w[kCGWindowOwnerPID as String] as? pid_t, pid != getpid(), pid != getppid(),
+                  let b = w[kCGWindowBounds as String] as? [String: Any],
+                  let h = (b["Height"] as? NSNumber)?.doubleValue, h <= 40 else { continue }
+            owners[pid] = w[kCGWindowOwnerName as String] as? String ?? ""
+        }
+        var out: [(label: String, frame: CGRect, element: AXUIElement)] = []
+        for (pid, owner) in owners.sorted(by: { $0.key < $1.key }) {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 0.1)
+            guard let bar = attr(app, "AXExtrasMenuBar") else { continue }
+            for el in children(bar as! AXUIElement) {
+                guard let f = frame(el), f.width > 1, f.height > 1, screenRect.map({ $0.intersects(f) }) ?? true else { continue }
+                var l = label(el, role: "AXMenuBarItem")
+                if l.isEmpty { l = owner }
+                out.append((label: l, frame: f, element: el))
+                if out.count >= 40 { break }
+            }
+            if out.count >= 40 { break }
+        }
+        return out.sorted { $0.frame.minX < $1.frame.minX }
+    }
+
     /// Walk the frontmost app's focused window + menu bar and number the controls (`e1`, `e2`…).
-    static func snapshot(limit: Int = 160, on screenRect: CGRect? = nil) -> [String: Any] {
+    static func snapshot(limit: Int = 160, on screenRect: CGRect? = nil, texts wantTexts: Bool = false) -> [String: Any] {
         cache.removeAll()
         guard AXIsProcessTrusted(), let app = frontApp() else {
             return ["trusted": AXIsProcessTrusted(), "elements": [] as [Any]]
@@ -356,13 +512,22 @@ enum AX {
         var visited = 0
         let deadline = Date().addingTimeInterval(0.6)
         var counter = 0
+        var texts: [[String: Any]] = []
+        // The screen asked for, widened to the whole front window when it reaches onto another
+        // screen (its controls aren't cut off at the edge).
+        var area = screenRect
 
         func walk(_ el: AXUIElement, depth: Int) {
             if out.count >= limit || visited > 5000 || depth > 45 || Date() > deadline { return }
             visited += 1
             let role = string(el, kAXRoleAttribute) ?? ""
+            if wantTexts, texts.count < 120, role == "AXStaticText" || role == "AXHeading",
+               let v = string(el, kAXValueAttribute) ?? string(el, kAXTitleAttribute), !v.isEmpty,
+               let f = frame(el), f.width > 1, f.height > 1, area.map({ $0.intersects(f) }) ?? true {
+                texts.append(["text": String(v.prefix(160)), "frame": rectJSON(f)])
+            }
             if interesting.contains(role), let f = frame(el), f.width > 1, f.height > 1,
-               screenRect.map({ $0.intersects(f) }) ?? true {
+               area.map({ $0.intersects(f) }) ?? true {
                 let l = label(el, role: role)
                 if !l.isEmpty || role == "AXTextField" || role == "AXTextArea" {
                     counter += 1
@@ -383,12 +548,85 @@ enum AX {
         let window = attr(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement }
             ?? (attr(root, kAXMainWindowAttribute).map { $0 as! AXUIElement })
         var title = ""
+        var windowFrame: CGRect? = nil
         if let w = window {
             title = string(w, kAXTitleAttribute) ?? ""
+            windowFrame = frame(w)
+            if let r = screenRect, let wf = windowFrame, wf.intersects(r) { area = r.union(wf) }
             walk(w, depth: 0)
+            area = screenRect
         }
         if let bar = attr(root, kAXMenuBarAttribute) { walk(bar as! AXUIElement, depth: 0) }
-        return ["trusted": true, "window": title, "elements": out]
+        // The icons on the right of the menu bar (Wi-Fi, battery, the clock, other apps' status
+        // items) belong to other apps, so the front app's tree never has them.
+        for item in extras(on: screenRect) {
+            counter += 1
+            let id = "e\(counter)"
+            cache[id] = AXItem(id: id, role: "AXMenuBarItem", label: item.label, frame: item.frame, element: item.element)
+            out.append(["id": id, "role": "menubaritem", "label": item.label, "frame": rectJSON(item.frame)])
+        }
+        var result: [String: Any] = ["trusted": true, "window": title, "elements": out]
+        if let f = windowFrame { result["window_frame"] = rectJSON(f) }
+        if wantTexts { result["texts"] = texts }
+        return result
+    }
+
+    /// The screen right now, for after an action: app, window, focused field, controls with
+    /// frames and the window's text (from Accessibility, so no screenshot is needed).
+    static func state() -> [String: Any] {
+        let app = frontApp()
+        var r = snapshot(limit: 160, texts: true)
+        r["app"] = app?.localizedName ?? ""
+        r["bundle"] = app?.bundleIdentifier ?? ""
+        if let f = focusedInfo() { r["focused"] = f }
+        let p = Screen.cursor()
+        r["cursor"] = ["x": Int(p.x), "y": Int(p.y)]
+        return r
+    }
+
+    /// Press the control at a screen point (Pixie keeps control ids itself and resolves them to
+    /// frames): the deepest element there, or the nearest pressable parent.
+    static func pressPoint(x: Double, y: Double, hint: String) throws -> [String: Any] {
+        guard AXIsProcessTrusted() else { throw HelperError("Accessibility access is off.") }
+        let sys = AXUIElementCreateSystemWide()
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(sys, Float(x), Float(y), &hit) == .success, var el = hit else {
+            throw HelperError("Nothing to press at (\(Int(x)), \(Int(y))).")
+        }
+        for _ in 0..<6 {
+            var names: CFArray?
+            if AXUIElementCopyActionNames(el, &names) == .success, let list = names as? [String], list.contains(kAXPressAction as String) {
+                break
+            }
+            guard let parent = attr(el, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+            el = parent as! AXUIElement
+        }
+        let role = string(el, kAXRoleAttribute) ?? ""
+        let l = label(el, role: role)
+        let r = AXUIElementPerformAction(el, kAXPressAction as CFString)
+        if r != .success {
+            AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            if AXUIElementPerformAction(el, kAXConfirmAction as CFString) != .success {
+                throw HelperError("\"\(l.isEmpty ? hint : l)\" didn't respond to a press (AX error \(r.rawValue)).")
+            }
+        }
+        var out: [String: Any] = ["pressed": l.isEmpty ? hint : l, "role": role]
+        if let f = frame(el) { out["frame"] = rectJSON(f) }
+        return out
+    }
+
+    /// Focus the control at a screen point.
+    static func focusPoint(x: Double, y: Double) throws -> [String: Any] {
+        let sys = AXUIElementCreateSystemWide()
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(sys, Float(x), Float(y), &hit) == .success, let el = hit else {
+            throw HelperError("Nothing to focus at (\(Int(x)), \(Int(y))).")
+        }
+        AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        let role = string(el, kAXRoleAttribute) ?? ""
+        var out: [String: Any] = ["focused": label(el, role: role)]
+        if let f = frame(el) { out["frame"] = rectJSON(f) }
+        return out
     }
 
     static func find(_ target: String) -> AXItem? {
@@ -512,6 +750,274 @@ enum Keys {
     }
 }
 
+// MARK: - type as you speak
+
+/// Dictation that types while they talk. The field's text is changed through Accessibility (the
+/// typed span is replaced with the newest transcript), so the dictate keys they're holding (fn,
+/// ctrl) can't turn letters into shortcuts; apps that don't take that get key events sent to the
+/// app itself. Only the field that had focus when dictation began: if focus moves, it stops there.
+final class LiveTyper {
+    private(set) var typed = ""
+    private(set) var active = false
+    private(set) var stopReason = ""
+    private(set) var how = ""
+    private var pid: pid_t = 0
+    private var element: AXUIElement?
+    /// Where the typed span starts (UTF-16), and how much was selected when it began (replaced).
+    private var start = 0
+    private var selected = 0
+    private var useAX = false
+    private var want: String?
+    private var scheduled = false
+    private var last = Date.distantPast
+    private let source = CGEventSource(stateID: .privateState)
+    /// How key events are sent: "session" (default), "hid" or "pid". Tests can change it.
+    var tap = "session"
+    var forceKeys = false
+    private(set) var appName = ""
+    /// No text cursor anywhere (the desktop, a list, Pixie itself): the text goes to the
+    /// clipboard instead.
+    private(set) var noSurface = false
+    /// Character → (key code, shift) on the current keyboard layout.
+    private var keys: [Character: (CGKeyCode, Bool)] = [:]
+
+    static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+    /// Start if there's a text cursor in the front app. False: no surface (clipboard) or a
+    /// password field (typed at the end, as before).
+    func begin() -> Bool {
+        end()
+        noSurface = false
+        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return false }
+        appName = app.localizedName ?? ""
+        pid = app.processIdentifier
+        if pid == getppid() || pid == getpid() {
+            noSurface = true
+            stopReason = "no text cursor (Pixie is in front)"
+            return false
+        }
+        let el = Self.focused(pid)
+        if let el {
+            let role = AX.string(el, kAXRoleAttribute) ?? ""
+            let sub = AX.string(el, kAXSubroleAttribute) ?? ""
+            if sub == "AXSecureTextField" { stopReason = "password field"; return false }
+            let range = Self.range(el)
+            var editable: CFTypeRef?
+            let isEditable = AXUIElementCopyAttributeValue(el, "AXEditable" as CFString, &editable) == .success && (editable as? Bool) == true
+            // A text field, or something editable with a cursor in it (web editors).
+            guard Self.textRoles.contains(role) || (isEditable && range != nil) else {
+                noSurface = true
+                stopReason = "no text cursor (\(role) in \(appName))"
+                return false
+            }
+            var settable: DarwinBoolean = false
+            AXUIElementIsAttributeSettable(el, kAXSelectedTextAttribute as CFString, &settable)
+            useAX = settable.boolValue && range != nil && !forceKeys
+            start = range?.location ?? 0
+            selected = range?.length ?? 0
+        } else if app.bundleIdentifier == "com.apple.finder" {
+            noSurface = true
+            stopReason = "no text cursor (Finder)"
+            return false
+        } else {
+            // Apps that don't tell Accessibility where the cursor is (some browsers and
+            // Electron apps): type by keys into whatever has focus.
+            useAX = false
+        }
+        element = el
+        if !useAX { keys = Self.layoutKeys() }
+        active = true
+        stopReason = ""
+        how = (useAX ? "accessibility" : "keys") + " (\(el.flatMap { AX.string($0, kAXRoleAttribute) } ?? "no element"))"
+        return true
+    }
+
+    /// Every character the current keyboard layout types directly, with its key and whether it
+    /// needs shift (apps like Warp read the key, not the character attached to the event).
+    static func layoutKeys() -> [Character: (CGKeyCode, Bool)] {
+        var map: [Character: (CGKeyCode, Bool)] = [:]
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let ptr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return map }
+        let data = Unmanaged<CFData>.fromOpaque(ptr).takeUnretainedValue() as Data
+        data.withUnsafeBytes { raw in
+            guard let layout = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return }
+            for shift in [false, true] {
+                // Main keys only (the keypad starts at 65).
+                for code in 0..<65 {
+                    var dead: UInt32 = 0
+                    var chars = [UniChar](repeating: 0, count: 4)
+                    var len = 0
+                    let mods: UInt32 = shift ? UInt32(shiftKey >> 8) & 0xFF : 0
+                    let r = UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDown), mods, UInt32(LMGetKbdType()),
+                                           OptionBits(kUCKeyTranslateNoDeadKeysBit), &dead, 4, &len, &chars)
+                    guard r == noErr, len == 1, chars[0] >= 0x20, chars[0] != 0x7F, let u = UnicodeScalar(chars[0]) else { continue }
+                    let c = Character(u)
+                    if map[c] == nil { map[c] = (CGKeyCode(code), shift) }
+                }
+            }
+        }
+        return map
+    }
+
+    static func focused(_ pid: pid_t) -> AXUIElement? {
+        let root = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(root, 0.2)
+        guard let f = AX.attr(root, kAXFocusedUIElementAttribute), CFGetTypeID(f) == AXUIElementGetTypeID() else { return nil }
+        return (f as! AXUIElement)
+    }
+
+    static func range(_ el: AXUIElement) -> CFRange? {
+        guard let v = AX.attr(el, kAXSelectedTextRangeAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
+        var r = CFRange()
+        return AXValueGetValue(v as! AXValue, .cfRange, &r) ? r : nil
+    }
+
+    static func setRange(_ el: AXUIElement, _ r: CFRange) -> Bool {
+        var r = r
+        guard let v = AXValueCreate(.cfRange, &r) else { return false }
+        return AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, v) == .success
+    }
+
+    /// Still the same field in the same app.
+    private func stillThere() -> Bool {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return false }
+        // Apps that don't report their cursor: same app is all we can check.
+        guard let el = element else { return true }
+        guard let now = Self.focused(pid) else { return false }
+        return CFEqual(now, el)
+    }
+
+    /// A newer transcript; applied at most every 120 ms, the latest one wins.
+    func update(_ text: String) {
+        guard active else { return }
+        want = text
+        schedule(after: 0.12)
+    }
+
+    private func schedule(after gap: Double) {
+        if scheduled { return }
+        let wait = max(0, gap - Date().timeIntervalSince(last))
+        scheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            self.scheduled = false
+            if let w = self.want { self.want = nil; self.apply(w) }
+        }
+    }
+
+    /// Make the typed span read `text`.
+    @discardableResult
+    func apply(_ text: String) -> Bool {
+        guard active else { return false }
+        last = Date()
+        guard stillThere() else {
+            active = false
+            stopReason = "focus moved"
+            return false
+        }
+        if useAX, let el = element {
+            let span = typed.utf16.count + selected
+            if Self.setRange(el, CFRange(location: start, length: span)),
+               AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
+                let caret = Self.range(el)
+                let value = AX.string(el, kAXValueAttribute)
+                // The app took it: the caret moved to the end of the new text, or the text is there.
+                if caret?.location == start + text.utf16.count || (value?.contains(text) ?? false) {
+                    typed = text
+                    selected = 0
+                    return true
+                }
+            }
+            if typed.isEmpty {
+                // Didn't take it the first time: the text is pasted at the end instead.
+                active = false
+                stopReason = "the field didn't take it"
+                return false
+            } else {
+                active = false
+                stopReason = "the field stopped taking text"
+                return false
+            }
+        }
+        let old = Array(typed), new = Array(text)
+        var same = 0
+        while same < old.count && same < new.count && old[same] == new[same] { same += 1 }
+        for i in 0..<(old.count - same) {
+            key(51)
+            if i % 12 == 11 { usleep(1500) }
+        }
+        type(String(new[same...]))
+        typed = text
+        return true
+    }
+
+    /// Dictation ended: put the final text in and stop. `applied` false with a reason other than
+    /// "focus moved": the text isn't in the field, so the caller pastes it.
+    /// Put `text` in now (they've stopped talking): by keys, as soon as the modifiers are up.
+    func now(_ text: String) -> [String: Any] {
+        guard active else { return ["applied": false, "reason": stopReason] }
+        want = nil
+        return ["applied": apply(text), "reason": stopReason, "how": how]
+    }
+
+    func finish(_ text: String) -> [String: Any] {
+        defer { end() }
+        guard active || !typed.isEmpty else { return ["applied": false, "reason": stopReason.isEmpty ? "not started" : stopReason] }
+        want = nil
+        var ok = apply(text)
+        // Only Accessibility edits can be checked at once; typed keys land a moment later.
+        if ok, useAX, let el = element, let value = AX.string(el, kAXValueAttribute), !value.isEmpty,
+           !value.contains(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            // The app says it took the text but it isn't there.
+            ok = false
+            stopReason = "not in the field"
+        }
+        var out: [String: Any] = ["applied": ok, "reason": stopReason, "typed": typed.count, "how": how, "app": appName]
+        if let f = AX.focusedInfo() { out["into"] = f }
+        return out
+    }
+
+    func end() {
+        active = false
+        typed = ""
+        want = nil
+        element = nil
+        selected = 0
+    }
+
+    private func post(_ e: CGEvent?) {
+        e?.flags = []
+        e?.post(tap: .cgSessionEventTap)
+    }
+
+    private func key(_ code: CGKeyCode) {
+        for down in [true, false] { post(CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down)) }
+    }
+
+    /// One key press per character, on its real key (with shift when needed) and with the
+    /// character attached, so apps that read either get it right. Sent with no modifiers at the
+    /// session level, so the dictate keys they're holding aren't added.
+    private func type(_ s: String) {
+        for ch in s {
+            if ch == "\n" || ch == "\r" {
+                key(36)
+                continue
+            }
+            let units = Array(String(ch).utf16)
+            let (code, shift) = keys[ch] ?? (0, false)
+            for down in [true, false] {
+                let e = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down)
+                e?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                e?.flags = shift ? .maskShift : []
+                e?.post(tap: .cgSessionEventTap)
+            }
+            usleep(1200)
+        }
+    }
+}
+
+let liveTyper = LiveTyper()
+
 // MARK: - pointer actions (the buddy's hands)
 
 enum Pointer {
@@ -559,21 +1065,6 @@ enum Pointer {
         CGAssociateMouseAndMouseCursorPosition(1)
         return ["dragged": ["from": ["x": Int(a.x), "y": Int(a.y)], "to": ["x": Int(b.x), "y": Int(b.y)]]]
     }
-
-    /// What changed, for checking an action worked.
-    static func afterState() -> [String: Any] {
-        let app = NSWorkspace.shared.frontmostApplication
-        let ax = AX.snapshot(limit: 60)
-        var focused = ""
-        let sys = AXUIElementCreateSystemWide()
-        if let f = AX.attr(sys, kAXFocusedUIElementAttribute) {
-            let el = f as! AXUIElement
-            let role = AX.string(el, kAXRoleAttribute) ?? ""
-            focused = "\(role.replacingOccurrences(of: "AX", with: "").lowercased()) \(AX.label(el, role: role))"
-        }
-        return ["app": app?.localizedName ?? "", "window": ax["window"] ?? "", "focused": focused,
-                "controls": (ax["elements"] as? [[String: Any]] ?? []).prefix(25).map { "\($0["id"]!) \($0["role"]!) \($0["label"]!)" }]
-    }
 }
 
 // MARK: - screen capture + OCR
@@ -581,7 +1072,7 @@ enum Pointer {
 enum Screen {
     static func cursor() -> CGPoint { CGEvent(source: nil)?.location ?? .zero }
 
-    static func capture(path: String?, maxWidth: Int, ocr: Bool, done: @escaping (Result<[String: Any], Error>) -> Void) {
+    static func capture(path: String?, maxWidth: Int, ocr: Bool, at: CGPoint? = nil, done: @escaping (Result<[String: Any], Error>) -> Void) {
         if IsSecureEventInputEnabled() {
             done(.success(["secure": true]))
             return
@@ -598,7 +1089,10 @@ enum Screen {
                 return
             }
             let mouse = cursor()
-            guard let display = content.displays.first(where: { $0.frame.contains(mouse) }) ?? content.displays.first else {
+            // The screen asked for (another display), else the pointer's.
+            let spot = at ?? mouse
+            guard let display = content.displays.first(where: { $0.frame.contains(spot) })
+                ?? content.displays.first(where: { $0.frame.contains(mouse) }) ?? content.displays.first else {
                 done(.failure(HelperError("No display.")))
                 return
             }
@@ -635,9 +1129,11 @@ enum Screen {
                     let app = NSWorkspace.shared.frontmostApplication
                     result["app"] = app?.localizedName ?? ""
                     result["bundle"] = app?.bundleIdentifier ?? ""
+                    if let pid = app?.processIdentifier { result["elsewhere"] = AX.elsewhere(pid) }
                     DispatchQueue.main.async {
                         let ax = AX.snapshot(on: display.frame)
                         result["window"] = ax["window"] ?? ""
+                        if let wf = ax["window_frame"] { result["window_frame"] = wf }
                         result["elements"] = ax["elements"] ?? []
                         result["ax_trusted"] = ax["trusted"] ?? false
                         done(.success(result))
@@ -1024,7 +1520,80 @@ func handle(_ line: String) {
         case "ping":
             reply(id, ["pid": getpid(), "ax_trusted": AXIsProcessTrusted()])
         case "listen_start":
-            listener.start(locale: str(args, "locale"), onDevice: (args["on_device"] as? Bool) ?? true, id: id)
+            listener.start(locale: str(args, "locale"), onDevice: (args["on_device"] as? Bool) ?? true,
+                           liveType: (args["live_type"] as? Bool) ?? false, id: id)
+        case "hold_keys_test":
+            // Speed test: hold modifier keys (59 control, 58 option, 63 fn) for `ms`, as if pressed.
+            let codes = (args["codes"] as? [Int] ?? []).map { CGKeyCode($0) }
+            let ms = args["ms"] as? Double ?? 1500
+            let hid = CGEventSource(stateID: .hidSystemState)
+            let mask: [CGKeyCode: CGEventFlags] = [59: .maskControl, 58: .maskAlternate, 63: .maskSecondaryFn, 56: .maskShift, 55: .maskCommand]
+            var flags: CGEventFlags = []
+            for c in codes {
+                flags.insert(mask[c] ?? [])
+                let e = CGEvent(keyboardEventSource: hid, virtualKey: c, keyDown: true)
+                e?.type = .flagsChanged
+                e?.flags = flags
+                e?.post(tap: .cghidEventTap)
+            }
+            let id2 = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000) {
+                for c in codes.reversed() {
+                    flags.remove(mask[c] ?? [])
+                    let e = CGEvent(keyboardEventSource: hid, virtualKey: c, keyDown: false)
+                    e?.type = .flagsChanged
+                    e?.flags = flags
+                    e?.post(tap: .cghidEventTap)
+                }
+                reply(id2, ["held": ms])
+            }
+        case "live_type_test":
+            // Smoke test for type as you speak without a microphone: each step is a transcript,
+            // the last is the cleaned-up text. hold_ctrl presses control for the whole run, as
+            // if they were holding the dictate keys.
+            let steps = args["steps"] as? [String] ?? []
+            let hold = args["hold_ctrl"] as? Bool ?? false
+            liveTyper.tap = str(args, "tap") ?? "session"
+            liveTyper.forceKeys = args["force_keys"] as? Bool ?? false
+            let hid = CGEventSource(stateID: .hidSystemState)
+            func ctrl(_ down: Bool) {
+                let e = CGEvent(keyboardEventSource: hid, virtualKey: 59, keyDown: down)
+                e?.flags = down ? .maskControl : []
+                e?.type = .flagsChanged
+                e?.post(tap: .cghidEventTap)
+            }
+            if hold { ctrl(true) }
+            let heldFlags = CGEventSource.flagsState(.hidSystemState).rawValue
+            let combined = CGEventSource.flagsState(.combinedSessionState).rawValue
+            guard liveTyper.begin() else {
+                if hold { ctrl(false) }
+                reply(id, ["applied": false, "reason": liveTyper.stopReason])
+                break
+            }
+            for (i, t) in steps.dropLast().enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 * Double(i)) { liveTyper.update(t) }
+            }
+            let id2 = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 * Double(steps.count) + 0.3) {
+                var out = liveTyper.finish(steps.last ?? "")
+                out["held_flags"] = heldFlags
+                out["combined_flags"] = combined
+                liveTyper.tap = "session"
+                liveTyper.forceKeys = false
+                if hold { ctrl(false) }
+                if let app = NSWorkspace.shared.frontmostApplication, let el = LiveTyper.focused(app.processIdentifier) {
+                    out["value"] = AX.string(el, kAXValueAttribute) ?? ""
+                }
+                reply(id2, out)
+            }
+        case "live_type_now":
+            reply(id, liveTyper.now(str(args, "text") ?? ""))
+        case "live_type_finish":
+            // The cleaned-up text replaces what was typed while they spoke.
+            reply(id, liveTyper.finish(str(args, "text") ?? ""))
+        case "listen_prewarm":
+            listener.prewarm(locale: str(args, "locale"))
+            reply(id)
         case "listen_stop":
             listener.stop(id: id)
         case "listen_cancel":
@@ -1046,8 +1615,12 @@ func handle(_ line: String) {
             let lang = Locale.preferredLanguages.first ?? "en-US"
             reply(id, ["voices": Speaker.list(), "default": Speaker.bestVoice(language: lang)?.identifier ?? ""])
         case "capture":
+            var spot: CGPoint? = nil
+            if let a = args["at"] as? [String: Any], let x = a["x"] as? Double, let y = a["y"] as? Double {
+                spot = CGPoint(x: x, y: y)
+            }
             Screen.capture(path: str(args, "path"), maxWidth: (args["max_width"] as? Int) ?? 1440,
-                           ocr: (args["ocr"] as? Bool) ?? true) { result in
+                           ocr: (args["ocr"] as? Bool) ?? true, at: spot) { result in
                 switch result {
                 case .success(let r): reply(id, r)
                 case .failure(let e): fail(id, "\(e)")
@@ -1059,18 +1632,22 @@ func handle(_ line: String) {
         case "ax_snapshot":
             reply(id, AX.snapshot())
         case "click_at":
-            var r = try Pointer.click(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0,
+            // No snapshot here: Pixie asks for screen_state after the UI settles, and keeps the
+            // control ids itself (a snapshot here would renumber the helper's cache under it).
+            let r = try Pointer.click(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0,
                                       button: str(args, "button") ?? "left", count: args["count"] as? Int ?? 1)
-            let id2 = id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                r["after"] = Pointer.afterState()
-                reply(id2, r)
-            }
-        case "drag":
-            var r = try Pointer.drag(from: CGPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0),
-                                     to: CGPoint(x: args["to_x"] as? Double ?? 0, y: args["to_y"] as? Double ?? 0))
-            r["after"] = Pointer.afterState()
             reply(id, r)
+        case "drag":
+            reply(id, try Pointer.drag(from: CGPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0),
+                                       to: CGPoint(x: args["to_x"] as? Double ?? 0, y: args["to_y"] as? Double ?? 0)))
+        case "screen_state":
+            let settle = args["settle"] as? Double ?? 0
+            let id2 = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + settle) { reply(id2, AX.state()) }
+        case "press_point":
+            reply(id, try AX.pressPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0, hint: str(args, "label") ?? ""))
+        case "focus_point":
+            reply(id, try AX.focusPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0))
         case "insert_text":
             reply(id, try Keys.insert(str(args, "text") ?? ""))
         case "mac_step":
@@ -1198,7 +1775,15 @@ if argv.count >= 4 && argv[1] == "pdf" {
         while let line = readLine(strippingNewline: true) {
             DispatchQueue.main.async { handle(line) }
         }
-        exit(0) // parent went away
+        // Parent went away (quit, force-quit or crash): end the agents' processes it left.
+        if let f = ProcessInfo.processInfo.environment["OPENCLICKY_CHILDREN"],
+           let list = try? String(contentsOfFile: f, encoding: .utf8) {
+            for line in list.split(separator: "\n") {
+                if let p = Int32(line.trimmingCharacters(in: .whitespaces)), p > 1 { kill(-p, SIGTERM) }
+            }
+            try? "".write(toFile: f, atomically: true, encoding: .utf8)
+        }
+        exit(0)
     }
     emit("ready", ["pid": getpid()])
     app.run()

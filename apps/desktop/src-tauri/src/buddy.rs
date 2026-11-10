@@ -152,7 +152,16 @@ async fn resolve(app: &AppHandle, input: &Value) -> Result<(f64, f64, String), S
     if target.is_empty() {
         return Err("Say where to click: a label, an element id like e12, or x and y.".into());
     }
+    // Pixie's own control ids, resolved against the newest screen.
+    if let Some(hit) = crate::screen::element(&target) {
+        let (f, label, _) = hit?;
+        return Ok((f.x + f.w / 2.0, f.y + f.h / 2.0, label));
+    }
     let st = app.state::<AppState>();
+    let seen = st.last_capture.lock().unwrap().clone();
+    if let Some(f) = seen.as_ref().and_then(|c| crate::screen::find(c, &target, None)) {
+        return Ok((f.x + f.w / 2.0, f.y + f.h / 2.0, target));
+    }
     let v = st.helper.call("mac_step", json!({ "action": "find", "target": target }), Duration::from_secs(5)).await?;
     let f = &v["frame"];
     let (x, y, w, h) = (f["x"].as_f64().unwrap_or(0.0), f["y"].as_f64().unwrap_or(0.0), f["w"].as_f64().unwrap_or(0.0), f["h"].as_f64().unwrap_or(0.0));
@@ -180,8 +189,9 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
         };
         fly(app, x, y, "", false).await;
         emit(app, Event::new("buddy.fly", json!({ "x": tx, "y": ty, "label": "", "click": false, "slow": true })));
-        let r = st.helper.call("drag", json!({ "x": x, "y": y, "to_x": tx, "to_y": ty }), Duration::from_secs(8)).await?;
-        return Ok(r.to_string());
+        st.helper.call("drag", json!({ "x": x, "y": y, "to_x": tx, "to_y": ty }), Duration::from_secs(8)).await?;
+        let now = crate::screen::after_action(app, Some((tx, ty)), crate::screen::settle_for("drag")).await;
+        return Ok(format!("Dragged from ({x:.0}, {y:.0}) to ({tx:.0}, {ty:.0}).\n{now}"));
     }
     let (x, y, label) = resolve(app, input).await?;
     // Snap to the real control under the target when we have the screen.
@@ -200,18 +210,9 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
     };
     emit(app, Event::new("buddy.click", json!({ "x": x, "y": y })));
     st.play("gel-pop");
-    let r = st.helper.call("click_at", json!({ "x": x, "y": y, "button": button, "count": count }), Duration::from_secs(8)).await?;
-    let after = &r["after"];
-    Ok(format!(
-        "Clicked {} at ({:.0}, {:.0}). Now: {}, window \"{}\"; focused: {}. Controls now: {}. Check this is what you expected before the next step.",
-        if label.is_empty() { "there".to_string() } else { format!("\"{label}\"") },
-        x,
-        y,
-        after["app"].as_str().unwrap_or(""),
-        after["window"].as_str().unwrap_or(""),
-        after["focused"].as_str().unwrap_or("nothing"),
-        after["controls"].as_array().map(|a| a.iter().filter_map(Value::as_str).take(15).collect::<Vec<_>>().join("; ")).unwrap_or_default()
-    ))
+    st.helper.call("click_at", json!({ "x": x, "y": y, "button": button, "count": count }), Duration::from_secs(8)).await?;
+    let now = crate::screen::after_action(app, Some((x, y)), crate::screen::settle_for(action)).await;
+    Ok(format!("Clicked {} at ({x:.0}, {y:.0}).\n{now}", if label.is_empty() { "there".to_string() } else { format!("\"{label}\"") }))
 }
 
 #[cfg(test)]

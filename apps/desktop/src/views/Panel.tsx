@@ -78,7 +78,7 @@ export function Panel() {
   const [mode, setMode] = useState<PanelMode>("hidden");
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
   const [levels, setLevels] = useState<number[]>(() => Array(BARS).fill(0));
-  const [, setPartial] = useState("");
+  const [partial, setPartial] = useState("");
   const [question, setQuestion] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [word, setWord] = useState<{ id: string; at: number; len: number } | null>(null);
@@ -100,6 +100,8 @@ export function Panel() {
   const [, setDrawing] = useState(false);
   // Hovering the notch mid-answer drops it down to show the conversation; leaving folds it up.
   const [hover, setHover] = useState(false);
+  // This turn is answered in text to read (a typed question, Settings → General).
+  const [textTurn, setTextTurn] = useState<number | null>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   const keys = useShortcuts();
   const turn = useRef(0);
@@ -137,7 +139,7 @@ export function Panel() {
           break;
         case "panel.hover":
           window.clearTimeout(hoverTimer.current);
-          hoverTimer.current = window.setTimeout(() => setHover(!!p.inside), p.inside ? 120 : 280);
+          hoverTimer.current = window.setTimeout(() => setHover(!!p.inside), p.inside ? 40 : 140);
           break;
         case "mic.start":
           turn.current = p.turn;
@@ -159,6 +161,9 @@ export function Panel() {
           setQuestion(p.text);
           setLastAnswer({ q: p.text, a: "" });
           setPartial("");
+          break;
+        case "turn.textmode":
+          setTextTurn(p.turn);
           break;
         case "turn.done":
           if (p.text) setLastAnswer((l) => ({ q: l?.q ?? "", a: p.text }));
@@ -237,7 +242,7 @@ export function Panel() {
     ro.observe(body.current);
     Array.from(body.current.children).forEach((c) => ro.observe(c));
     return () => ro.disconnect();
-  }, [mode, segments.length, note, error, chips.length, hover]);
+  }, [mode, segments.length, note, error, chips.length, hover, textTurn]);
 
   useHitRects("panel", [shape], [mode, bodyH, hover]);
   useEffect(() => {
@@ -252,14 +257,18 @@ export function Panel() {
   const ear = mode === "toast" ? 170 : live ? 96 : 120;
   // Voice turns live in the ears only (HeyClicky-style): the notch widens, never drops down.
   // Hovered while thinking or speaking, it drops down like a normal answer card.
-  const expanded = hover && (mode === "thinking" || mode === "answer");
-  const voice = !expanded && (mode === "listening" || mode === "dictating" || mode === "thinking" || mode === "answer");
+  const reading = textTurn !== null && textTurn === turn.current;
+  const expanded = (hover || reading) && (mode === "thinking" || mode === "answer");
+  // Dictating: the words heard so far show under the bar (in any app, even where they're pasted
+  // only at the end).
+  const dictLine = mode === "dictating" && partial.trim().length > 0;
+  const voice = !expanded && !dictLine && (mode === "listening" || mode === "dictating" || mode === "thinking" || mode === "answer");
   const compact = false;
   const width = voice
     ? Math.max(notchW + 2 * 118, hasNotch ? 0 : 320)
     : mode === "hidden"
       ? Math.max(notchW, 120)
-      : mode === "peek"
+      : mode === "peek" || dictLine
         ? Math.max(notchW + 2 * 170, 560)
         : wide
           ? Math.max(notchW + 2 * 150, 540)
@@ -332,6 +341,7 @@ export function Panel() {
         </div>
 
         <div className="notch__body" ref={body} style={voice ? { height: 0, padding: 0 } : undefined}>
+          {dictLine && <div className="dict-line">{partial.length > 58 ? "…" + partial.slice(-57).replace(/^\S*\s/, "") : partial}</div>}
 
           {compact && (
             <div className="compact-line">
@@ -345,7 +355,7 @@ export function Panel() {
               {segments.length > 0 && (
                 <div className="turn__a">
                   {segments.map((s) => (
-                    <Spoken key={s.id} seg={s} word={word?.id === s.id ? word : null} spoken={spoken.has(s.id)} />
+                    <Spoken key={s.id} seg={s} word={word?.id === s.id ? word : null} spoken={reading || spoken.has(s.id)} />
                   ))}
                 </div>
               )}

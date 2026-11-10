@@ -186,6 +186,10 @@ pub fn screens() -> Vec<ScreenInfo> {
         .collect()
 }
 
+pub fn screen_names() -> Vec<String> {
+    (1..=screens().len()).map(|i| if i == 1 { "Main screen".to_string() } else { format!("Screen {i}") }).collect()
+}
+
 pub fn screen_at_cursor() -> ScreenInfo {
     let (x, y) = cursor();
     screen_containing(x, y)

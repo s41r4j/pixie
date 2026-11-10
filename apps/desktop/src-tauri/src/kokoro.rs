@@ -52,6 +52,15 @@ struct Engine {
     /// request id → (generation, text)
     pending: Mutex<HashMap<String, (u64, String)>>,
     installing: AtomicBool,
+    /// Kokoro's word list, loaded with the model: Pixie turns text into phonemes itself so words
+    /// the model's own lookup lacks ("opened", "GitHub", numbers) aren't skipped.
+    lexicon: Mutex<Option<std::sync::Arc<openclicky_voice::say::Lexicon>>>,
+    /// The server's pid and when it last answered (or was first asked something), for the
+    /// watchdog.
+    pid: std::sync::atomic::AtomicU32,
+    progress: Mutex<Option<Instant>>,
+    /// The watchdog gave up on it this session: the system voice speaks.
+    off: AtomicBool,
 }
 
 fn engine() -> &'static Engine {
@@ -65,6 +74,10 @@ fn engine() -> &'static Engine {
         gen: AtomicU64::new(0),
         pending: Mutex::new(HashMap::new()),
         installing: AtomicBool::new(false),
+        lexicon: Mutex::new(None),
+        pid: std::sync::atomic::AtomicU32::new(0),
+        progress: Mutex::new(None),
+        off: AtomicBool::new(false),
     })
 }
 
@@ -89,7 +102,7 @@ pub fn ready() -> bool {
 
 /// The natural voice can be used here (installed, sidecar present); it may not be loaded yet.
 fn available(app: &AppHandle) -> bool {
-    cfg!(target_os = "macos") && installed(&app.state::<AppState>().data_dir) && binary().is_some()
+    cfg!(target_os = "macos") && !engine().off.load(Ordering::SeqCst) && installed(&app.state::<AppState>().data_dir) && binary().is_some()
 }
 
 fn touch() {
@@ -99,9 +112,9 @@ fn touch() {
 #[derive(Serialize)]
 pub struct Status {
     /// The natural voice ships for macOS only so far.
-    supported: bool,
+    pub supported: bool,
     installed: bool,
-    ready: bool,
+    pub ready: bool,
     installing: bool,
     voices: Vec<serde_json::Value>,
     /// Bytes downloaded / total across both files while installing.
@@ -180,6 +193,12 @@ fn launch(app: AppHandle) {
         .name("openclicky-voice".into())
         .spawn(move || {
             let v = voices_dir(&data);
+            if engine().lexicon.lock().unwrap().is_none() {
+                match openclicky_voice::say::Lexicon::load(&v.join("kokoro/lexicon-us-en.txt")) {
+                    Ok(l) => *engine().lexicon.lock().unwrap() = Some(std::sync::Arc::new(l)),
+                    Err(e) => log::warn!("voice: lexicon: {e}"),
+                }
+            }
             let spawned = Command::new(&bin)
                 .arg(v.join("runtime"))
                 .arg(v.join("kokoro"))
@@ -197,9 +216,12 @@ fn launch(app: AppHandle) {
                 }
             };
             *engine().stdin.lock().unwrap() = child.stdin.take();
+            engine().pid.store(child.id(), Ordering::SeqCst);
+            *engine().progress.lock().unwrap() = Some(Instant::now());
             let out = child.stdout.take().expect("stdout");
             for line in BufReader::new(out).lines() {
                 let Ok(line) = line else { break };
+                *engine().progress.lock().unwrap() = Some(Instant::now());
                 let f: Vec<&str> = line.splitn(4, '\t').collect();
                 match f.as_slice() {
                     ["ready", n, ..] => {
@@ -209,6 +231,7 @@ fn launch(app: AppHandle) {
                         let mut stdin = engine().stdin.lock().unwrap();
                         if let Some(w) = stdin.as_mut() {
                             for l in q.drain(..) {
+                                let l = with_phonemes(l);
                                 let _ = w.write_all(l.as_bytes());
                             }
                             let _ = w.flush();
@@ -237,6 +260,7 @@ fn stopped(app: &AppHandle) {
         engine().ready.store(false, Ordering::SeqCst);
         *engine().stdin.lock().unwrap() = None;
         engine().running.store(false, Ordering::SeqCst);
+        *engine().lexicon.lock().unwrap() = None;
         q.drain(..).filter_map(|l| l.split('\t').next().map(str::to_string)).collect()
     };
     let left: Vec<String> = engine().pending.lock().unwrap().keys().cloned().collect();
@@ -266,16 +290,22 @@ fn delivered(app: &AppHandle, id: &str, ok: bool) {
 
 /// Queue a sentence (loading the model first if needed). False when the natural voice isn't
 /// available, so the system voice speaks instead.
-pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64) -> bool {
+pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64, loudness: &str) -> bool {
     if !ready() && !available(app) {
         return false;
     }
     touch();
     let clean: String = text.chars().map(|c| if c == '\t' || c == '\n' { ' ' } else { c }).collect();
-    let line = format!("{id}\t{sid}\t{speed:.2}\t{}\t{clean}\n", wav_path(app, id).display());
+    let line = request_line(id, &wav_path(app, id), sid, speed, loudness, &clean);
     let gen = engine().gen.load(Ordering::SeqCst);
     let mut q = engine().queue.lock().unwrap();
-    engine().pending.lock().unwrap().insert(id.to_string(), (gen, clean));
+    {
+        let mut p = engine().pending.lock().unwrap();
+        if p.is_empty() {
+            *engine().progress.lock().unwrap() = Some(Instant::now());
+        }
+        p.insert(id.to_string(), (gen, clean));
+    }
     if !ready() {
         q.push(line);
         drop(q);
@@ -288,6 +318,61 @@ pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64) -> boo
         engine().pending.lock().unwrap().remove(id);
     }
     ok
+}
+
+/// Target speech level in dBFS RMS. Kokoro's own output sits near -24, too quiet next to other
+/// apps; -16 is ordinary speech level and the voice server's limiter keeps peaks from clipping.
+fn loudness_db(l: &str) -> f32 {
+    match l {
+        "quiet" => -20.0,
+        "loud" => -12.0,
+        _ => -16.0,
+    }
+}
+
+/// One request for the voice server. The lexicon is loaded on the voice thread before the
+/// model, so it's normally there; until then the server reads the text itself.
+fn request_line(id: &str, wav: &Path, sid: i32, speed: f64, loudness: &str, text: &str) -> String {
+    let said = openclicky_voice::say::normalize(text);
+    let lex = engine().lexicon.lock().unwrap().clone();
+    let phonemes = lex.map(|l| l.phonemes(&said)).unwrap_or_default().replace(['\t', '\n'], " ");
+    format!("{id}\t{sid}\t{speed:.2}\t{}\t{:.1}\t{said}\t{phonemes}\n", wav.display(), loudness_db(loudness))
+}
+
+/// A line queued before the lexicon loaded gets its phonemes now.
+fn with_phonemes(line: String) -> String {
+    let f: Vec<&str> = line.trim_end_matches('\n').split('\t').collect();
+    if f.len() != 7 || !f[6].is_empty() {
+        return line;
+    }
+    let Some(lex) = engine().lexicon.lock().unwrap().clone() else { return line };
+    let ph = lex.phonemes(f[5]).replace(['\t', '\n'], " ");
+    format!("{}\t{ph}\n", f[..6].join("\t"))
+}
+
+/// Sentences are waiting and the server hasn't said anything for 40 s (loading the model takes
+/// a few seconds; a sentence well under one).
+pub fn hung() -> bool {
+    let e = engine();
+    e.running.load(Ordering::SeqCst)
+        && !e.pending.lock().unwrap().is_empty()
+        && e.progress.lock().unwrap().map(|t| t.elapsed() > Duration::from_secs(40)).unwrap_or(false)
+}
+
+/// End a hung server; what was waiting falls through to the system voice, and the next answer
+/// starts a fresh one.
+pub fn kill_hung() {
+    let pid = engine().pid.load(Ordering::SeqCst);
+    if pid > 1 {
+        #[cfg(unix)]
+        let _ = Command::new("/bin/kill").args(["-9", &pid.to_string()]).status();
+    }
+}
+
+/// The watchdog gave up: the system voice speaks until Pixie restarts.
+pub fn switch_off() {
+    engine().off.store(true, Ordering::SeqCst);
+    kill_hung();
 }
 
 /// Drop everything queued (barge-in / escape).

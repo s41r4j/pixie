@@ -3047,7 +3047,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openclicky-core"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "log",
  "rand 0.8.8",
@@ -3059,7 +3059,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-desktop"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "arboard",
  "async-trait",
@@ -3099,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-llm"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3113,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-mcp"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "log",
  "serde",
@@ -3124,18 +3124,19 @@ dependencies = [
 
 [[package]]
 name = "openclicky-native-host"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "openclicky-tools"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "image",
+ "libc",
  "log",
  "openclicky-core",
  "openclicky-llm",
@@ -3151,7 +3152,7 @@ dependencies = [
 
 [[package]]
 name = "openclicky-voice"
-version = "0.7.7"
+version = "0.8.0"
 dependencies = [
  "log",
  "openclicky-core",

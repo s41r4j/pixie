@@ -129,7 +129,12 @@ pub fn get(data: &Path, id: &str) -> Option<Chat> {
     if !safe(id) {
         return None;
     }
-    serde_json::from_str(&std::fs::read_to_string(dir(data).join(format!("{id}.json"))).ok()?).ok()
+    let mut c: Chat = serde_json::from_str(&std::fs::read_to_string(dir(data).join(format!("{id}.json"))).ok()?).ok()?;
+    // Answers from the 0.7.9 and 0.7.10 test builds could end with a copied "(Tools used for this answer…)" note.
+    for e in &mut c.entries {
+        e.a = crate::session::strip_tool_note(&e.a);
+    }
+    Some(c)
 }
 
 pub fn delete(data: &Path, id: &str) {
@@ -145,7 +150,7 @@ mod tests {
     #[test]
     fn save_list_get_delete() {
         let d = tempfile::tempdir().unwrap();
-        let e = |q: &str, at| ChatEntry { q: q.into(), a: "ok".into(), at };
+        let e = |q: &str, at| ChatEntry { q: q.into(), a: "ok".into(), at, tools: vec![] };
         let m = Meta::default();
         save(d.path(), "c1", &[e("first question", 1), e("second", 5)], &m);
         save(d.path(), "c2", &[e("other", 9)], &Meta { summary: "s".into(), summarized: 1, learned: 1 });

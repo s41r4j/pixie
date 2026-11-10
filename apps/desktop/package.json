@@ -1,7 +1,7 @@
 {
   "name": "@openclicky/desktop",
   "private": true,
-  "version": "0.7.7",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,12 +15,14 @@
     "@excalidraw/mermaid-to-excalidraw": "^3.6.0",
     "@tauri-apps/api": "^2.12.4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "^6.2.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"

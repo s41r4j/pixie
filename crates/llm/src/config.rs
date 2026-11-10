@@ -18,6 +18,18 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
+    /// Can this model see screenshots? Checked 2026-11-09: Claude and OpenAI's current models
+    /// do; on DeepSeek the Flash models do (tested with an image) and V4-Pro and the older chat /
+    /// reasoner models are text-only.
+    pub fn sees_images(self, model: &str) -> bool {
+        let m = model.to_ascii_lowercase();
+        match self {
+            ProviderKind::DeepSeek => !(m.contains("v4-pro") || m.contains("deepseek-chat") || m.contains("reasoner")),
+            ProviderKind::OpenAi => !(m.starts_with("gpt-3.5") || m.starts_with("o1-mini")),
+            ProviderKind::Claude => true,
+        }
+    }
+
     pub fn id(self) -> &'static str {
         match self {
             ProviderKind::Claude => "claude",

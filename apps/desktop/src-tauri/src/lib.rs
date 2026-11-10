@@ -8,6 +8,9 @@ mod commands;
 mod config;
 mod connectors;
 mod google;
+mod heal;
+mod rollback;
+mod watchdog;
 mod helper;
 mod hit;
 mod host;
@@ -26,10 +29,13 @@ mod macos;
 #[cfg(not(target_os = "macos"))]
 #[path = "desktop_other.rs"]
 mod macos;
+mod narrate;
+mod opencode;
 mod overlay;
 mod panel;
 mod permissions;
 mod resources;
+mod scene3d;
 mod screen;
 mod session;
 mod shelf;
@@ -102,6 +108,13 @@ impl AppState {
 
     pub fn reload_provider(&self) {
         let s = self.settings.lock().unwrap().clone();
+        // opencode on this computer as the model (no API key needed).
+        if s.provider == "opencode" && opencode::binary().is_some() {
+            let p: Arc<dyn Provider> = Arc::new(opencode::OpencodeProvider);
+            log::info!("model: {}", p.label());
+            *self.provider.lock().unwrap() = Some(p);
+            return;
+        }
         let primary = config::provider_config(&self.data_dir, &s);
         let backup = config::fallback_config(&self.data_dir, &s).filter(|b| primary.as_ref().map(|p| p.kind != b.kind || p.fast_model != b.fast_model).unwrap_or(true));
         let p = match (primary, backup) {
@@ -143,7 +156,11 @@ fn command_output(cmd: &str, args: &[&str]) -> String {
 }
 
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Logs also go to <app_data>/logs/pixie.log once setup knows where that is.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Pipe(Box::new(heal::Tee)))
+        .format_timestamp_millis()
+        .init();
 
     let app = tauri::Builder::default()
         // One openclicky at a time: a second launch just opens Settings in the first one.
@@ -210,6 +227,7 @@ pub fn run() {
             commands::google_sign_in,
             commands::google_sign_out,
             commands::connectors_gallery,
+            commands::opencode_status,
             commands::connector_save,
             commands::connector_remove,
             commands::connector_retry,
@@ -230,6 +248,11 @@ pub fn run() {
             canvas::canvas_take_ops,
             canvas::canvas_done,
             canvas::canvas_export,
+            scene3d::scene3d_get,
+            commands::checkup,
+            commands::screen_list,
+            commands::report_problem,
+            commands::show_log,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
@@ -246,6 +269,13 @@ pub fn run() {
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".openclicky"));
             let _ = std::fs::create_dir_all(&data_dir);
+            heal::init(&data_dir, &app.package_info().version.to_string());
+            // A version an update brought that keeps closing at once: the previous one goes back.
+            if rollback::on_launch(&data_dir, &app.package_info().version.to_string()) {
+                std::process::exit(0);
+            }
+            // Agents' processes end with Pixie (the helper reads this if Pixie dies first).
+            openclicky_tools::children::set_file(data_dir.join("agents.pids"));
             let settings = config::Settings::load(&data_dir);
 
             let (store, pack) = resources::load_store(app.handle());
@@ -254,6 +284,7 @@ pub fn run() {
             let mut audio = AudioBus::new(store.clone(), RodioOutput::spawn());
             config::apply_audio(&mut audio, &settings);
             hotkey::configure(&settings.shortcut_talk, &settings.shortcut_dictate);
+            hotkey::set_dictate_toggle(settings.dictate_mode == "toggle");
             let skills = skills::load(app.handle());
             let state = AppState {
                 store,
@@ -284,6 +315,15 @@ pub fn run() {
             app.manage(state);
 
             macos::init(app.handle());
+            // Tell them once about a crash last time or a file that had to be restored.
+            let h = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                for n in heal::take_notices() {
+                    jobs::toast(&h, &n, "info", None);
+                    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                }
+            });
             panel::configure(app.handle());
             panel::rest(app.handle());
             overlay::configure(app.handle());
@@ -294,6 +334,18 @@ pub fn run() {
             connectors::start(app.handle().clone());
             browser::start(app.handle().clone());
             kokoro::start(app.handle().clone());
+            watchdog::start(app.handle().clone());
+            {
+                // The speech recognizer, made before the first press so the mic comes on at once.
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    let st = h.state::<AppState>();
+                    let locale = st.settings.lock().map(|s| s.locale.clone()).unwrap_or_default();
+                    let _ = st.helper.call("listen_prewarm", serde_json::json!({ "locale": locale }), std::time::Duration::from_secs(10)).await;
+                });
+            }
+            opencode::init(app.handle());
             updates::spawn(app.handle().clone());
             session::spawn_learner(app.handle().clone());
             shelf::refresh(app.handle());
@@ -318,6 +370,31 @@ pub fn run() {
             // Dev/smoke-test aids.
             if std::env::args().any(|a| a == "--show-panel") {
                 panel::set_mode(app.handle(), panel::PanelMode::Idle);
+            }
+            if std::env::args().any(|a| a == "--hold-talk-test") {
+                // Speed test: hold ctrl+option for 1.5 s, three times (the log says how soon the
+                // microphone came on).
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Three presses: the first after launch, then two warm ones.
+                    for _ in 0..3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        log::info!("hold talk test: pressing");
+                        let r = h.state::<AppState>().helper.call("hold_keys_test", serde_json::json!({ "codes": [59, 58], "ms": 1500 }), std::time::Duration::from_secs(10)).await;
+                        log::info!("hold talk test: released {r:?}");
+                    }
+                });
+            }
+            if let Some(steps) = std::env::args().skip_while(|a| a != "--live-type-test").nth(1) {
+                // Type as you speak without a mic: "first|first words|First words." into the
+                // focused field after 3 s (OPENCLICKY_HOLD_CTRL=1 holds control meanwhile).
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let args = serde_json::json!({ "steps": steps.split('|').collect::<Vec<_>>(), "hold_ctrl": std::env::var("OPENCLICKY_HOLD_CTRL").is_ok(), "tap": std::env::var("OPENCLICKY_TAP").unwrap_or_default(), "force_keys": std::env::var("OPENCLICKY_FORCE_KEYS").is_ok() });
+                    let r = h.state::<AppState>().helper.call("live_type_test", args, std::time::Duration::from_secs(30)).await;
+                    log::info!("live type test: {r:?}");
+                });
             }
             if let Some(q) = std::env::args().skip_while(|a| a != "--ask").nth(1) {
                 let delay = std::env::var("OPENCLICKY_ASK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
@@ -359,7 +436,14 @@ pub fn run() {
     app.run(|_app, event| match event {
         // Closing the last window must not quit a menu-bar app; only Quit (exit code) does.
         RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
-        RunEvent::Exit => updates::on_quit(),
+        RunEvent::Exit => {
+            openclicky_tools::children::kill_all();
+            if let Some(st) = _app.try_state::<AppState>() {
+                rollback::on_quit(&st.data_dir, &_app.package_info().version.to_string());
+            }
+            opencode::on_quit();
+            updates::on_quit();
+        }
         // Clicking Pixie in the Dock, Launchpad or Finder while it runs brings Settings back.
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => windows::open_settings(_app, ""),

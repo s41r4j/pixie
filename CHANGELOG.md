@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.8.0 · unreleased
+Pixie looks after itself, works across several screens, draws while it explains (in 3D too), costs less to run, can run with no API key, and dictation can type as you speak. Everything from 0.7.8 to 0.7.17 ships here (those versions were only built locally).
+
+**Self-healing**
+- **Watchdogs.** Every 30 s Pixie checks that the helper, the natural voice and each connector still answer, and restarts one that hangs, not only one that quits. Three restarts of one part in five minutes and it's left alone (the voice falls back to the Mac's, a connector is paused until you press Retry) and you're told once. No restart loops.
+- **Stuck states.** A notch left on Thinking after the answer ended, or on Listening after the keys were let go, goes back to rest; a stuck shortcut listener is replaced.
+- **A permission turned off while Pixie runs** is noticed when something needs it: Pixie says which one, opens its page in System Settings, and says so when it's back on (restarting its helper for Screen Recording).
+- **Retired models** are replaced by the newest of the same family from the provider's live list ("claude-sonnet-4-5" becomes the newest Sonnet), and you're told. Only when there's no family match does it go back to the default.
+- **Rolling back a bad update (Mac).** Before an update replaces Pixie, the running version is kept (about 60 MB). If the new version closes within a minute of starting three times in a row, Pixie puts the previous one back, opens it, and skips that version until the next release.
+- **Settings and memory can't be lost to a damaged file.** Every save keeps a last-good copy; a file that won't read is set aside and the copy put back, and Pixie tells you.
+- **A log file** at `<support folder>/logs/pixie.log` (Settings → About → Show log), with millisecond times. **Crash notes**, local only: the next launch says so once and keeps it for a report. Nothing is sent anywhere.
+- **A "to fix" list** (`issues.md` in the support folder): problems Pixie worked around (a model error, the helper restarting, a damaged file, a crash), counted when they repeat.
+- **"Pixie, check yourself"** (or Settings → About → Run a checkup): the helper, permissions, one tiny model call, the voice, connectors, disk space and today's problems. A helper that doesn't answer is restarted on the spot.
+- **"Report this"** (or Settings → About → Report a problem): opens a GitHub issue in the browser you name, already filled in with what happened, your version and the relevant log lines, with personal paths, keys and email addresses removed. You read it and press Submit; Pixie never posts.
+- **Quit ends every Pixie process.** Each command or coding agent a job starts runs in its own process group: Quit ends them, and if Pixie is force-quit or crashes, its helper ends them the moment it notices. Stopping a job ends everything its command started, not only the top process. (The "Allow in the Background" entry in System Settings is macOS noting a menu-bar app; Pixie installs no login item.)
+
+**Explanations**
+- **Drawing in step with the voice.** Pixie writes its pointing and marks inside its sentences, and each one appears the moment that sentence starts playing: "This is the Apple menu" points at the Apple menu as you hear it. Works for pointing, circles, boxes, underlines, ticks, crosses and arrows between two things, in answers and in live agents' spoken steps. With a typed answer, marks show as the text comes in.
+- **Fuller explanations** when you ask Pixie to explain, teach or walk you through something: 4 to 8 short sentences that build on each other, most with a mark on screen. Quick questions stay short.
+- **3D explanations** (Settings → Experimental → 3D explanations): for things easier to grasp in 3D (the heart, a molecule, an engine, the planets) Pixie builds a model of labelled shapes and arrows in its own window. Spin, zoom and move it; as Pixie explains, the view turns to each part and lights it up as it's named. The window only draws while something moves, and closing it frees its memory.
+- **Marks land where they should.** Menu bar icons (Wi-Fi, battery, the clock, other apps' status items) are in the list of controls with their exact frames (and can be pressed); before, marks on them came out about a quarter too far left. Numbers in a mark are read as screenshot pixels and converted, and Pixie is told never to invent a position.
+
+**Computer use over several steps**
+- Pixie can **look** at the screen again during a voice turn, not only at the start.
+- **Every action reports the screen after it** (click, press, type, key, menu, open, scroll): the front app and window, the focused field, the 30 controls nearest where it acted with ids and frames, the ids that went away and the text that's new.
+- **Control ids stay the same for the whole request**, so "e12" is the same button after a click; ids that disappear are refused with a clear message. **Clicks snap to the newest screen**, never to the one from before the last action.
+- A voice turn can take up to 12 steps (was 8); longer jobs still go to a live agent.
+
+**Several screens and desktops**
+- **Notch on** (Settings → General → Screens, shown with more than one screen): the screen you're using, the built-in screen, or a screen by name. A screen without a camera notch gets the same bar at the top centre. Or say "keep the notch on the LG".
+- Pixie knows which screens there are and where they sit. It looks only at the pointer's screen unless you ask about another ("what's on my other screen?", "both screens"), then takes one screenshot per screen. With one screen nothing changes.
+- **A window across two screens** keeps all its controls, and **live agents stay on their app's screen** even when you move the mouse elsewhere. Windows and Linux capture the screen Pixie was asked about.
+- **Desktops (Spaces):** ask about "my other desktop" and Pixie knows which of the front app's windows are on another desktop or minimized; it can switch desktops when you ask.
+
+**Voice and dictation**
+- **No more skipped words.** The natural voice used to drop any word missing from its word list ("opened", "GitHub", every number and price). Pixie now works out the sounds itself: numbers, times, prices, percentages, years, units and symbols become words first ("$12.50" is "twelve dollars fifty cents"), then each word is looked up, with endings, compounds, acronyms and known pieces.
+- **Louder and clearer.** Speech is leveled to normal speech loudness (about 8 dB louder) with a limiter so peaks never crack. Settings → Voice → Loudness: Quiet, Normal or Loud; "speak louder" works by voice.
+- **Long questions are heard in full.** Apple's on-device recognition starts over after a pause, and Pixie kept only the last sentence; every piece is kept now.
+- **Dictate hands-free:** Settings → General → "Press to start, press to stop" makes fn+ctrl a toggle. Or say "make dictation a toggle".
+- **See what Pixie hears.** While you dictate, the notch shows the words so far.
+- **Type as you speak** (Settings → Experimental, off unless you turn it on): words appear as you talk wherever there's a text cursor, through Accessibility in most Mac apps and by key presses (the real keys for your layout) in terminals like Warp. When you let go, the tidied text (punctuation, no "um") replaces what you said. With no text cursor (the desktop, a list), the words go on the clipboard and the notch says so. Off: dictation types the text when you stop, as before.
+
+**Faster and smoother**
+- **The microphone comes on sooner:** 58 ms from the talk keys instead of about 190 (143 ms instead of 276 for the first press after launch).
+- **The notch follows your pointer at once** (opens after 40 ms, closes after 120 ms) and **slides out of the camera housing and back in**, staying black; its content fades in after it opens and out before it closes.
+- **The notch goes away right after the answer:** 0.8 s after the last word (1.5 s if nothing was spoken).
+- The 3D view no longer lags (labels trailed the view and stuttered).
+
+**Answer the way you asked**
+- **Typed questions get typed answers** (Settings → General, off by default): talk and Pixie talks back; type and it writes back, without a word out loud.
+- **Show typed answers in the notch** (on by default): the notch drops down with the whole answer, stays while you hover and closes with Esc. Off: typed answers wait in the notch's Chat tab.
+
+**Context and cost**
+- **Honest usage.** Settings → Usage counts tokens read from the provider's prompt cache and prices them at their own rates; before, cached tokens weren't counted at all.
+- **Cache-friendly prompts.** The system prompt holds only what stays the same; the time, the front app and the screen go with your newest message. On Claude, the tools, system prompt and earlier conversation are marked for caching.
+- **Smaller screen text:** the 30 controls and 40 text lines that match your words or sit nearest the pointer (all of it when you ask to read or summarize); questions clearly not about the screen skip it; screenshots go out 1280 px wide. Tool descriptions are about a fifth smaller, and with more than 20 connector tools only the services your request names are offered.
+- **Long jobs stay lean:** one tool result is capped at about 20,000 characters, and older results are folded into one-line stubs from step 15.
+- Measured on DeepSeek Flash with the same 10 voice questions: uncached input per step halved (2,772 to 1,374 tokens) and cost per step down 30%, same answers.
+
+**Models**
+- **No API key needed: opencode as Pixie's model.** Settings → Models → **On this computer**: if opencode is installed, pick its models for talking and for agents. Free models are marked **Free** and cost $0; models you've signed in to in opencode work too. Pixie starts opencode only when needed, with its own settings (yours are untouched), and stops it after ten quiet minutes. Or say "use opencode".
+- **Switching provider keeps the right models.** Model names you say are matched against the provider's real list, a switch drops choices the new provider doesn't have, and if a provider says a model doesn't exist, Pixie goes back to its default and tells you.
+- Settings → Models warns when the talk or agent model can't see screenshots, and suggests one that can.
+
+**Jobs and coding**
+- **Pixie knows its jobs:** every question comes with a short list of your recent jobs, and Pixie can look up any job's plan, progress, report and note ("how's my job going?").
+- **Coding goes to the agent with usage left:** your default if it has usage, else Codex, then Claude Code, then opencode's free models. Codex's limits are read from its own logs; for Claude Code, set what's left in Settings → Coding.
+- **Jobs you ask for get started**, also the second time in a day, and deleting a job removes it from the Jobs window at once.
+
+**Personalities and connectors**
+- Switching personality is reliable: "talk like the nerdy one", "go back to normal Pixie" and close mishearings switch at once, and the face always matches.
+- **Connectors moved behind a switch** in Settings → Experimental: off, the page is hidden, no connector servers run and their tools aren't offered. If you'd already added connectors, it starts on. The Chrome extension moved to Settings → Apps.
+
+**Fixes**
+- Pixie knows its own version, so "what version are you?" can't get a made-up answer.
+- No more "(Tools used for this answer…)" after answers; old answers are cleaned up.
+- When a check can't fetch the update file, Pixie tries again in 15 minutes instead of six hours.
+
 ## 0.7.7 · 2026-11-07
 The first release that updates itself, and the first with Windows and Linux builds. Everything from 0.7.0 to 0.7.7 ships here (those versions were only built locally).
 

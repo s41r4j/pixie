@@ -70,7 +70,11 @@ impl Helper {
         let Some(path) = self.path.clone() else { return };
         let mut backoff = Duration::from_millis(300);
         loop {
-            let child = Command::new(&path)
+            let mut cmd = Command::new(&path);
+            if let Some(f) = openclicky_tools::children::file() {
+                cmd.env("OPENCLICKY_CHILDREN", f);
+            }
+            let child = cmd
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
@@ -112,6 +116,11 @@ impl Helper {
             }
             let _ = self.events.send(("restarted".into(), Value::Null));
             log::warn!("helper exited; restarting in {backoff:?}");
+            // Noted a moment later, so a helper ended by Pixie quitting (or being replaced) isn't.
+            std::thread::spawn(|| {
+                std::thread::sleep(Duration::from_secs(3));
+                crate::heal::note("helper", "The screen and speech helper stopped", "Restarted it", "");
+            });
             std::thread::sleep(backoff);
             backoff = (backoff * 2).min(Duration::from_secs(10));
         }
@@ -156,7 +165,13 @@ impl Helper {
             }
         }
         match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(r)) => r,
+            Ok(Ok(r)) => {
+                if let Err(e) = &r {
+                    // A permission turned off while Pixie runs: say which and open its page.
+                    crate::watchdog::helper_error(e);
+                }
+                r
+            }
             Ok(Err(_)) => Err("The helper went away.".into()),
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
@@ -173,6 +188,16 @@ impl Helper {
                 log::debug!("helper {cmd}: {e}");
             }
         });
+    }
+}
+
+/// Kill the helper now so the supervisor starts a fresh one (a checkup found it not answering).
+pub fn force_restart(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let st = app.state::<crate::AppState>();
+    let mut guard = st.helper.child.lock().unwrap();
+    if let Some(c) = guard.as_mut() {
+        let _ = c.kill();
     }
 }
 

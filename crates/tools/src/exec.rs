@@ -66,14 +66,19 @@ fn path_env(ctx: &ToolCtx) -> String {
 }
 
 async fn run_process(mut cmd: Command, timeout: Duration, ctx: &ToolCtx) -> Result<(i32, String), String> {
-    cmd.kill_on_drop(true).stdin(std::process::Stdio::null());
-    let child = cmd.output();
+    cmd.kill_on_drop(true).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    crate::children::prepare(&mut cmd);
+    let child = cmd.spawn().map_err(|e| format!("Couldn't run it: {e}"))?;
+    // Stopped or timed out: the guard ends everything the command started.
+    let guard = crate::children::add(child.id());
+    let child = child.wait_with_output();
     tokio::select! {
         _ = ctx.cancel.cancelled() => Err("Stopped.".into()),
         r = tokio::time::timeout(timeout, child) => match r {
             Err(_) => Err(format!("Timed out after {} s.", timeout.as_secs())),
             Ok(Err(e)) => Err(format!("Couldn't run it: {e}")),
             Ok(Ok(out)) => {
+                guard.done();
                 let mut text = String::from_utf8_lossy(&out.stdout).to_string();
                 let err = String::from_utf8_lossy(&out.stderr);
                 if !err.trim().is_empty() {

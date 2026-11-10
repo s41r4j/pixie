@@ -58,14 +58,10 @@ fn new_id() -> String {
 pub fn tool() -> ToolDef {
     ToolDef {
         name: "canvas".into(),
-        description: "An Excalidraw canvas in its own window: real shapes they can move, edit and save (.excalidraw, PNG, SVG). Use it for any diagram, flow, sketch, layout or explanation that needs a picture. The window comes up in front of them; it goes away when they click outside it, and action=open brings it back.\n\
-action=open shows a canvas: the one in use (or the last one), canvas=<id> or title=<words> to pick a saved one (see list), or new=true for a blank one. Use it whenever they ask to open, show or bring back the canvas.\n\
-action=draw adds to the canvas in use and shows it (title names it, new=true starts a fresh one). Give either:\n\
-• mermaid: a Mermaid flowchart / sequence / class diagram (best for flows and processes; it's laid out for you), or\n\
-• elements: Excalidraw skeletons, coordinates in px, origin top-left, roughly 0–1200 × 0–800. Types: rectangle, ellipse, diamond (x, y, width, height, optional label: {text}), text (x, y, text, fontSize), arrow / line (x, y, width, height = the vector to the end; or start: {id} and end: {id} to connect shapes by their id, with label: {text}), frame (x, y, width, height, name, children: [ids]). Give shapes an id when arrows connect to them. Optional: strokeColor, backgroundColor (e.g. #a5d8ff, #b2f2bb, #ffec99, #ffc9c9, #d0bfff), fillStyle (solid, hachure), strokeStyle (dashed), roundness: {type: 3}.\n\
-action=read returns what's on the canvas now (including their edits). action=clear empties it but keeps it.\n\
-action=list shows their saved canvases (id, title, date, shapes).\n\
-action=delete removes a canvas from Pixie (the file goes to the Trash): the one in use, canvas=<id>, or all=true for every one. Only when they ask to delete; clearing is not deleting.".into(),
+        description: "An Excalidraw canvas window with real shapes they can move, edit and save. For any diagram, flow, sketch, layout or picture that explains. It hides when they click outside; open brings it back.\n\
+open: the canvas in use (or the last), canvas=<id> or title=<words> from list, or new=true.\n\
+draw: add to the canvas in use and show it (title names it, new=true starts fresh), with either mermaid (flowchart, sequence or class diagram, laid out for you; best for processes) or elements: Excalidraw skeletons in px, origin top-left, about 1200×800. rectangle/ellipse/diamond {x,y,width,height,label:{text}}, text {x,y,text,fontSize}, arrow/line {x,y,width,height} (the vector) or {start:{id},end:{id},label:{text}}, frame {x,y,width,height,name,children:[ids]}. Give shapes an id to connect them. Optional strokeColor, backgroundColor (#a5d8ff #b2f2bb #ffec99 #ffc9c9 #d0bfff), fillStyle (solid|hachure), strokeStyle (dashed), roundness {type:3}.\n\
+read: what's on it now, their edits included. clear: empty it. list: saved canvases (id, title, date, shapes). delete: the one in use, canvas=<id> or all=true, to the Trash; only when they ask (clearing isn't deleting).".into(),
         input_schema: json!({
             "type": "object",
             "properties": {

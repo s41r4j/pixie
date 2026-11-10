@@ -48,8 +48,49 @@ pub fn start(app: AppHandle) {
         let _ = write_file(&app, &file);
     }
     let servers = openclicky_mcp::load_config(&path);
+    // Connectors moved behind Settings → Experimental in 0.8.0. People who already added one
+    // keep them: the switch starts on for them.
+    {
+        let st = app.state::<crate::AppState>();
+        let mut s = st.settings.lock().unwrap();
+        if !s.experimental.contains_key(FLAG) {
+            s.experimental.insert(FLAG.into(), !servers.is_empty());
+            s.save(&st.data_dir);
+        }
+    }
+    if !enabled(&app) {
+        return;
+    }
     for (name, cfg) in servers {
         connect(name, cfg);
+    }
+}
+
+#[cfg(test)]
+mod trim_tests {
+    use super::*;
+
+    fn t(name: &str) -> ToolDef {
+        ToolDef { name: name.into(), description: String::new(), input_schema: json!({}) }
+    }
+
+    #[test]
+    fn many_connector_tools_are_trimmed_to_the_named_service() {
+        let mut tools = vec![t("look"), t("mac_step")];
+        for i in 0..15 {
+            tools.push(t(&format!("mcp__github__tool{i}")));
+            tools.push(t(&format!("mcp__linear__tool{i}")));
+        }
+        let mut a = tools.clone();
+        trim(&mut a, "what's assigned to me in Linear?");
+        assert_eq!(a.len(), 2 + 15);
+        assert!(a.iter().all(|t| !t.name.contains("github")));
+        let mut b = tools.clone();
+        trim(&mut b, "what's the weather");
+        assert_eq!(b.len(), 2, "built-in tools always stay");
+        let mut few = tools[..12].to_vec();
+        trim(&mut few, "weather");
+        assert_eq!(few.len(), 12, "a few connector tools are always offered");
     }
 }
 
@@ -73,11 +114,31 @@ fn connect(name: String, cfg: openclicky_mcp::ServerConfig) {
     });
 }
 
+/// The Experimental switch for connectors.
+pub const FLAG: &str = "connectors";
+
+pub fn enabled(app: &AppHandle) -> bool {
+    app.state::<crate::AppState>().settings.lock().map(|s| s.experiment(FLAG)).unwrap_or(false)
+}
+
+/// The switch changed: start the servers, or stop them all.
+pub fn switched(app: &AppHandle) {
+    if enabled(app) {
+        reload(app);
+    } else {
+        registry().lock().unwrap().clear();
+        errors().lock().unwrap().clear();
+    }
+}
+
 /// Re-read mcp.json: drop servers that went away or changed, start the new ones.
 pub fn reload(app: &AppHandle) {
     let servers = openclicky_mcp::load_config(&config_path(app));
     registry().lock().unwrap().clear(); // dropping a client stops its server
     errors().lock().unwrap().clear();
+    if !enabled(app) {
+        return;
+    }
     for (name, cfg) in servers {
         connect(name, cfg);
     }
@@ -336,6 +397,7 @@ pub fn retry(app: &AppHandle, id: &str) -> Result<(), String> {
     let servers = openclicky_mcp::load_config(&config_path(app));
     let cfg = servers.into_iter().find(|(n, _)| n == id).map(|(_, c)| c).ok_or("That connector is off or not added.")?;
     registry().lock().unwrap().remove(id);
+    crate::watchdog::forgive(&format!("connector:{id}"));
     connect(id.to_string(), cfg);
     Ok(())
 }
@@ -373,11 +435,49 @@ pub fn remove(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Connected servers, for the watchdog.
+pub fn clients() -> Vec<(String, Arc<Client>)> {
+    registry().lock().unwrap().iter().map(|(n, c)| (n.clone(), c.client.clone())).collect()
+}
+
+/// The watchdog gave up on one: it's dropped (its tools go) and its card says why until Retry.
+pub fn pause(id: &str, why: &str) {
+    registry().lock().unwrap().remove(id);
+    errors().lock().unwrap().insert(id.to_string(), why.to_string());
+}
+
 pub fn connected_names() -> Vec<String> {
     registry().lock().unwrap().keys().cloned().collect()
 }
 
-pub fn tools(_app: &AppHandle) -> Vec<ToolDef> {
+/// Past this many connector tools, only the ones whose service the request names are offered
+/// (each tool definition is sent with every step, and a few servers can add tens of thousands of
+/// tokens).
+const MANY: usize = 20;
+
+/// Drop connector tools the request doesn't call for, when there are many: keep a server's tools
+/// when the request names the server ("in Linear", "my GitHub issues") or one of its tools.
+pub fn trim(tools: &mut Vec<ToolDef>, request: &str) {
+    let n = tools.iter().filter(|t| t.name.starts_with("mcp__")).count();
+    if n <= MANY {
+        return;
+    }
+    let words: Vec<String> = request.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() >= 3).map(str::to_string).collect();
+    let server = |name: &str| name.trim_start_matches("mcp__").split("__").next().unwrap_or("").to_lowercase();
+    tools.retain(|t| {
+        if !t.name.starts_with("mcp__") {
+            return true;
+        }
+        let s = server(&t.name);
+        let tool = t.name.to_lowercase();
+        words.iter().any(|w| s.contains(w.as_str()) || w.contains(s.as_str()) && s.len() >= 3 || tool.ends_with(&format!("__{w}")))
+    });
+}
+
+pub fn tools(app: &AppHandle) -> Vec<ToolDef> {
+    if !enabled(app) {
+        return Vec::new();
+    }
     let r = registry().lock().unwrap();
     r.iter()
         .flat_map(|(server, c)| {

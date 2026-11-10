@@ -110,15 +110,15 @@ pub fn draw() -> ToolDef {
         "text": {"type":"string","description":"handwritten text (kind text), or a label inside a box/circle"},
         "color": {"type":"string","enum":["ink","blue","red","green","orange","yellow","pink"]}
     }), &["kind"]);
-    def("draw", "Draw by hand. On their screen (default): circle, box or underline something that's on screen (x,y,w,h in screen points, use the frame from the lists), an arrow from (x,y) to (to_x,to_y), a check or cross, or short text; marks fade after the answer. This marks what's on their screen; to explain something with a diagram, use the canvas tool instead.",
+    def("draw", "Hand-drawn marks on their screen that fade after the answer: circle, box or underline something on screen (target, or x,y,w,h from the lists), an arrow (x,y → to_x,to_y), a check, a cross or short text. For diagrams, use canvas.",
         obj(json!({ "ops": {"type":"array","items": op} }), &["ops"]))
 }
 pub fn highlight() -> ToolDef {
-    def("highlight", "Point at something on screen: the pointer flies there and rings it. Best: give target, the element id from the controls list (e.g. e12) or the exact text of a line from the text list; its exact frame is used. Otherwise give x, y, w, h in screen points copied from those lists (never estimate from the image when the item is listed). label is a 1-4 word tag shown beside it.",
+    def("highlight", "Point at something on screen: the pointer flies there and rings it. Give target (an id like e12, or a line's exact text) so its exact frame is used; else x, y, w, h copied from the lists, never estimated from the image when it's listed. label: a 1-4 word tag.",
         obj(json!({ "target": {"type":"string","description":"element id like e12, or exact on-screen text"}, "x": {"type":"number"}, "y": {"type":"number"}, "w": {"type":"number"}, "h": {"type":"number"}, "label": {"type":"string"} }), &[]))
 }
 pub fn mac_step() -> ToolDef {
-    def("mac_step", "Do one step in their apps. Your buddy pointer flies there first so they see it. action: click / double_click / right_click (target = a label, an element id like e12, or give x and y in screen points), drag (x,y → to_x,to_y), press (a button by label/id through Accessibility), menu (a path like \"File > Export…\"), type (target = the text; it goes into the field with keyboard focus. Give x and y of the field to click into it first: always do that unless you just clicked it, and always when the window has several panes or inputs such as split terminals, chat side panels or editor + console; the result says which field got it), key (a shortcut like cmd+s or return), focus (a field by label), open (an app, file or URL), scroll (up/down), find (locate without acting). Each click returns what the screen looks like after; check it before the next step.",
+    def("mac_step", "One step in their apps; your buddy pointer flies there first. click / double_click / right_click (target = an id like e12 or a label, or x and y), drag (x,y → to_x,to_y), press (a control by id or label), menu (\"File > Export…\"), type (target = the text, into the focused field; give the field's x and y to click into it first unless you just did, always when the window has several panes or inputs; the result says where it went), key (cmd+s, return), focus, open (app, file or URL), scroll (up|down), find. Every action returns the screen after it: app, window, focused field, the nearest controls with ids and frames, ids that are gone, new text. Ids stay the same for the whole request; check the result before the next step.",
         obj(json!({
             "action": {"type":"string","enum":["click","double_click","right_click","drag","press","menu","type","key","focus","open","scroll","find"]},
             "target": {"type":"string"},
@@ -131,8 +131,11 @@ pub fn clipboard() -> ToolDef {
         obj(json!({ "action": {"type":"string","enum":["copy","read"]}, "text": {"type":"string"} }), &["action"]))
 }
 pub fn look() -> ToolDef {
-    def("look", "See their screen now: a screenshot plus the visible controls and text with exact frames (screen points) to use with mac_step, highlight and draw.",
-        obj(json!({}), &[]))
+    def("look", "See their screen now: a screenshot (for models that take images) plus every visible control and text line with exact frames (screen points) to use with mac_step, highlight and draw. Use it when an action's result doesn't show what you need next, or the screen changed a lot (a new window, a page load).",
+        obj(json!({
+            "full": {"type":"boolean", "description":"every control and text line, not just the ones that match the request and sit near the pointer"},
+            "display": {"type":"string", "description":"with several screens: other, window (the front window's), all, left, right, built-in, external or a screen's name; default the pointer's"}
+        }), &[]))
 }
 pub fn code() -> ToolDef {
     // Not in §5's table: delegation to the user's local coding agents. TODO: fold into the spec.
@@ -143,7 +146,7 @@ pub fn code() -> ToolDef {
 pub fn start_job() -> ToolDef {
     // Not in §5's list: the voice loop needs a way to hand work to a background job. TODO: fold into
     // the spec's tool table.
-    def("start_job", "Hand longer work to an agent. kind=background (default): works on its own in the background (research, documents, files, code) with a plan and a note. kind=live: does it on their real screen while explaining each step out loud (clicking, typing and copying in their apps; use it when they want you to do something in their apps that takes several steps, or to show them how). Both show in the notch's Agents tab. Write the brief as a complete instruction with every detail they gave.",
+    def("start_job", "Hand longer work to an agent, shown in the notch's Agents tab. kind=background (default): research, documents, files, code, on its own with a plan and a note. kind=live: does it on their screen, explaining each step out loud (long tasks in their apps, or showing them how). The brief is a complete instruction with every detail they gave.",
         obj(json!({ "title": {"type":"string","description":"2-4 words"}, "instructions": {"type":"string"}, "kind": {"type":"string","enum":["background","live"]} }), &["title", "instructions"]))
 }
 pub fn browser() -> ToolDef {
@@ -155,7 +158,7 @@ pub fn browser() -> ToolDef {
 pub fn for_mode(mode: Mode, browser_connected: bool) -> Vec<ToolDef> {
     let mut v = match mode {
         Mode::Voice | Mode::Takeover => vec![
-            highlight(), draw(), mac_step(), clipboard(), note(), note_answer(), start_job(), web_search(), fetch_url(),
+            look(), highlight(), draw(), mac_step(), clipboard(), note(), note_answer(), start_job(), web_search(), fetch_url(),
             device_open(), device_find_files(), device_list_folder(), device_read_file(),
         ],
         Mode::Live => vec![

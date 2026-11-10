@@ -5,6 +5,7 @@
 //! behind these traits so the UI never couples to one vendor.
 
 pub mod bus;
+pub mod say;
 
 pub use bus::{AudioBus, AudioOutput, Gains, PlaybackId, SlotPref};
 #[cfg(feature = "rodio")]

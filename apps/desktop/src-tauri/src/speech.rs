@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 
 /// Strip what shouldn't be read aloud.
 pub fn speakable(s: &str) -> String {
+    let s = &crate::session::strip_tool_note(s);
     let mut out = String::with_capacity(s.len());
     let mut in_code = false;
     for line in s.lines() {
@@ -63,38 +64,53 @@ pub struct SpeechStream {
     buf: String,
     n: usize,
     enabled: bool,
+    /// Marks written in the answer (`[[circle e12]]`), drawn as their sentence plays.
+    marks: crate::narrate::Filter,
 }
 
 impl SpeechStream {
-    pub fn new(app: &AppHandle, turn: u64) -> Self {
-        let enabled = app.state::<AppState>().settings.lock().map(|s| s.speak_answers).unwrap_or(true);
-        Self { app: app.clone(), turn, buf: String::new(), n: 0, enabled }
+    /// `speak`: false for an answer that's read, not heard (a typed question answered in text).
+    pub fn new(app: &AppHandle, turn: u64, speak: bool) -> Self {
+        let enabled = speak && app.state::<AppState>().settings.lock().map(|s| s.speak_answers).unwrap_or(true);
+        Self { app: app.clone(), turn, buf: String::new(), n: 0, enabled, marks: Default::default() }
     }
 
-    pub fn push(&mut self, delta: &str) {
-        self.buf.push_str(delta);
+    /// Takes a text delta; returns it as it should be shown (marks cut out).
+    pub fn push(&mut self, delta: &str) -> String {
+        let t = self.marks.push(delta);
+        self.buf.push_str(&t);
         let min = if self.n == 0 { 12 } else { 30 };
         while let Some(end) = sentence_end(&self.buf, min) {
             let s: String = self.buf.drain(..end).collect();
             self.say(&s);
         }
+        crate::narrate::clean(&t)
     }
 
-    pub fn flush(&mut self) {
+    /// The end of a step or the answer: speak what's left. Returns any held-back text to show.
+    pub fn flush(&mut self) -> String {
+        let held = self.marks.finish();
+        self.buf.push_str(&held);
         let rest = std::mem::take(&mut self.buf);
         self.say(&rest);
+        held
     }
 
-    fn say(&mut self, text: &str) {
-        let text = speakable(text);
+    fn say(&mut self, raw: &str) {
+        let marks: Vec<_> = crate::narrate::indexes(raw).into_iter().filter_map(|i| self.marks.marks.get(i).cloned()).collect();
+        let text = speakable(&crate::narrate::clean(raw));
         if text.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
+            crate::narrate::run(&self.app, marks);
             return;
         }
         self.n += 1;
         let id = format!("{}-{}", self.turn, self.n);
         emit(&self.app, Event::new("speech.segment", json!({ "id": id, "text": text, "turn": self.turn })));
         if self.enabled {
+            crate::narrate::on_start_of(&id, marks);
             speak(&self.app, &id, &text);
+        } else {
+            crate::narrate::run(&self.app, marks);
         }
     }
 
@@ -108,7 +124,7 @@ pub fn speak(app: &AppHandle, id: &str, text: &str) {
     let state = app.state::<AppState>();
     let s = state.settings.lock().map(|s| s.clone()).unwrap_or_default();
     state.session.speaking_started(id);
-    if s.voice_engine != "apple" && crate::kokoro::speak(app, id, text, s.kokoro_voice, s.voice_speed) {
+    if s.voice_engine != "apple" && crate::kokoro::speak(app, id, text, s.kokoro_voice, s.voice_speed, &s.voice_loudness) {
         return;
     }
     state.helper.send("speak", json!({ "text": text, "utterance": id, "voice": s.voice_id, "rate": s.speech_rate }));
@@ -116,6 +132,7 @@ pub fn speak(app: &AppHandle, id: &str, text: &str) {
 
 pub fn stop(app: &AppHandle) {
     let state = app.state::<AppState>();
+    crate::narrate::cancel_all();
     crate::kokoro::stop();
     state.helper.send("speak_stop", json!({}));
     state.session.speaking_cleared();

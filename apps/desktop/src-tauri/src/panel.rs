@@ -82,6 +82,27 @@ fn notch_screen() -> Option<macos::ScreenInfo> {
     macos::screens().into_iter().find(|s| s.notch_width.is_some())
 }
 
+/// Settings → General → Notch on: the screen it always uses, when they picked one ("builtin" or
+/// a screen's name) and it's connected. Main thread.
+fn pinned_screen(app: &AppHandle) -> Option<macos::ScreenInfo> {
+    let pref = app.state::<AppState>().settings.lock().map(|s| s.notch_screen.trim().to_lowercase()).unwrap_or_default();
+    if pref.is_empty() || pref == "follow" {
+        return None;
+    }
+    let all = macos::screens();
+    let names = macos::screen_names();
+    let named = |f: &dyn Fn(&str) -> bool| names.iter().position(|n| f(&n.to_lowercase())).and_then(|i| all.get(i).copied());
+    if pref == "builtin" {
+        return notch_screen().or_else(|| named(&|n| n.contains("built-in") || n.contains("built in")));
+    }
+    named(&|n| n == pref).or_else(|| named(&|n| n.contains(&pref)))
+}
+
+/// Where it rests: the pinned screen, else the one with the notch.
+fn home_screen(app: &AppHandle) -> Option<macos::ScreenInfo> {
+    pinned_screen(app).or_else(notch_screen)
+}
+
 /// Modes that come and go without a sound.
 fn quiet(m: PanelMode) -> bool {
     matches!(m, PanelMode::Hidden | PanelMode::Peek | PanelMode::Toast)
@@ -91,7 +112,7 @@ fn quiet(m: PanelMode) -> bool {
 pub fn rest(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let (Some(win), Some(ns)) = (window(&handle), notch_screen()) else { return };
+        let (Some(win), Some(ns)) = (window(&handle), home_screen(&handle)) else { return };
         place(&handle, &win, ns);
         macos::order_front_without_focus(&win);
         hit::set_visible(&handle, PANEL, true);
@@ -108,12 +129,14 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
     if prev == next {
         return;
     }
+    log::debug!("panel: {prev:?} -> {next:?}");
     if next != PanelMode::Hidden {
         crate::updates::touch();
     }
     if matches!(next, PanelMode::Listening | PanelMode::Typing) {
         // An answer is coming: load the natural voice while they talk or type.
         crate::kokoro::warm(app);
+        crate::opencode::warm(app);
     }
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -128,14 +151,14 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
             // Let the collapse animation play, then rest over the notch (or leave the screen).
             let h2 = handle.clone();
             std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(340));
+                std::thread::sleep(Duration::from_millis(330));
                 let h3 = h2.clone();
                 let _ = h2.run_on_main_thread(move || {
                     if mode(&h3) != PanelMode::Hidden {
                         return;
                     }
                     let Some(w) = window(&h3) else { return };
-                    match notch_screen() {
+                    match home_screen(&h3) {
                         Some(ns) => {
                             let cur = h3.state::<AppState>().panel.lock().unwrap().screen;
                             if !same_screen(&cur, &ns) {
@@ -153,7 +176,7 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
         } else {
             if prev == PanelMode::Hidden {
                 // Peek stays where it rests; everything else opens on the screen you're using.
-                let target = if next == PanelMode::Peek { current } else { macos::screen_at_cursor() };
+                let target = if next == PanelMode::Peek { current } else { pinned_screen(&handle).unwrap_or_else(macos::screen_at_cursor) };
                 if !same_screen(&current, &target) || current.frame.w == 0.0 {
                     place(&handle, &win, target);
                 }

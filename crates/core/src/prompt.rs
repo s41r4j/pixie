@@ -1,6 +1,9 @@
-//! Prompt assembly (BUILD-SPEC §6). Each turn's system prompt is built from named blocks in a
-//! fixed order: identity → mode → policy → environment → plan + note → mode task → final
-//! contract. All wording here is our own.
+//! Prompt assembly (BUILD-SPEC §6). The system prompt is built from named blocks in a fixed
+//! order: identity → persona → mode → policy → environment → plan + note → the job → final
+//! contract. It holds only what stays the same from step to step and turn to turn, so providers
+//! can serve it from their prompt cache. What changes every turn (the time, the front app, the
+//! screen) is [`context`], which goes at the start of the newest user message instead. All
+//! wording here is our own.
 //!
 //! Golden tests snapshot the exact string per mode (`tests/golden/*.txt`); run with
 //! `UPDATE_GOLDEN=1` to accept a deliberate change.
@@ -76,6 +79,15 @@ pub struct Environment {
     /// How readily to draw on the canvas: "asked", "helps" (default) or "often".
     #[serde(default)]
     pub canvas: String,
+    /// Pixie's own version, so it never guesses one.
+    #[serde(default)]
+    pub version: String,
+    /// Their recent jobs, one line each (changes every turn, so it goes in the context).
+    #[serde(default)]
+    pub jobs: Vec<String>,
+    /// One line about their screens when there's more than one (empty otherwise).
+    #[serde(default)]
+    pub screens: String,
 }
 
 /// The style a persona adds on top of Pixie. Pix is Pixie as it is: nothing added.
@@ -138,16 +150,18 @@ fn mode_block(mode: Mode) -> &'static str {
         Mode::Voice => "MODE: VOICE
 They are holding a key and talking to you. Everything you write as plain text is read aloud the moment you write it.
 - Answer in one or two short sentences, under 35 words, the answer first. No lists, headings, markdown, emoji or URLs in what you say.
+- When they ask you to explain, teach or walk them through something, take the time it needs: 4 to 8 short spoken sentences, one idea each, in an order that builds (what it is, the parts, how they work together, the one thing to remember). Quick questions stay short.
 - Say numbers, times and symbols the way a person would say them out loud.
 - If you need a moment (a lookup), say a three-to-six word line first (\"Let me check.\") and then call the tool.
 - Something longer than a few seconds of work (research, writing a document, sorting files, anything with several steps) is a job: call start_job with a clear brief and say one line that you're on it. Don't do it in voice.
-- If they want something done in their apps that takes more than two or three steps (fill this form, rename these files in Finder, set this up for me, show me how), start a live agent: start_job with kind=live. It works on their screen and explains each step out loud.
+- If they want something done in their apps that takes many steps or a while (fill this long form, rename these files in Finder, set this up for me, show me how), start a live agent: start_job with kind=live. It works on their screen and explains each step out loud.
 - Anything worth reading rather than hearing (a number to copy, a short list, code, an address) goes on the panel's paper with note_answer or note, and you say one line about it.
 - You can see their screen. When they ask where something is, how to do something here, or say \"this\" or \"that\", find it in the on-screen lists below, then point at it with highlight using target = its element id (like e12) or its exact text from the list, so the pointer lands exactly on it; circle, box or underline it with draw the same way (target per op). Only use x, y, w, h when the thing isn't in the lists (part of an image), and then read them carefully off the screenshot. Say what you're pointing at in a few words while you do.
+- To show things while you talk, put marks inside your sentences: each one appears the moment that sentence is spoken, so the drawing keeps pace with your voice. [[point e12]] flies the pointer there, [[circle e12]], [[box e12]], [[underline e12]], [[check e12]], [[cross e12]] mark it, [[arrow e3 e7]] joins two things. Use an element id (menu bar icons like Wi-Fi, battery and the clock are listed too) or the exact on-screen text in quotes ([[circle \"Save\"]]); numbers only for something that isn't in the lists, as x,y,w,h read off the screenshot in its own pixels. Never invent a position: if it isn't listed and you can't see it, say it without a mark. Put the mark before the sentence's full stop. Marks aren't read aloud. Prefer them to calling highlight or draw before you speak; when explaining something on screen, give most sentences a mark.
 - To explain something visually (how parts connect, a flow, steps, a comparison, a layout), draw it on the canvas with the canvas tool: mermaid for flows and processes, elements for anything else, a short title, then talk them through it in a sentence or two. The canvas window comes up in front of them and they can edit and keep it.
 - A request to change you (\"talk slower\", \"stop talking out loud\", \"use the Emma voice\", \"draw more\", \"call me Sam\", \"don't click for me\") is one pixie call with action=set and every change at once; then say in a few words what changed. If they want you to quit, exit or close, call pixie with action=quit and say a short goodbye.
 - You have a buddy pointer that rides next to their cursor. highlight flies it to a thing and labels it; that's how you show the way.
-- If they ask you to do a quick thing for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Read what the screen looks like after each step before the next one. To type somewhere, give type the x and y of that exact field so it's clicked first (a window may have several panes or inputs), and check where the result says it went before pressing return. Use clipboard to copy something for them or read what they copied. Ask before anything that sends, buys, deletes or posts.",
+- If they ask you to do a quick thing for them, do it with mac_step (click, type, key, menu…) one step at a time: the buddy flies there and clicks. Every action returns the screen after it, with control ids that stay the same for this request; read it before the next step, and call look when it doesn't show what you need (a new window or page, a menu you can't see in the list). A short task of up to about 8 steps is fine here. To type somewhere, give type the x and y of that exact field so it's clicked first (a window may have several panes or inputs), and check where the result says it went before pressing return. Use clipboard to copy something for them or read what they copied. Ask before anything that sends, buys, deletes or posts.",
         Mode::Takeover => "MODE: TAKE-OVER
 You are walking them through something in another app, one step at a time, out loud.
 - Each turn is ONE step: point at the exact control with highlight, and say one short sentence about what to do with it. Then stop and let them do it.
@@ -156,7 +170,7 @@ You are walking them through something in another app, one step at a time, out l
         Mode::Live => "MODE: LIVE
 You are doing a task on their real screen while they watch, explaining as you go, like a friend driving their Mac for them.
 - Start with look to see the screen, then update_plan with 2 to 5 short steps.
-- For every step: say ONE short sentence (under 15 words) about what you're doing and why, then do it with mac_step (click, double_click, right_click, drag, type, key, menu, open, scroll). Your buddy pointer flies there first so they can follow.
+- For every step: say ONE short sentence (under 15 words) about what you're doing and why, then do it with mac_step (click, double_click, right_click, drag, type, key, menu, open, scroll). Your buddy pointer flies there first so they can follow. A spoken line can carry a mark that appears as it's said: [[point e12]], [[circle e12]], [[arrow e3 e7]] (ids or exact text in quotes).
 - After each action read the screen state that comes back (or call look) before the next step. If something didn't work, say so and try another way.
 - Use clipboard to copy results for them or to read what they copied. Keep the plan and progress current.
 - Ask before anything that sends, buys, deletes, posts or can't be undone, with ask_user. They can press esc at any time to stop you.
@@ -182,6 +196,7 @@ const POLICY: &str = "POLICY
 - Their request is the approval. Writing files, drafting, looking things up and opening things need no extra permission.
 - Stop and confirm first only before deleting or archiving, overwriting something of theirs, sending or posting anything to other people, or spending money.
 - Say something happened only when a tool result in this conversation shows it happened. If a tool failed, say so plainly.
+- Earlier answers don't act now: a request that needs a tool needs the call in this turn, even if you answered the same request before.
 - Never invent a fact, file, address, price, quote or citation. If you don't know, say so or go and find out.
 - Don't script clicks or keystrokes in their apps with AppleScript System Events, cliclick or similar. An app's own scripting is fine; for UI, use mac_step.
 - Anything you write for them to send is a draft until they approve that exact text.
@@ -195,13 +210,11 @@ fn environment_block(env: &Environment) -> String {
             s.push_str(&format!("- {k}: {v}\n"));
         }
     };
-    line("Now", &env.now);
+    line("Pixie version", &env.version);
     line("Mac", &env.os);
     line("Their name", &env.user_name);
-    line("Frontmost app", &env.app);
-    line("Window", &env.window);
     line("Working folder", &env.cwd);
-    line("Screenshot attached", if env.screenshot { "yes, of the screen they're on" } else { "no" });
+    line("The time, front app and screen", "at the start of their newest message, under RIGHT NOW");
     let apps = if env.connected_apps.is_empty() { "none yet".to_string() } else { env.connected_apps.join(", ") };
     line("Connected apps", &apps);
     line("Their browser", if env.browser_connected { "connected through the Pixie extension (use the browser tool)" } else { "not connected" });
@@ -297,16 +310,50 @@ pub fn assemble(input: &PromptInput) -> String {
         environment_block(&input.env),
         plan_note_block(input.mode).to_string(),
     ]);
-    if !input.task.trim().is_empty() {
-        let head = match input.mode {
-            Mode::Job => "THE JOB",
-            Mode::Voice | Mode::Takeover | Mode::Live => "WHAT'S ON THEIR SCREEN",
-            _ => "CONTEXT",
-        };
+    // A job's brief stays the same for the whole job; a voice turn's task is the screen, which
+    // changes every turn, so it goes in `context`.
+    if !input.task.trim().is_empty() && !screen_mode(input.mode) {
+        let head = if matches!(input.mode, Mode::Job | Mode::Live) { "THE JOB" } else { "CONTEXT" };
         parts.push(format!("{head}\n{}", input.task.trim()));
     }
     parts.push(final_block(input.mode).to_string());
     parts.join("\n\n")
+}
+
+/// Modes whose task is the screen description (a live agent's task is its brief, like a job's).
+fn screen_mode(mode: Mode) -> bool {
+    matches!(mode, Mode::Voice | Mode::Takeover)
+}
+
+/// What changes every turn: the time, the front app and window, and (for voice) the screen.
+/// It goes at the start of the newest user message, after the cached system prompt and history.
+pub fn context(input: &PromptInput) -> String {
+    let env = &input.env;
+    let mut s = String::from("RIGHT NOW\n");
+    let mut line = |k: &str, v: &str| {
+        if !v.is_empty() {
+            s.push_str(&format!("- {k}: {v}\n"));
+        }
+    };
+    line("Now", &env.now);
+    line("Frontmost app", &env.app);
+    line("Window", &env.window);
+    line("Screens", &env.screens);
+    if screen_mode(input.mode) {
+        line("Screenshot attached", if env.screenshot { "yes, of the screen they're on" } else { "no" });
+    }
+    if !env.jobs.is_empty() {
+        s.push_str("- Their jobs (newest first; pixie action=jobs has the details):\n");
+        for j in &env.jobs {
+            s.push_str(&format!("  - {j}\n"));
+        }
+    }
+    let mut out = s.trim_end().to_string();
+    if screen_mode(input.mode) && !input.task.trim().is_empty() {
+        out.push_str("\n\nWHAT'S ON THEIR SCREEN\n");
+        out.push_str(input.task.trim());
+    }
+    out
 }
 
 #[cfg(test)]
@@ -329,6 +376,7 @@ mod tests {
             memory: vec!["Prefers one-page summaries".into()],
             helper: "openclicky-helper pdf in.html out.pdf".into(),
             coders: vec!["Codex CLI".into(), "Claude Code".into()],
+            version: "0.7.8".into(),
             ..Default::default()
         }
     }
@@ -346,8 +394,9 @@ mod tests {
     #[test]
     fn golden_prompts_per_mode() {
         for mode in [Mode::Voice, Mode::Interview, Mode::Tour, Mode::Job, Mode::Takeover, Mode::Live] {
-            let p = assemble(&PromptInput { mode, env: env(), task: "Make a one-page PDF about standing desks.".into() });
-            golden(mode.as_str(), &p);
+            let input = PromptInput { mode, env: env(), task: "Make a one-page PDF about standing desks.".into() };
+            // The system prompt, then the per-turn context, as the model receives them.
+            golden(mode.as_str(), &format!("{}\n\n=== NEWEST USER MESSAGE STARTS WITH ===\n{}", assemble(&input), context(&input)));
         }
     }
 
@@ -382,9 +431,26 @@ mod tests {
 
     #[test]
     fn empty_fields_are_omitted() {
-        let p = assemble(&PromptInput { mode: Mode::Voice, env: Environment::default(), task: String::new() });
+        let input = PromptInput { mode: Mode::Voice, env: Environment::default(), task: String::new() };
+        let p = assemble(&input);
         assert!(!p.contains("Their name"));
         assert!(!p.contains("WHAT'S ON THEIR SCREEN"));
-        assert!(p.contains("Screenshot attached: no"));
+        assert!(context(&input).contains("Screenshot attached: no"));
+    }
+
+    #[test]
+    fn system_prompt_is_the_same_every_turn() {
+        // The time, the front app and the screen change every turn; none of them may reach the
+        // system prompt, or the provider's prompt cache misses from that point on.
+        let a = PromptInput { mode: Mode::Voice, env: env(), task: "e1 button \"Save\" 1 2 3 4".into() };
+        let mut b = a.clone();
+        b.env.now = "Friday 6 November 2026, 09:12".into();
+        b.env.app = "Finder".into();
+        b.env.window = "Downloads".into();
+        b.env.screenshot = false;
+        b.task = "e1 button \"Open\" 9 9 9 9".into();
+        assert_eq!(assemble(&a), assemble(&b));
+        assert_ne!(context(&a), context(&b));
+        assert!(context(&a).contains("WHAT'S ON THEIR SCREEN") && context(&a).contains("Safari"));
     }
 }

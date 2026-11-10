@@ -9,7 +9,8 @@
     "settings",
     "note",
     "guide",
-    "canvas"
+    "canvas",
+    "scene"
   ],
   "permissions": [
     "core:default",

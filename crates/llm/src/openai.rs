@@ -172,7 +172,11 @@ impl Provider for OpenAiProvider {
                 }
                 let v: Value = serde_json::from_str(data).map_err(|e| LlmError::Decode(e.to_string()))?;
                 if let Some(u) = v.get("usage").filter(|u| !u.is_null()) {
-                    usage.input_tokens = u["prompt_tokens"].as_u64().unwrap_or(0);
+                    // prompt_tokens includes the cached part; keep the two apart.
+                    let prompt = u["prompt_tokens"].as_u64().unwrap_or(0);
+                    let cached = u["prompt_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0).min(prompt);
+                    usage.input_tokens = prompt - cached;
+                    usage.cache_read = cached;
                     usage.output_tokens = u["completion_tokens"].as_u64().unwrap_or(0);
                 }
                 let Some(choice) = v["choices"].get(0) else { continue };

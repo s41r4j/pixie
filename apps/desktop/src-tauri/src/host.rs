@@ -70,6 +70,97 @@ async fn clipboard_mac(action: &str, text: &str) -> ToolOutput {
     }
 }
 
+/// mac_step press / focus / menu / type / key / open / scroll / find. Every action that can
+/// change the screen ends with the fresh screen state (ids stay stable for the request).
+async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
+    let st = app.state::<AppState>();
+    // type with x, y: click into that field first, so it lands in the right pane.
+    let mut clicked = String::new();
+    if action == "type" && input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some() {
+        let at = json!({ "x": input["x"], "y": input["y"] });
+        match crate::buddy::act(app, "click", &at).await {
+            Ok(r) => clicked = r.lines().next().unwrap_or("").to_string(),
+            Err(e) => return ToolOutput::err(format!("Couldn't click into the field first: {e}")),
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    // A control id (e12) is Pixie's own: act on that control where it is now.
+    let target = s(input, "target");
+    let mut call = ("mac_step", input.clone());
+    let mut at: Option<(f64, f64)> = None;
+    if matches!(action, "press" | "focus" | "find") {
+        if let Some(hit) = crate::screen::element(target) {
+            let (f, label, raw) = match hit {
+                Ok(h) => h,
+                Err(e) => return ToolOutput::err(e),
+            };
+            let (x, y) = (f.x + f.w / 2.0, f.y + f.h / 2.0);
+            at = Some((x, y));
+            if action == "find" {
+                return ToolOutput::ok(json!({ "id": target, "label": label, "frame": { "x": f.x, "y": f.y, "w": f.w, "h": f.h } }).to_string());
+            }
+            call = if cfg!(target_os = "macos") {
+                (if action == "press" { "press_point" } else { "focus_point" }, json!({ "x": x, "y": y, "label": label }))
+            } else {
+                // The native layer still knows its own numbering from the latest snapshot.
+                let mut v = input.clone();
+                v["target"] = json!(raw);
+                ("mac_step", v)
+            };
+        }
+    }
+    let r = st.helper.call(call.0, call.1, Duration::from_secs(10)).await;
+    let v = match r {
+        Ok(v) => v,
+        Err(e) => return ToolOutput::err(e),
+    };
+    if action == "find" {
+        return ToolOutput::ok(v.to_string());
+    }
+    if let Some(f) = v.get("frame").filter(|f| f.is_object()) {
+        if at.is_none() {
+            at = Some((f["x"].as_f64().unwrap_or(0.0) + f["w"].as_f64().unwrap_or(0.0) / 2.0, f["y"].as_f64().unwrap_or(0.0) + f["h"].as_f64().unwrap_or(0.0) / 2.0));
+        }
+    }
+    let first = if action == "type" {
+        let into = &v["into"];
+        let f = &into["frame"];
+        if f.is_object() {
+            let _ = overlay::highlight(app, &json!({ "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"], "label": "typed here" }));
+        }
+        let place = if into.is_object() {
+            let where_ = if f.is_object() { format!(" at ({}, {}, {}×{})", f["x"], f["y"], f["w"], f["h"]) } else { String::new() };
+            format!("the focused {} \"{}\"{where_}", into["role"].as_str().unwrap_or("element").trim_start_matches("AX"), into["label"].as_str().unwrap_or(""))
+        } else {
+            "the focused field".into()
+        };
+        let pre = if clicked.is_empty() { String::new() } else { format!("{clicked}\n") };
+        format!(
+            "{pre}Pasted {} characters into {} in {}. If that isn't the field you meant (another pane, a side panel), say so, click the right field and type again; don't press return until it's in the right place.",
+            v["inserted"],
+            place,
+            v["app"].as_str().unwrap_or("their app")
+        )
+    } else {
+        // Show where it happened.
+        if let Some(f) = v.get("frame").filter(|f| f.is_object()) {
+            let _ = overlay::highlight(app, &json!({ "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"], "label": v.get("pressed").or(v.get("label")).cloned().unwrap_or(Value::Null) }));
+        }
+        let what = match action {
+            "press" | "click" => format!("Pressed \"{}\".", v["pressed"].as_str().unwrap_or(target)),
+            "focus" => format!("Focused \"{}\".", v["focused"].as_str().unwrap_or(target)),
+            "menu" => format!("Chose {target}."),
+            "key" => format!("Pressed {target}."),
+            "open" => format!("Opened {target}."),
+            "scroll" => format!("Scrolled {target}."),
+            _ => v.to_string(),
+        };
+        what
+    };
+    let now = crate::screen::after_action(app, at, crate::screen::settle_for(action)).await;
+    ToolOutput::ok(format!("{first}\n{now}"))
+}
+
 pub struct AppHost {
     pub app: AppHandle,
 }
@@ -88,14 +179,19 @@ impl Host for AppHost {
             "highlight" => overlay::highlight(app, input).into(),
             "draw" => overlay::draw(app, input).into(),
             "canvas" => crate::canvas::call(app, input).await.into(),
+            "scene3d" => crate::scene3d::call(app, input).await.into(),
             "pixie" => crate::myself::call(app, input).await.into(),
             "memory" => crate::memory::call(app, input).await.into(),
             "say" => {
-                let text = s(input, "text");
+                // A line may carry marks ([[circle e12]]) drawn as it's spoken.
+                let (text, marks) = crate::narrate::split(s(input, "text"));
                 let id = format!("say-{}", rand::random::<u32>());
                 emit(app, Event::new("speech.segment", json!({ "id": id, "text": text, "job": job })));
                 if st.settings.lock().map(|s| s.speak_answers).unwrap_or(true) {
-                    speech::speak(app, &id, text);
+                    crate::narrate::on_start_of(&id, marks);
+                    speech::speak(app, &id, &text);
+                } else {
+                    crate::narrate::run(app, marks);
                 }
                 ToolOutput::ok("Said it.")
             }
@@ -110,48 +206,7 @@ impl Host for AppHost {
                 if job.is_some() && ctx.mode != Mode::Live && !matches!(action, "open") {
                     return Some(ToolOutput::err("Background jobs don't click around in their apps; start a live agent (start_job kind=live) for that."));
                 }
-                // type with x, y: click into that field first, so it lands in the right pane.
-                let mut clicked = String::new();
-                if action == "type" && input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some() {
-                    let at = json!({ "x": input["x"], "y": input["y"] });
-                    match crate::buddy::act(app, "click", &at).await {
-                        Ok(r) => clicked = r,
-                        Err(e) => return Some(ToolOutput::err(format!("Couldn't click into the field first: {e}"))),
-                    }
-                    tokio::time::sleep(Duration::from_millis(150)).await;
-                }
-                match st.helper.call("mac_step", input.clone(), Duration::from_secs(10)).await {
-                    Ok(v) if action == "type" => {
-                        let into = &v["into"];
-                        let f = &into["frame"];
-                        if f.is_object() {
-                            let _ = overlay::highlight(app, &json!({ "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"], "label": "typed here" }));
-                        }
-                        let place = if into.is_object() {
-                            let at = if f.is_object() { format!(" at ({}, {}, {}×{})", f["x"], f["y"], f["w"], f["h"]) } else { String::new() };
-                            format!(
-                                "the focused {} \"{}\"{at}",
-                                into["role"].as_str().unwrap_or("element").trim_start_matches("AX"),
-                                into["label"].as_str().unwrap_or("")
-                            )
-                        } else {
-                            "the focused field".into()
-                        };
-                        let first = if clicked.is_empty() { String::new() } else { format!("{clicked}\n") };
-                        ToolOutput::ok(format!(
-                            "{first}Pasted {} characters into {} in {}. If that isn't the field you meant (another pane, a side panel), say so, click the right field and type again; don't press return until it's in the right place.",
-                            v["inserted"], place, v["app"].as_str().unwrap_or("their app")
-                        ))
-                    }
-                    Ok(v) => {
-                        // Show where it happened.
-                        if let Some(f) = v.get("frame") {
-                            let _ = overlay::highlight(app, &json!({ "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"], "label": v.get("pressed").or(v.get("label")).cloned().unwrap_or(Value::Null) }));
-                        }
-                        ToolOutput::ok(v.to_string())
-                    }
-                    Err(e) => ToolOutput::err(e),
-                }
+                mac_step(app, action, input).await
             }
             "start_job" => match jobs::start(app, s(input, "title"), s(input, "instructions"), s(input, "kind")) {
                 Ok(id) if s(input, "kind") == "live" => ToolOutput::ok(format!("Started live agent {id}. It will do it on their screen and explain as it goes; esc stops it. Say one short line, nothing more.")),
@@ -160,14 +215,52 @@ impl Host for AppHost {
             },
             "clipboard" => clipboard(s(input, "action"), s(input, "text")).await,
             "look" => {
-                let cap = crate::screen::capture(app, 0).await;
-                if let Some(e) = &cap.error {
-                    ToolOutput::err(format!("Couldn't see the screen: {e}"))
+                let full = input.get("full").and_then(Value::as_bool).unwrap_or(false);
+                let width = if full { 4096 } else { crate::screen::IMAGE_WIDTH };
+                // Only models that take images get the screenshot; the rest work from the lists.
+                let effort = if ctx.mode == Mode::Live { openclicky_llm::Effort::Balanced } else { openclicky_llm::Effort::Fast };
+                let vision = st.provider().is_some_and(|p| p.sees_images_at(effort));
+                // Live agents stay on the screen of the app they work in, wherever the mouse goes.
+                let want = match s(input, "display") {
+                    "" if ctx.mode == Mode::Live => "window",
+                    w => w,
+                };
+                // Another screen only when asked: one capture per screen named.
+                let targets: Vec<(Option<(f64, f64)>, String)> = if want.trim().is_empty() {
+                    vec![(None, String::new())]
                 } else {
-                    let mut out = ToolOutput::ok(cap.describe());
-                    if let Some(b64) = cap.image_base64() {
-                        out.images.push(("image/jpeg".into(), b64));
+                    let ds = crate::screen::displays(app);
+                    let window = st.last_capture.lock().unwrap().as_ref().and_then(|c| c.window_frame.clone());
+                    match crate::screen::resolve(&ds, want, crate::macos::cursor(), window.as_ref()) {
+                        Ok(v) if ds.len() > 1 => v.into_iter().map(|i| (crate::screen::center_of(&ds, i), crate::screen::name_of(&ds, i))).collect(),
+                        Ok(_) => vec![(None, String::new())],
+                        Err(e) => return Some(ToolOutput::err(e)),
                     }
+                };
+                let several = targets.len() > 1;
+                let mut text = vec![];
+                let mut images = vec![];
+                let mut err = None;
+                for (at, name) in &targets {
+                    let cap = crate::screen::capture_on(app, 0, width, *at).await;
+                    if let Some(e) = &cap.error {
+                        err = Some(format!("Couldn't see the screen: {e}"));
+                        continue;
+                    }
+                    let body = if full { cap.describe() } else { cap.describe_for("") };
+                    text.push(if name.is_empty() { body } else { format!("SCREEN: {name}\n{body}") });
+                    if let Some(b64) = cap.image_base64().filter(|_| vision) {
+                        images.push(("image/jpeg".to_string(), b64));
+                    }
+                }
+                if text.is_empty() {
+                    ToolOutput::err(err.unwrap_or_else(|| "Couldn't see the screen.".into()))
+                } else {
+                    if several {
+                        text.push(format!("(Pointing and clicking now use {}, the last screen above; ids are per screen.)", targets.last().map(|t| t.1.as_str()).unwrap_or("")));
+                    }
+                    let mut out = ToolOutput::ok(text.join("\n\n"));
+                    out.images = images;
                     out
                 }
             }
@@ -223,6 +316,9 @@ impl Host for AppHost {
             t.extend(crate::integrations::tools(&self.app));
             t.extend(crate::google::tools(&self.app));
             t.push(crate::canvas::tool());
+            if mode != Mode::Job && crate::scene3d::enabled(&self.app) {
+                t.push(crate::scene3d::tool());
+            }
             t
         } else {
             vec![crate::myself::tool()]

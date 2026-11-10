@@ -5,7 +5,8 @@
   --spring: cubic-bezier(.22, 1.18, .36, 1);
   position: relative; pointer-events: auto; background: #000; color: var(--label);
   border-radius: 0 0 22px 22px; overflow: visible;
-  transition: width 420ms var(--spring), height 420ms var(--spring), opacity 200ms ease, border-radius 300ms ease;
+  /* Opening: springs out of the camera housing at once; the content follows (body-in). */
+  transition: width 320ms var(--spring), height 320ms var(--spring), opacity 120ms ease, border-radius 240ms ease;
 }
 .notch::before, .notch::after {
   content: ""; position: absolute; top: 0; width: 14px; height: 14px; pointer-events: none;
@@ -14,13 +15,21 @@
 .notch::before { left: -14px; background: radial-gradient(circle at 0 100%, transparent 13.5px, #000 14px); }
 .notch::after { right: -14px; background: radial-gradient(circle at 100% 100%, transparent 13.5px, #000 14px); }
 .no-notch .notch { border-radius: 0 0 20px 20px; }
-.notch--hidden { opacity: 0; transition: width 300ms var(--m-soft), height 300ms var(--m-soft), opacity 260ms ease 40ms; }
+/* Closing: the content fades first, then the shell slides back into the housing. With a camera
+   notch it stays black (it ends up exactly the housing's size); without one it fades at the end. */
+.notch--hidden {
+  transition: width 240ms cubic-bezier(.4, 0, .2, 1) 70ms, height 240ms cubic-bezier(.4, 0, .2, 1) 70ms,
+    border-radius 220ms ease 70ms, opacity 120ms ease 250ms;
+}
+.no-notch .notch--hidden { opacity: 0; }
+.notch--hidden::before, .notch--hidden::after { opacity: 0; transition: opacity 160ms ease 150ms; }
 .notch--thinking, .notch--answer, .notch--idle, .notch--typing { border-radius: 0 0 26px 26px; }
-.notch--hidden .notch__bar, .notch--hidden .notch__body { opacity: 0; }
+.notch__bar, .notch__body { transition: opacity 140ms ease 60ms; }
+.notch--hidden .notch__bar, .notch--hidden .notch__body { opacity: 0; transition: opacity 80ms ease; }
 
 .notch__bar { display: flex; align-items: center; justify-content: center; position: relative; }
 .notch__gap { flex: none; height: 100%; }
-.ear { flex: 1; display: flex; align-items: center; height: 100%; min-width: 0; padding: 0 14px; animation: ear-in 260ms var(--m-soft) both 60ms; }
+.ear { flex: 1; display: flex; align-items: center; height: 100%; min-width: 0; padding: 0 14px; animation: ear-in 180ms var(--m-soft) both 30ms; }
 .ear--left { justify-content: flex-start; }
 .ear--right { justify-content: flex-end; }
 @keyframes ear-in { from { opacity: 0; transform: scale(.85); } }
@@ -29,7 +38,7 @@
 .ear__stack { display: flex; align-items: center; gap: 8px; }
 .ear__toast {
   font-size: 12.5px; font-weight: 500; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
-  animation: ear-in 260ms var(--m-soft) both;
+  animation: ear-in 180ms var(--m-soft) both;
 }
 .ear__toast--done::before { content: "● "; color: var(--ready); }
 .ear__toast--needs::before { content: "● "; color: var(--needs); }
@@ -39,7 +48,7 @@
 .wave span { width: 3px; border-radius: 2px; background: linear-gradient(180deg, var(--brand-gold), var(--brand-violet)); transition: height 90ms linear, opacity 90ms linear; }
 
 .notch__body { padding: 0 22px; overflow: hidden; }
-.notch__body > * { animation: body-in 240ms var(--m-soft) both 80ms; }
+.notch__body > * { animation: body-in 170ms var(--m-soft) both 40ms; }
 @keyframes body-in { from { opacity: 0; transform: translateY(-6px); } }
 
 .transcript {
@@ -50,7 +59,7 @@
 .turn { padding: 6px 2px 14px; display: flex; flex-direction: column; gap: 8px; }
 .turn__q { font-size: 15px; color: var(--label); line-height: 1.35; transition: font-size 200ms ease, color 200ms ease; }
 .turn__q--small { font-size: 12.5px; color: var(--tertiary); }
-.turn__a { font-size: 17px; line-height: 1.42; color: var(--label); letter-spacing: .05px; }
+.turn__a { font-size: 17px; line-height: 1.42; color: var(--label); letter-spacing: .05px; max-height: 340px; overflow-y: auto; }
 .turn__a--muted { color: var(--secondary); font-size: 15px; }
 .seg { transition: color 200ms ease; }
 .seg--spoken { color: var(--label); }
@@ -105,3 +114,6 @@
 .clicktalk { display: flex; justify-content: center; padding: 0 0 12px; }
 .clicktalk__stop { padding: 6px 16px; border-radius: 999px; background: var(--signature); color: #1b1024; font-weight: 600; font-size: 13px; }
 .compact-line { padding: 2px 6px 12px; text-align: center; font-size: 13.5px; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Dictation: the words heard so far, one line, newest at the end. */
+.dict-line { padding: 4px 22px 14px; font-size: 14px; line-height: 1.35; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
