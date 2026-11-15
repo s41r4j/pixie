@@ -242,7 +242,7 @@ pub fn order_out<R: Runtime>(win: &WebviewWindow<R>) {
     }
 }
 
-/// Make the panel key so it can take typing (activates openclicky).
+/// Make the panel key so it can take typing (activates Pixie).
 pub fn make_key<R: Runtime>(win: &WebviewWindow<R>) {
     let Some(ns) = ns_window(win) else { return };
     unsafe {

@@ -6,7 +6,7 @@ description: Work with Mail, Calendar, Reminders, Notes, Finder, Music and Safar
 
 Apps' own AppleScript dictionaries are fine to use; scripting clicks/keys through System
 Events is not. Run with `osascript -e '…'` from bash. The first time, macOS asks them to
-allow openclicky to control the app: say so if a call fails with "not authorized".
+allow Pixie to control the app: say so if a call fails with "not authorized".
 
 - **Reminders**: `tell application "Reminders" to make new reminder in list "Reminders" with properties {name:"Call Sam", due date:date "Friday 9:00"}`
 - **Calendar** (read): `tell application "Calendar" to get summary of (events of calendar "Home" whose start date > (current date))`

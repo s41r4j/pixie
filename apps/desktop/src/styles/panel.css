@@ -117,3 +117,6 @@
 
 /* Dictation: the words heard so far, one line, newest at the end. */
 .dict-line { padding: 4px 22px 14px; font-size: 14px; line-height: 1.35; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Tucked away: nothing animates (the window is off screen, and this makes sure of it). */
+.notch-root[data-mode="hidden"] *, .notch-root[data-mode="hidden"] *::before, .notch-root[data-mode="hidden"] *::after { animation-play-state: paused !important; }

@@ -1,4 +1,4 @@
-//! Builds the Swift helper (`../helper/main.swift`) into `binaries/openclicky-helper-<triple>`,
+//! Builds the Swift helper (`../helper/main.swift`) into `binaries/pixie-helper-<triple>`,
 //! which Tauri bundles as a sidecar next to the main binary.
 
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ fn build_helper() {
     let bin_dir = manifest.join("binaries");
     std::fs::create_dir_all(&bin_dir).unwrap();
     let exe = if target.contains("windows") { ".exe" } else { "" };
-    let out = bin_dir.join(format!("openclicky-helper-{target}{exe}"));
+    let out = bin_dir.join(format!("pixie-helper-{target}{exe}"));
 
     if !target.contains("apple-darwin") {
         // Non-mac builds get an empty placeholder so bundling config stays valid.
@@ -43,24 +43,24 @@ fn build_helper() {
         assert!(status.success(), "building the Swift helper failed");
     }
     // Universal bundles look for `-universal-apple-darwin`; make it once both arches exist.
-    let arm = bin_dir.join("openclicky-helper-aarch64-apple-darwin");
-    let x86 = bin_dir.join("openclicky-helper-x86_64-apple-darwin");
-    let uni = bin_dir.join("openclicky-helper-universal-apple-darwin");
+    let arm = bin_dir.join("pixie-helper-aarch64-apple-darwin");
+    let x86 = bin_dir.join("pixie-helper-x86_64-apple-darwin");
+    let uni = bin_dir.join("pixie-helper-universal-apple-darwin");
     if arm.exists() && x86.exists() && (newer(&[&arm, &x86], &uni)) {
         let _ = Command::new("lipo").arg("-create").arg(&arm).arg(&x86).arg("-output").arg(&uni).status();
     }
 }
 
-/// The local neural voice server (`../voice/openclicky-voice.c`), loads sherpa-onnx at runtime.
+/// The local neural voice server (`../voice/pixie-voice.c`), loads sherpa-onnx at runtime.
 fn build_voice() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src = manifest.join("../voice/openclicky-voice.c");
+    let src = manifest.join("../voice/pixie-voice.c");
     let header = manifest.join("../voice/vendor/sherpa-onnx-c-api.h");
     println!("cargo:rerun-if-changed={}", src.display());
     let target = std::env::var("TARGET").unwrap();
     let bin_dir = manifest.join("binaries");
     let exe = if target.contains("windows") { ".exe" } else { "" };
-    let out = bin_dir.join(format!("openclicky-voice-{target}{exe}"));
+    let out = bin_dir.join(format!("pixie-voice-{target}{exe}"));
     if !target.contains("apple-darwin") {
         std::fs::create_dir_all(&bin_dir).unwrap();
         if !out.exists() {
@@ -76,11 +76,11 @@ fn build_voice() {
             .arg(&src)
             .status()
             .expect("run xcrun clang");
-        assert!(status.success(), "building openclicky-voice failed");
+        assert!(status.success(), "building pixie-voice failed");
     }
-    let arm = bin_dir.join("openclicky-voice-aarch64-apple-darwin");
-    let x86 = bin_dir.join("openclicky-voice-x86_64-apple-darwin");
-    let uni = bin_dir.join("openclicky-voice-universal-apple-darwin");
+    let arm = bin_dir.join("pixie-voice-aarch64-apple-darwin");
+    let x86 = bin_dir.join("pixie-voice-x86_64-apple-darwin");
+    let uni = bin_dir.join("pixie-voice-universal-apple-darwin");
     if arm.exists() && x86.exists() && newer(&[&arm, &x86], &uni) {
         let _ = Command::new("lipo").arg("-create").arg(&arm).arg(&x86).arg("-output").arg(&uni).status();
     }

@@ -8,12 +8,12 @@
 
 use crate::host::AppHost;
 use crate::{emit, panel, session, AppState};
-use openclicky_core::model::{JobState, PlanStep, StepStatus};
-use openclicky_core::prompt::{self, Mode, PromptInput};
-use openclicky_core::report::{self, Report};
-use openclicky_core::Event;
-use openclicky_llm::{Content, Effort, LlmError, Message};
-use openclicky_tools::{AgentEvent, AgentOptions, CancellationToken, ToolCtx};
+use pixie_core::model::{JobState, PlanStep, StepStatus};
+use pixie_core::prompt::{self, Mode, PromptInput};
+use pixie_core::report::{self, Report};
+use pixie_core::Event;
+use pixie_llm::{Content, Effort, LlmError, Message};
+use pixie_tools::{AgentEvent, AgentOptions, CancellationToken, ToolCtx};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -118,7 +118,7 @@ fn remember(app: &AppHandle, facts: &[String]) {
 
 pub fn helper_hint(st: &AppState) -> String {
     if st.helper.path.is_some() {
-        "`openclicky-helper pdf in.html out.pdf [letter|a4]` turns an HTML file into a paginated PDF at real paper size (CSS px = PDF points; design for 612 px wide on Letter, 595 on A4, use your own padding); `openclicky-helper text file.pdf` extracts text from PDF/Word/RTF. python3 and the usual macOS command-line tools are available.".into()
+        "`pixie-helper pdf in.html out.pdf [letter|a4]` turns an HTML file into a paginated PDF at real paper size (CSS px = PDF points; design for 612 px wide on Letter, 595 on A4, use your own padding); `pixie-helper text file.pdf` extracts text from PDF/Word/RTF. python3 and the usual macOS command-line tools are available.".into()
     } else {
         "python3 and the usual macOS command-line tools are available.".into()
     }
@@ -460,7 +460,7 @@ fn drive(app: AppHandle, id: String) {
             skills: st.skills.clone(),
             memory: crate::memory::prompt_lines(&app),
             helper: helper_hint(&st),
-            coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
+            coders: pixie_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
             persona: st.settings.lock().map(|s| s.persona.clone()).unwrap_or_default(),
             spicy: st.settings.lock().map(|s| s.spicy).unwrap_or(false),
             canvas: st.settings.lock().map(|s| s.canvas_use.clone()).unwrap_or_default(),
@@ -471,15 +471,15 @@ fn drive(app: AppHandle, id: String) {
         let input = PromptInput { mode, env, task };
         let system = prompt::assemble(&input);
         // The time and front app lead the message this run answers (the system prompt stays fixed).
-        if let Some(last) = messages.last_mut().filter(|m| m.role == openclicky_llm::Role::User) {
+        if let Some(last) = messages.last_mut().filter(|m| m.role == pixie_llm::Role::User) {
             if let Some(Content::Text { text }) = last.content.first_mut() {
                 if !text.starts_with("RIGHT NOW") {
                     *text = format!("{}\n\n{text}", prompt::context(&input));
                 }
             }
         }
-        let mut tools = openclicky_tools::defs::for_mode(mode, crate::browser::connected(&app));
-        tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), mode));
+        let mut tools = pixie_tools::defs::for_mode(mode, crate::browser::connected(&app));
+        tools.extend(pixie_tools::Host::extra_tools(host.as_ref(), mode));
         crate::connectors::trim(&mut tools, &format!("{} {}", view.title, view.instructions));
         // Live agents are watched: quicker model calls, fewer steps.
         let opts = if mode == Mode::Live {
@@ -550,5 +550,5 @@ pub fn note_doc(app: &AppHandle, id: &str) -> Option<Value> {
     let st = app.state::<AppState>();
     let cwd = st.jobs.get(id)?.cwd;
     let src = std::fs::read_to_string(cwd.join("note.md")).unwrap_or_default();
-    serde_json::to_value(openclicky_core::note::parse(&src)).ok()
+    serde_json::to_value(pixie_core::note::parse(&src)).ok()
 }

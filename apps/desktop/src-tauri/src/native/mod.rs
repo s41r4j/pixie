@@ -136,9 +136,115 @@ fn handle(cmd: &str, args: &Value) -> Result<Value, String> {
             os::listen_cancel();
             Ok(json!({}))
         }
+        // Type as you speak, driven by Pixie's own speech engine (`stt.rs`).
+        "live_type_begin" => Ok(live::begin(os::frontmost()["app"].as_str().unwrap_or(""))),
+        "live_type_update" => Ok(live::update(s(args, "text"))),
+        "live_type_end" => Ok(live::end()),
+        "live_type_now" => Ok(live::now(s(args, "text"))),
+        "live_type_finish" => Ok(live::finish(s(args, "text"))),
+        "live_type_cancel" => {
+            live::cancel();
+            Ok(json!({}))
+        }
         "pim_status" => Ok(json!({ "calendar": "unsupported", "reminders": "unsupported", "contacts": "unsupported" })),
         c if c.starts_with("pim_") || c.starts_with("calendar_") || c.starts_with("reminder") || c == "contacts_find" => Err(MAC_ONLY.into()),
         c => Err(format!("{c} isn't available on this computer yet.")),
+    }
+}
+
+/// Type as you speak on Windows and Linux: the text field is kept equal to the words heard so
+/// far by deleting and typing only the end that changed. There's no way here to ask a field
+/// what it holds, so this trusts its own count, and it never sends keys while a modifier is
+/// held (ctrl+letter would be a shortcut): held keys make it wait.
+mod live {
+    use super::os;
+    use serde_json::{json, Value};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    #[derive(Default)]
+    struct Live {
+        active: bool,
+        typed: String,
+        reason: String,
+        app: String,
+    }
+
+    static LIVE: Mutex<Live> = Mutex::new(Live { active: false, typed: String::new(), reason: String::new(), app: String::new() });
+
+    fn modifier_held() -> bool {
+        crate::macos::modifier_flags() & 0x00FE_0000 != 0
+    }
+
+    fn apply(l: &mut Live, text: &str) -> bool {
+        if !l.active {
+            return false;
+        }
+        // They switched to another app: stop rather than type into it.
+        let front = os::frontmost();
+        if front["app"].as_str().unwrap_or("") != l.app {
+            l.active = false;
+            l.reason = "focus moved".into();
+            return false;
+        }
+        let (delete, add) = pixie_stt::text::keystrokes(&l.typed, text);
+        if os::backspace(delete).and_then(|_| os::type_text(add)).is_err() {
+            l.active = false;
+            l.reason = "the keys couldn't be sent".into();
+            return false;
+        }
+        l.typed = text.to_string();
+        true
+    }
+
+    pub fn begin(app: &str) -> Value {
+        let mut l = LIVE.lock().unwrap();
+        *l = Live { active: !app.eq_ignore_ascii_case("pixie"), typed: String::new(), reason: String::new(), app: app.to_string() };
+        if !l.active {
+            l.reason = "no text cursor (Pixie is in front)".into();
+        }
+        json!({ "live": l.active, "live_reason": l.reason, "live_how": "keys", "live_app": l.app, "no_surface": !l.active })
+    }
+
+    pub fn update(text: &str) -> Value {
+        let mut l = LIVE.lock().unwrap();
+        if !modifier_held() {
+            apply(&mut l, text);
+        }
+        json!({})
+    }
+
+    pub fn end() -> Value {
+        let l = LIVE.lock().unwrap();
+        json!({ "live": { "active": l.active, "typed": l.typed, "reason": l.reason }, "no_surface": false })
+    }
+
+    /// They've stopped talking: wait briefly for the shortcut keys to come up, then type.
+    fn settle() {
+        let t0 = Instant::now();
+        while modifier_held() && t0.elapsed() < Duration::from_millis(1500) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    pub fn now(text: &str) -> Value {
+        settle();
+        let mut l = LIVE.lock().unwrap();
+        let ok = !modifier_held() && apply(&mut l, text);
+        json!({ "applied": ok, "reason": l.reason, "how": "keys" })
+    }
+
+    pub fn finish(text: &str) -> Value {
+        settle();
+        let mut l = LIVE.lock().unwrap();
+        let ok = !modifier_held() && apply(&mut l, text);
+        let out = json!({ "applied": ok, "reason": if ok || !l.reason.is_empty() { l.reason.clone() } else { "keys were held".into() }, "typed": l.typed.chars().count(), "how": "keys", "app": l.app });
+        *l = Live::default();
+        out
+    }
+
+    pub fn cancel() {
+        *LIVE.lock().unwrap() = Live::default();
     }
 }
 

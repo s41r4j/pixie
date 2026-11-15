@@ -104,7 +104,7 @@ async fn bash(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     let mut cmd = portable::shell(command);
     cmd.current_dir(&ctx.cwd).env("PATH", path_env(ctx)).env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
     if let Some(h) = &ctx.helper {
-        cmd.env("OPENCLICKY_HELPER", h);
+        cmd.env("PIXIE_HELPER", h);
     }
     match run_process(cmd, Duration::from_secs(timeout), ctx).await {
         Ok((code, out)) => {
@@ -377,7 +377,7 @@ async fn web_search(ctx: &ToolCtx, input: &Value) -> ToolOutput {
     }
 }
 
-/// Text of PDF / Word / RTF / Pages via the Swift helper (`openclicky-helper text`) or textutil.
+/// Text of PDF / Word / RTF / Pages via the Swift helper (`pixie-helper text`) or textutil.
 async fn doc_text(ctx: &ToolCtx, path: &Path) -> Result<String, String> {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if let Some(helper) = &ctx.helper {
@@ -661,7 +661,7 @@ fn _schema_ref() -> Value {
 mod tests {
     use super::*;
     use crate::{CancellationToken, NoHost};
-    use openclicky_core::prompt::Mode;
+    use pixie_core::prompt::Mode;
     use std::sync::Arc;
 
     fn ctx(dir: &Path) -> ToolCtx {

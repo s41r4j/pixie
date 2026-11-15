@@ -1,28 +1,31 @@
 [package]
-name = "openclicky-desktop"
-description = "openclicky macOS app (Tauri 2)"
+name = "pixie-desktop"
+description = "Pixie macOS app (Tauri 2)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "openclicky_desktop_lib"
+name = "pixie_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "openclicky"
+name = "pixie"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-openclicky-core.workspace = true
-openclicky-voice.workspace = true
-openclicky-llm.workspace = true
-openclicky-tools.workspace = true
-openclicky-mcp.workspace = true
-openclicky-native-host.workspace = true
+pixie-core.workspace = true
+pixie-voice.workspace = true
+pixie-stt.workspace = true
+# The microphone for Pixie's own speech to text (and the Windows level meter).
+cpal = "0.15"
+pixie-llm.workspace = true
+pixie-tools.workspace = true
+pixie-mcp.workspace = true
+pixie-native-host.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-drag = "2"
@@ -54,7 +57,6 @@ arboard = { version = "3", default-features = false }
 rodio = { version = "0.20", default-features = false, features = ["symphonia-wav"] }
 
 [target.'cfg(windows)'.dependencies]
-cpal = "0.15"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Graphics_Imaging", "Media_Core", "Media_Ocr", "Media_SpeechRecognition", "Media_SpeechSynthesis", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility"] }
 windows-future = "0.3"

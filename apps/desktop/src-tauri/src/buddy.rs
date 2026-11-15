@@ -3,7 +3,7 @@
 
 use crate::macos::{self, Rect};
 use crate::{emit, AppState, OVERLAY};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -34,13 +34,11 @@ fn last_busy() -> &'static Mutex<Option<Instant>> {
 /// Should the buddy be on screen right now?
 pub fn enabled(app: &AppHandle) -> bool {
     let st = app.state::<AppState>();
-    let (legacy, mode) = st.settings.lock().map(|s| (s.buddy, s.buddy_mode.clone())).unwrap_or((true, "always".into()));
-    if !legacy {
-        return false;
-    }
-    match mode.as_str() {
-        "off" => false,
-        "idle" => {
+    // Asked ~50 times a second: no copies of the settings.
+    let mode = st.settings.lock().map(|s| if !s.buddy || s.buddy_mode == "off" { 0 } else if s.buddy_mode == "idle" { 1 } else { 2 }).unwrap_or(2);
+    match mode {
+        0 => false,
+        1 => {
             let busy = st.session.active() || crate::overlay::is_shown() || crate::jobs::live_running(app) || TIP.load(Ordering::SeqCst);
             let mut l = last_busy().lock().unwrap();
             if busy {
@@ -139,33 +137,118 @@ fn parse_point(s: &str) -> Option<(f64, f64)> {
     }
 }
 
-/// Resolve a click target: explicit x/y, "x,y", or a label / element id the helper can find.
-async fn resolve(app: &AppHandle, input: &Value) -> Result<(f64, f64, String), String> {
-    if let (Some(x), Some(y)) = (num(input, "x"), num(input, "y")) {
-        let label = input.get("target").and_then(Value::as_str).unwrap_or("").to_string();
-        return Ok((x, y, label));
-    }
+/// Where a click goes, and what Pixie believes is there.
+struct Aim {
+    x: f64,
+    y: f64,
+    label: String,
+    /// The app that owns the control (to give focus back after asking).
+    pid: Option<i64>,
+}
+
+/// Resolve a click target: an element id (e12, to the live control, scrolled into view first),
+/// explicit x/y, "x,y", or a label the screen or the helper can find. Never moves a point to a
+/// control that isn't under it.
+async fn resolve(app: &AppHandle, input: &Value) -> Result<Aim, String> {
     let target = input.get("target").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    // An id wins over coordinates given with it: it names the exact control.
+    if let Some(hit) = crate::screen::element(&target) {
+        let t = hit?;
+        let (x, y, label, pid) = live_target(app, &target, &t).await?;
+        return Ok(Aim { x, y, label, pid });
+    }
+    if let (Some(x), Some(y)) = (num(input, "x"), num(input, "y")) {
+        return Ok(Aim { x, y, label: target, pid: None });
+    }
     if let Some((x, y)) = parse_point(&target) {
-        return Ok((x, y, String::new()));
+        return Ok(Aim { x, y, label: String::new(), pid: None });
     }
     if target.is_empty() {
-        return Err("Say where to click: a label, an element id like e12, or x and y.".into());
-    }
-    // Pixie's own control ids, resolved against the newest screen.
-    if let Some(hit) = crate::screen::element(&target) {
-        let (f, label, _) = hit?;
-        return Ok((f.x + f.w / 2.0, f.y + f.h / 2.0, label));
+        return Err("Say where to click: an element id like e12 (best), a label, or x and y.".into());
     }
     let st = app.state::<AppState>();
     let seen = st.last_capture.lock().unwrap().clone();
     if let Some(f) = seen.as_ref().and_then(|c| crate::screen::find(c, &target, None)) {
-        return Ok((f.x + f.w / 2.0, f.y + f.h / 2.0, target));
+        return Ok(Aim { x: f.x + f.w / 2.0, y: f.y + f.h / 2.0, label: target, pid: None });
     }
     let v = st.helper.call("mac_step", json!({ "action": "find", "target": target }), Duration::from_secs(5)).await?;
     let f = &v["frame"];
     let (x, y, w, h) = (f["x"].as_f64().unwrap_or(0.0), f["y"].as_f64().unwrap_or(0.0), f["w"].as_f64().unwrap_or(0.0), f["h"].as_f64().unwrap_or(0.0));
-    Ok((x + w / 2.0, y + h / 2.0, v["label"].as_str().unwrap_or(&target).to_string()))
+    Ok(Aim { x: x + w / 2.0, y: y + h / 2.0, label: v["label"].as_str().unwrap_or(&target).to_string(), pid: None })
+}
+
+/// A control id → the point to act on, from the control as it is right now (Mac): its live frame,
+/// scrolled into view first when it's out of its list, and refused when something else covers
+/// it or it has changed. Elsewhere the latest snapshot's frame, refused when out of view.
+pub async fn live_target(app: &AppHandle, id: &str, t: &crate::screen::Target) -> Result<(f64, f64, String, Option<i64>), String> {
+    let center = |f: &Value| (f["x"].as_f64().unwrap_or(0.0) + f["w"].as_f64().unwrap_or(0.0) / 2.0, f["y"].as_f64().unwrap_or(0.0) + f["h"].as_f64().unwrap_or(0.0) / 2.0);
+    if !cfg!(target_os = "macos") || t.gen.is_none() {
+        if t.hidden {
+            return Err(format!("{id} \"{}\" is out of view (scrolled out of its list or off the screen). Scroll to it first, then use the id again.", t.label));
+        }
+        return Ok((t.frame.x + t.frame.w / 2.0, t.frame.y + t.frame.h / 2.0, t.label.clone(), None));
+    }
+    let st = app.state::<AppState>();
+    let args = json!({ "gen": t.gen, "id": t.raw });
+    let gone = |e: String| if e.starts_with("gone") { format!("{id} isn't in a recent view any more. Call look and use an id from it.") } else { e };
+    let mut v = st.helper.call("element", args.clone(), Duration::from_secs(4)).await.map_err(gone)?;
+    if v["exists"] == json!(false) {
+        return Err(format!("{id} \"{}\" isn't on screen any more (the window changed). Call look and use an id from it.", t.label));
+    }
+    if v["hidden"] == json!(true) {
+        v = st.helper.call("scroll_to", args, Duration::from_secs(4)).await.map_err(gone)?;
+        if v["hidden"] == json!(true) || v["exists"] == json!(false) {
+            return Err(format!("{id} \"{}\" is out of view and couldn't be scrolled to. Scroll its list (mac_step scroll with x y over the list), then look again.", t.label));
+        }
+        log::info!("click: scrolled {id} \"{}\" into view", t.label);
+    }
+    if v["under"] == json!(false) {
+        return Err(format!("Something else is on top of {id} \"{}\" ({}), so I didn't click. A menu, sheet or popup may be open: look again.", t.label, v["covered_by"].as_str().unwrap_or("another window")));
+    }
+    let live = v["label"].as_str().unwrap_or("").trim().to_string();
+    if !live.is_empty() && !t.label.trim().is_empty() && live != t.label.trim() {
+        return Err(format!("{id} now says \"{live}\", not \"{}\", so I didn't click. Look again before choosing.", t.label));
+    }
+    let (x, y) = center(&v["frame"]);
+    Ok((x, y, if live.is_empty() { t.label.clone() } else { live }, v["pid"].as_i64()))
+}
+
+/// What's really under a point (Mac): the control a click there presses, as "kind \"label\"", its
+/// label and the labels to check for risk (the element and its parents up to the first one that
+/// takes a press), and its app.
+pub struct Under {
+    pub text: String,
+    pub labels: Vec<String>,
+    pub app: String,
+    pub pid: Option<i64>,
+}
+
+pub async fn under(app: &AppHandle, x: f64, y: f64) -> Option<Under> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let v = app.state::<AppState>().helper.call("hit_test", json!({ "x": x, "y": y }), Duration::from_secs(3)).await.ok()?;
+    let chain = v["chain"].as_array()?;
+    if chain.is_empty() {
+        return None;
+    }
+    let mut labels = Vec::new();
+    let mut text = String::new();
+    for e in chain {
+        let label = e["label"].as_str().unwrap_or("").trim().to_string();
+        if !label.is_empty() {
+            labels.push(label.clone());
+        }
+        let pressable = e["pressable"].as_bool().unwrap_or(false);
+        if text.is_empty() && (pressable || !label.is_empty()) {
+            let role = e["role"].as_str().unwrap_or("").trim_start_matches("AX").to_lowercase();
+            text = format!("{role} \"{}\"", label.chars().take(60).collect::<String>());
+        }
+        if pressable {
+            break;
+        }
+    }
+    Some(Under { text, labels, app: v["app"].as_str().unwrap_or("").to_string(), pid: v["pid"].as_i64() })
 }
 
 /// The buddy flies to (x, y); resolves when it has landed.
@@ -193,15 +276,23 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
         let now = crate::screen::after_action(app, Some((tx, ty)), crate::screen::settle_for("drag")).await;
         return Ok(format!("Dragged from ({x:.0}, {y:.0}) to ({tx:.0}, {ty:.0}).\n{now}"));
     }
-    let (x, y, label) = resolve(app, input).await?;
-    // Snap to the real control under the target when we have the screen.
-    let (x, y) = {
-        let cap = st.last_capture.lock().unwrap().clone();
-        match cap.and_then(|c| crate::screen::snap(&c, x - 4.0, y - 4.0, 8.0, 8.0, &label)) {
-            Some(f) if f.w < 600.0 => (f.x + f.w / 2.0, f.y + f.h / 2.0),
-            _ => (x, y),
-        }
+    let aim = resolve(app, input).await?;
+    let (x, y) = (aim.x, aim.y);
+    // What a click there really lands on, and whether it needs their OK.
+    let st_app = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+    let hit = under(app, x, y).await;
+    let labels: Vec<String> = match &hit {
+        Some(h) if !h.labels.is_empty() => h.labels.clone(),
+        _ => vec![aim.label.clone()],
     };
+    let owner = hit.as_ref().map(|h| h.app.clone()).filter(|a| !a.is_empty()).unwrap_or(st_app);
+    if let Some(l) = labels.iter().find(|l| crate::safety::risky_label(l)) {
+        let what = crate::safety::press_text(l, &owner);
+        if !crate::safety::ask(app, &what, hit.as_ref().and_then(|h| h.pid).or(aim.pid)).await {
+            return Err(crate::safety::declined(&what));
+        }
+    }
+    let label = aim.label.clone();
     fly(app, x, y, &label, true).await;
     let (button, count) = match action {
         "right_click" => ("right", 1),
@@ -212,7 +303,13 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
     st.play("gel-pop");
     st.helper.call("click_at", json!({ "x": x, "y": y, "button": button, "count": count }), Duration::from_secs(8)).await?;
     let now = crate::screen::after_action(app, Some((x, y)), crate::screen::settle_for(action)).await;
-    Ok(format!("Clicked {} at ({x:.0}, {y:.0}).\n{now}", if label.is_empty() { "there".to_string() } else { format!("\"{label}\"") }))
+    // Say what it actually landed on, so a wrong target is noticed at once.
+    let landed = match &hit {
+        Some(h) if !h.text.is_empty() => format!("Clicked at ({x:.0}, {y:.0}), on {}.", h.text),
+        _ if !label.is_empty() => format!("Clicked \"{label}\" at ({x:.0}, {y:.0})."),
+        _ => format!("Clicked at ({x:.0}, {y:.0})."),
+    };
+    Ok(format!("{landed}\n{now}"))
 }
 
 #[cfg(test)]

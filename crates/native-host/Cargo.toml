@@ -1,6 +1,6 @@
 [package]
-name = "openclicky-native-host"
-description = "Chrome native messaging host com.openclicky.browser: stdio <-> the app's unix socket"
+name = "pixie-native-host"
+description = "Chrome native messaging host pixie.s41r4j.in.browser: stdio <-> the app's unix socket"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ license.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "openclicky-native-host"
+name = "pixie-native-host"
 path = "src/main.rs"
 
 [dependencies]

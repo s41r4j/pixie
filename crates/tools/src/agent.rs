@@ -1,7 +1,7 @@
 //! The tool loop: ask the model, run the tools it calls, feed results back, repeat.
 
 use crate::{execute, ToolCtx};
-use openclicky_llm::{Content, Effort, LlmError, Message, Provider, Request, Response, StopReason, StreamEvent, ToolDef};
+use pixie_llm::{Content, Effort, LlmError, Message, Provider, Request, Response, StopReason, StreamEvent, ToolDef};
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ fn cap_result(text: String) -> String {
 
 /// Replace tool results older than the last `keep` model steps with short stubs.
 fn stub_old_results(messages: &mut [Message], keep: usize) {
-    let assistants: Vec<usize> = messages.iter().enumerate().filter(|(_, m)| m.role == openclicky_llm::Role::Assistant).map(|(i, _)| i).collect();
+    let assistants: Vec<usize> = messages.iter().enumerate().filter(|(_, m)| m.role == pixie_llm::Role::Assistant).map(|(i, _)| i).collect();
     if assistants.len() <= keep {
         return;
     }
@@ -170,7 +170,7 @@ pub async fn run(
             let mut content = vec![Content::text(if out.text.is_empty() { "done".to_string() } else { cap_result(out.text) })];
             for (media, data) in out.images {
                 content.push(Content::Image {
-                    source: openclicky_llm::ImageSource { kind: "base64".into(), media_type: media, data },
+                    source: pixie_llm::ImageSource { kind: "base64".into(), media_type: media, data },
                 });
             }
             results.push(Content::ToolResult { tool_use_id: id, content, is_error: out.is_error });
@@ -180,7 +180,7 @@ pub async fn run(
         if step >= opts.max_steps {
             if hit_limit {
                 // Already asked once to wrap up; stop here.
-                let text = messages.iter().rev().find(|m| m.role == openclicky_llm::Role::Assistant).map(|m| m.text()).unwrap_or_default();
+                let text = messages.iter().rev().find(|m| m.role == pixie_llm::Role::Assistant).map(|m| m.text()).unwrap_or_default();
                 return Ok(AgentOutcome { final_text: text, messages, steps: step, hit_limit });
             }
             hit_limit = true;
@@ -195,8 +195,8 @@ pub async fn run(
 mod tests {
     use super::*;
     use crate::{CancellationToken, Host, ToolOutput};
-    use openclicky_core::prompt::Mode;
-    use openclicky_llm::ScriptedProvider;
+    use pixie_core::prompt::Mode;
+    use pixie_llm::ScriptedProvider;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 
@@ -260,7 +260,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.steps, 3);
-        let report = openclicky_core::report::parse(&out.final_text);
+        let report = pixie_core::report::parse(&out.final_text);
         assert_eq!(report.done_title.as_deref(), Some("Hello File"));
         assert_eq!(std::fs::read_to_string(dir.path().join("output/hello.txt")).unwrap(), "hi");
         assert!(std::fs::read_to_string(dir.path().join("note.md")).unwrap().contains("- [x] Write file"));

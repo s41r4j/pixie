@@ -3,13 +3,13 @@
 // one by one, saves the scene to <app_data>/canvases/<id>.excalidraw, and reports back.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Excalidraw, MainMenu, convertToExcalidrawElements, exportToBlob, exportToSvg, restore, serializeAsJSON } from "@excalidraw/excalidraw";
+import { Excalidraw, MainMenu, convertToExcalidrawElements, exportToBlob, exportToSvg, newElementWith, restore, restoreElements, serializeAsJSON } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import { IS_MAC, onEvent } from "../lib/bridge";
 
 type Skeleton = Parameters<typeof convertToExcalidrawElements>[0] extends (infer T)[] | null ? T : never;
-type Op = { req: number; canvas: string; action: "draw" | "read" | "clear"; input: Record<string, unknown> };
+type Op = { req: number; canvas: string; action: "draw" | "edit" | "read" | "clear"; input: Record<string, unknown> };
 type Item = { id: string; title: string; modified: number; shapes: number };
 type Elements = ReturnType<ExcalidrawImperativeAPI["getSceneElements"]>;
 
@@ -78,8 +78,112 @@ function routeArrows(skeletons: Skeleton[], scene: Elements): Skeleton[] {
     if (!a || !b) return sk;
     const [x1, y1] = edge(a, b.x + b.w / 2, b.y + b.h / 2);
     const [x2, y2] = edge(b, a.x + a.w / 2, a.y + a.h / 2);
-    return { ...s, x: x1, y: y1, width: x2 - x1, height: y2 - y1 } as unknown as Skeleton;
+    // The points too: without them a straight-down arrow (width 0) is given a default width
+    // and comes out slanted.
+    return { ...s, x: x1, y: y1, width: x2 - x1, height: y2 - y1, points: [[0, 0], [x2 - x1, y2 - y1]] } as unknown as Skeleton;
   });
+}
+
+type Change = { id?: string; label?: string; color?: string; x?: number; y?: number; width?: number; height?: number; remove?: boolean };
+
+/** The element a name means: its id, or the shape whose label says it. */
+function findElement(els: Elements, target: string): Elements[number] | undefined {
+  const live = els.filter((e) => !e.isDeleted);
+  const byId = live.find((e) => e.id === target);
+  if (byId) return byId;
+  const want = target.trim().toLowerCase();
+  if (!want) return undefined;
+  const says = (e: Elements[number]) => (e.type === "text" ? (e as unknown as { text: string }).text.trim().toLowerCase() : "");
+  const text = live.find((e) => says(e) === want) ?? live.find((e) => says(e).includes(want));
+  if (!text) return undefined;
+  const container = "containerId" in text && text.containerId ? live.find((e) => e.id === text.containerId) : undefined;
+  return container ?? text;
+}
+
+/** `edit`: change shapes that are already there (move, resize, recolour, relabel, remove),
+ *  keeping their labels inside them and their arrows attached. */
+function applyChanges(els: Elements, changes: Change[]): { next: Elements; done: number; missing: string[] } {
+  type El = Elements[number];
+  const live = els.filter((e) => !e.isDeleted);
+  const byId = new Map(live.map((e) => [e.id, e]));
+  const labelOf = new Map<string, El>();
+  for (const e of live) if (e.type === "text" && "containerId" in e && e.containerId) labelOf.set(e.containerId, e);
+  const patch = new Map<string, Record<string, unknown>>();
+  const put = (id: string, p: Record<string, unknown>) => patch.set(id, { ...(patch.get(id) ?? {}), ...p });
+  const gone = new Set<string>();
+  const moved = new Set<string>();
+  const relabelled = new Set<string>();
+  const missing: string[] = [];
+  let done = 0;
+  for (const c of changes) {
+    const el = byId.get(String(c.id ?? ""));
+    if (!el) {
+      missing.push(String(c.id ?? "?"));
+      continue;
+    }
+    done += 1;
+    const label = labelOf.get(el.id);
+    if (c.remove) {
+      gone.add(el.id);
+      if (label) gone.add(label.id);
+      // Arrows that ended on it go too.
+      for (const a of live) if ("startBinding" in a && (a.startBinding?.elementId === el.id || a.endBinding?.elementId === el.id)) gone.add(a.id);
+      continue;
+    }
+    const x = typeof c.x === "number" ? c.x : el.x;
+    const y = typeof c.y === "number" ? c.y : el.y;
+    const w = typeof c.width === "number" && c.width > 4 ? c.width : el.width;
+    const h = typeof c.height === "number" && c.height > 4 ? c.height : el.height;
+    if (x !== el.x || y !== el.y || w !== el.width || h !== el.height) {
+      put(el.id, { x, y, width: w, height: h });
+      moved.add(el.id);
+      // Its label stays centred in it.
+      if (label) put(label.id, { x: x + (w - label.width) / 2, y: y + (h - label.height) / 2 });
+    }
+    if (typeof c.color === "string" && c.color) {
+      const lineLike = el.type === "text" || el.type === "line" || el.type === "arrow";
+      put(el.id, lineLike ? { strokeColor: c.color } : { backgroundColor: c.color, fillStyle: "solid" });
+    }
+    if (typeof c.label === "string") {
+      const text = el.type === "text" ? el : label;
+      if (text) {
+        put(text.id, { text: c.label, originalText: c.label });
+        relabelled.add(text.id);
+      } else done -= 1;
+    }
+  }
+  const box = (e: El): Box => {
+    const p = patch.get(e.id) ?? {};
+    return { x: Number(p.x ?? e.x), y: Number(p.y ?? e.y), w: Number(p.width ?? e.width), h: Number(p.height ?? e.height), kind: e.type };
+  };
+  // Arrows follow the shapes they join.
+  for (const a of live) {
+    if (!("startBinding" in a) || gone.has(a.id)) continue;
+    const from = a.startBinding ? byId.get(a.startBinding.elementId) : undefined;
+    const to = a.endBinding ? byId.get(a.endBinding.elementId) : undefined;
+    if (!from || !to || (!moved.has(from.id) && !moved.has(to.id))) continue;
+    const [fb, tb] = [box(from), box(to)];
+    const [x1, y1] = edge(fb, tb.x + tb.w / 2, tb.y + tb.h / 2);
+    const [x2, y2] = edge(tb, fb.x + fb.w / 2, fb.y + fb.h / 2);
+    put(a.id, { x: x1, y: y1, width: Math.abs(x2 - x1), height: Math.abs(y2 - y1), points: [[0, 0], [x2 - x1, y2 - y1]] });
+    const text = labelOf.get(a.id);
+    if (text) put(text.id, { x: (x1 + x2) / 2 - text.width / 2, y: (y1 + y2) / 2 - text.height / 2 });
+  }
+  const changed = live.filter((e) => !gone.has(e.id)).map((e) => (patch.has(e.id) ? newElementWith(e, patch.get(e.id) as Partial<El>) : e));
+  // New label text is measured again so it sits right in its shape.
+  const measured = restoreElements(changed, null, { refreshDimensions: true, repairBindings: true }) as unknown as Elements;
+  // A longer label wraps onto more lines: the shape grows to hold it and keeps it centred.
+  const grow = new Map<string, Record<string, unknown>>();
+  for (const t of measured) {
+    if (t.type !== "text" || !("containerId" in t) || !t.containerId || !relabelled.has(t.id)) continue;
+    const box = measured.find((e) => e.id === t.containerId);
+    if (!box || box.type === "arrow" || box.type === "line") continue;
+    const h = Math.max(box.height, t.height + 24);
+    if (h !== box.height) grow.set(box.id, { height: h });
+    grow.set(t.id, { x: box.x + (box.width - t.width) / 2, y: box.y + (h - t.height) / 2 });
+  }
+  const next = (grow.size ? measured.map((e) => (grow.has(e.id) ? newElementWith(e, grow.get(e.id) as Partial<El>) : e)) : measured) as Elements;
+  return { next, done, missing };
 }
 
 /** Text is measured when it's converted: the hand-drawn fonts must be loaded first. */
@@ -110,6 +214,7 @@ export function Canvas() {
   const deleted = useRef(new Set<string>());
   const titleRef = useRef("");
   const saveTimer = useRef<number | undefined>(undefined);
+  const focusTimer = useRef<number | undefined>(undefined);
 
   // Load the scene whenever the canvas changes.
   useEffect(() => {
@@ -145,6 +250,16 @@ export function Canvas() {
         setId(next);
       }
       if (e.kind === "canvas.ops") take();
+      if (e.kind === "canvas.focus" && api) {
+        // A spoken sentence is about this part: glide to it and light it for a moment.
+        const el = findElement(api.getSceneElements(), String((e.payload as { target: string }).target));
+        if (el) {
+          api.scrollToContent(el, { fitToViewport: true, viewportZoomFactor: 0.5, animate: true, duration: 450 });
+          api.updateScene({ appState: { selectedElementIds: { [el.id]: true } } });
+          window.clearTimeout(focusTimer.current);
+          focusTimer.current = window.setTimeout(() => api.updateScene({ appState: { selectedElementIds: {} } }), 2800);
+        }
+      }
       if (e.kind === "canvas.deleted") {
         const gone = String((e.payload as { id: string }).id);
         deleted.current.add(gone);
@@ -212,6 +327,14 @@ export function Canvas() {
         save(true);
         return "Cleared the canvas.";
       }
+      if (op.action === "edit") {
+        await fontsReady();
+        const r = applyChanges(api.getSceneElements(), (Array.isArray(op.input.changes) ? op.input.changes : []) as Change[]);
+        if (!r.done) throw new Error(`None of those ids are on the canvas (${r.missing.join(", ")}); action=read lists what is.`);
+        api.updateScene({ elements: r.next });
+        save(true);
+        return `Changed ${r.done} shape(s).${r.missing.length ? ` Not on the canvas: ${r.missing.join(", ")}.` : ""}`;
+      }
       const name = typeof op.input.title === "string" ? op.input.title : "";
       if (name && !titleRef.current) {
         api.updateScene({ appState: { name } });
@@ -232,7 +355,10 @@ export function Canvas() {
           throw new Error(`The Mermaid didn't parse: ${e instanceof Error ? e.message : String(e)}`);
         }
       } else if (Array.isArray(op.input.elements)) {
-        skeletons = routeArrows(op.input.elements as Skeleton[], api.getSceneElements());
+        // Things Pixie laid out (`make`) go under what's already there, not on top of it.
+        const given = op.input.elements as Skeleton[];
+        const placed = op.input.place_below && below ? given.map((e) => (typeof (e as { y?: unknown }).y === "number" ? ({ ...e, y: (e as { y: number }).y + below }) as Skeleton : e)) : given;
+        skeletons = routeArrows(placed, api.getSceneElements());
       }
       if (!skeletons.length) throw new Error("Nothing to draw: give elements or mermaid.");
       let fresh: ReturnType<typeof convertToExcalidrawElements>;

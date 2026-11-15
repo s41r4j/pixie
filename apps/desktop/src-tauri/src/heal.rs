@@ -30,6 +30,21 @@ fn issues_path(data: &Path) -> PathBuf {
     data.join("issues.md")
 }
 
+/// Bytes logged since the size was last checked.
+static WRITTEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const LOG_CHECK: u64 = 64 * 1024;
+
+/// When the log is over [`LOG_MAX`]: keep it as pixie.1.log (replacing the one before) and
+/// return a fresh pixie.log. None when it isn't full yet.
+fn rotate(data: &Path) -> Option<std::fs::File> {
+    let path = log_path(data);
+    if !std::fs::metadata(&path).map(|m| m.len() > LOG_MAX).unwrap_or(false) {
+        return None;
+    }
+    let _ = std::fs::rename(&path, logs_dir(data).join("pixie.1.log"));
+    std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()
+}
+
 /// Log lines go to stderr and, once [`init`] ran, to `<app_data>/logs/pixie.log`.
 pub struct Tee;
 
@@ -39,6 +54,17 @@ impl Write for Tee {
         if let Ok(mut g) = LOG.lock() {
             if let Some(f) = g.as_mut() {
                 let _ = f.write_all(buf);
+            }
+            // A Pixie left running for weeks: start a new file when this one is full, the same
+            // way a launch does (checked once per LOG_CHECK bytes written).
+            let written = WRITTEN.fetch_add(buf.len() as u64, std::sync::atomic::Ordering::Relaxed) + buf.len() as u64;
+            if written >= LOG_CHECK {
+                WRITTEN.store(0, std::sync::atomic::Ordering::Relaxed);
+                if let Some(data) = DATA.get() {
+                    if let Some(f) = rotate(data) {
+                        *g = Some(f);
+                    }
+                }
             }
         }
         Ok(buf.len())
@@ -60,10 +86,8 @@ pub fn init(data: &Path, version: &str) {
     let dir = logs_dir(data);
     let _ = std::fs::create_dir_all(&dir);
     let path = log_path(data);
-    if std::fs::metadata(&path).map(|m| m.len() > LOG_MAX).unwrap_or(false) {
-        let _ = std::fs::rename(&path, dir.join("pixie.1.log"));
-    }
-    if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    let f = rotate(data).or_else(|| std::fs::OpenOptions::new().create(true).append(true).open(&path).ok());
+    if let Some(f) = f {
         *LOG.lock().unwrap() = Some(f);
     }
     log::info!("Pixie {version} starting");
@@ -308,12 +332,22 @@ pub fn classify(err: &str) -> Option<(&'static str, &'static str)> {
 // ---- reports ---------------------------------------------------------------------------------
 
 /// Personal paths, keys, tokens and email addresses out of text that may be shared.
+/// The home folder, whichever variable the platform sets.
+fn home_dir() -> String {
+    std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default()
+}
+
 pub fn redact(s: &str) -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut t = if home.len() > 1 { s.replace(&home, "~") } else { s.to_string() };
-    let user = std::env::var("USER").unwrap_or_default();
+    let mut t = s.to_string();
+    // HOME on the Mac and Linux, USERPROFILE (C:\Users\name) on Windows.
+    for home in [home_dir(), std::env::var("USERPROFILE").unwrap_or_default()] {
+        if home.len() > 3 {
+            t = t.replace(&home, "~");
+        }
+    }
+    let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
     if user.len() > 2 {
-        t = t.replace(&format!("/Users/{user}"), "~").replace(&format!("/home/{user}"), "~");
+        t = t.replace(&format!("/Users/{user}"), "~").replace(&format!("/home/{user}"), "~").replace(&format!("C:\\Users\\{user}"), "~");
     }
     t.split_inclusive(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == '(' || c == ')')
         .map(|w| {
@@ -505,7 +539,8 @@ mod tests {
 
     #[test]
     fn secrets_and_paths_are_removed() {
-        let home = std::env::var("HOME").unwrap();
+        let home = home_dir();
+        assert!(!home.is_empty(), "no home folder in the environment");
         let s = redact(&format!("key sk-ant-api03-abcdefghijklmnop at {home}/Library/x, mail me@example.com (token ghp_ABCDEFGHIJKLMNOPQRSTUV)"));
         assert!(!s.contains("sk-ant") && !s.contains("ghp_") && !s.contains("me@example.com") && !s.contains(&home), "{s}");
         assert!(s.contains("~/Library/x"));

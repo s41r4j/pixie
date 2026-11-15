@@ -8,7 +8,6 @@ import { installTips } from "./lib/tips";
 import { Panel } from "./views/Panel";
 import { Overlay } from "./views/Overlay";
 import { Shelf } from "./views/Shelf";
-import { Settings } from "./views/Settings";
 import { NoteWindow } from "./views/NoteWindow";
 import { Guide } from "./views/Guide";
 import "./styles/base.css";
@@ -42,6 +41,15 @@ const LazyScene = lazy(() => import("./views/Scene3D").then((m) => ({ default: m
 const SceneView = () => (
   <Suspense fallback={<div className="canvas-empty">Opening the 3D view…</div>}>
     <LazyScene />
+  </Suspense>
+);
+
+// Settings is the biggest view: only its own window loads it, so the notch, the buddy and the
+// shelf (always running) start quicker and stay lighter.
+const LazySettings = lazy(() => import("./views/Settings").then((m) => ({ default: m.Settings })));
+const Settings = () => (
+  <Suspense fallback={null}>
+    <LazySettings />
   </Suspense>
 );
 

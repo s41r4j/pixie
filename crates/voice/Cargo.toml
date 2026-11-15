@@ -1,5 +1,5 @@
 [package]
-name = "openclicky-voice"
+name = "pixie-voice"
 description = "Audio bus (UI sounds) + speech traits: stt, tts, vad, aec"
 version.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ default = ["rodio"]
 rodio = ["dep:rodio"]
 
 [dependencies]
-openclicky-core.workspace = true
+pixie-core.workspace = true
 log.workspace = true
 serde.workspace = true
 rodio = { version = "0.20", optional = true }

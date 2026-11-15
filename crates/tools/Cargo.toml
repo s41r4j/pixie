@@ -1,13 +1,13 @@
 [package]
-name = "openclicky-tools"
+name = "pixie-tools"
 description = "Agent tools (BUILD-SPEC §5): shell, files, web, device, note; the tool loop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-openclicky-core.workspace = true
-openclicky-llm.workspace = true
+pixie-core.workspace = true
+pixie-llm.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true

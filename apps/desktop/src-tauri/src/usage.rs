@@ -5,7 +5,7 @@
 //! then a few built-in defaults.
 
 use crate::config::{Price, Settings};
-use openclicky_llm::{Effort, LlmError, OnEvent, Provider, ProviderConfig, Request, Response};
+use pixie_llm::{Effort, LlmError, OnEvent, Provider, ProviderConfig, Request, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

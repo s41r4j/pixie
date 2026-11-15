@@ -147,6 +147,22 @@ pub fn scroll(up: bool) {
     let _ = xdotool(&["click", "--repeat", "3", if up { "4" } else { "5" }]);
 }
 
+/// Type text into whatever has focus (X11, through xdotool).
+pub fn type_text(text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    xdotool(&["type", "--clearmodifiers", "--delay", "1", "--", text]).map(|_| ())
+}
+
+/// Delete `n` characters before the cursor.
+pub fn backspace(n: usize) -> Result<(), String> {
+    if n == 0 {
+        return Ok(());
+    }
+    xdotool(&["key", "--clearmodifiers", "--delay", "1", "--repeat", &n.to_string(), "BackSpace"]).map(|_| ())
+}
+
 /// "cmd+shift+t" → "ctrl+shift+t" in xdotool's names.
 pub fn press_keys(combo: &str) -> Result<(), String> {
     let keys: Vec<String> = combo

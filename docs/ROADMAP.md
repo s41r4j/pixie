@@ -39,6 +39,10 @@ The rounds below marked 0.7.8 to 0.7.17 were local test builds; they ship togeth
 
 ## Open
 
+- [x] **0.8.1: the name Pixie everywhere**: program `pixie`, app ID `pixie.s41r4j.in`, crates `pixie-*`; the data folder moves over on first launch (`rename.rs`).
+- [x] **0.8.1: lighter and quicker**: the buddy's frame loop rests, fast events go only to the window that draws them, the poll slows at rest, screen reading runs in parallel, release builds use LTO. Not yet measured on battery over a day.
+- [x] **0.8.1: own speech to text, a canvas that lays things out, richer 3D** (see the changelog). Next for speech: more languages (other streaming models), punctuation while speaking, and real tests on Windows and Linux.
+- [ ] Faster update downloads (28 MB came at about 125 KB/s from GitHub here, the same as curl): per-architecture Mac updates (about half the size), a faster mirror, and logging the download speed.
 - [ ] Try the Windows build on a real PC (voice, OCR, UI Automation, clicks) and the Linux AppImage,
   then turn 🧪 into ✅ in CHECKLIST.md.
 - [ ] Watch the first CI run of the Windows/Linux checks and the Linux build after pushing.
@@ -460,6 +464,6 @@ report right). Still to do: time and tool quality on 2 or 3 free models once the
 ## Rules that stay
 
 - Never commit `.env`, `work/`, `heyclicky/`; never reuse HeyClicky's proprietary assets.
-- Keep the binary `openclicky` and the identifier `com.openclicky.app`.
+- Keep the binary `Pixie` and the identifier `pixie.s41r4j.in`.
 - Pixie never sends mail; it only drafts.
 - The updater's private key and password never go in the repo.

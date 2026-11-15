@@ -7,7 +7,7 @@
 
 use crate::macos::{self, Rect};
 use crate::{emit, screen, AppState, OVERLAY};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;

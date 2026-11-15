@@ -2,7 +2,7 @@
 //! helper's synthesizer as they arrive, so speech starts before the answer is complete.
 
 use crate::{emit, AppState};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde_json::json;
 use tauri::{AppHandle, Manager};
 

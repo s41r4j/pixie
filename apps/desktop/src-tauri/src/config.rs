@@ -3,7 +3,7 @@
 //! Keys are looked up in: the process environment → `<app_data>/.env` → the repo's `.env`
 //! (dev builds) → keys typed into Settings. Keys never go into the repo or the bundle.
 
-use openclicky_llm::ProviderConfig;
+use pixie_llm::ProviderConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -20,7 +20,7 @@ pub struct Settings {
     /// Price per million tokens by model id (overrides the built-in table).
     pub prices: std::collections::BTreeMap<String, Price>,
     /// Settings → Coding.
-    pub coding: openclicky_tools::coders::Prefs,
+    pub coding: pixie_tools::coders::Prefs,
     /// "", "deepseek" or "claude".
     pub provider: String,
     pub voice_id: String,
@@ -44,7 +44,7 @@ pub struct Settings {
     pub share_screen: bool,
     pub master_volume: f32,
     /// Per-sound volume, mute and custom file (Settings → Sounds).
-    pub sounds: BTreeMap<String, openclicky_voice::SlotPref>,
+    pub sounds: BTreeMap<String, pixie_voice::SlotPref>,
     pub muted: bool,
     pub onboarded: bool,
     /// Show the buddy pointer next to the cursor (legacy switch; see `buddy_mode`).
@@ -62,6 +62,11 @@ pub struct Settings {
     pub can_click: bool,
     pub user_name: String,
     pub locale: String,
+    /// Speech to text: "auto" (Pixie's own engine for dictation once it's downloaded, and for
+    /// talking where the system has none), "pixie" (always, once downloaded) or "system".
+    pub stt_engine: String,
+    /// With Pixie's engine, dictated words go into the text field as they're spoken.
+    pub dictate_live: bool,
     /// Settings → Apps: "calendar", "reminders", "contacts", "mail" switched on.
     pub apps: BTreeMap<String, bool>,
     /// Check GitHub for new versions and install them when Pixie is idle.
@@ -150,6 +155,8 @@ impl Default for Settings {
             can_click: true,
             user_name: String::new(),
             locale: String::new(),
+            stt_engine: "auto".into(),
+            dictate_live: true,
             apps: BTreeMap::new(),
             auto_update: true,
             experimental: BTreeMap::new(),
@@ -222,7 +229,7 @@ pub fn vars(app_data: &Path, settings: &Settings) -> HashMap<String, String> {
         ("DEEPSEEK", &settings.deepseek_key),
         ("ANTHROPIC_API_KEY", &settings.anthropic_key),
         ("OPENAI_API_KEY", &settings.openai_key),
-        ("OPENCLICKY_PROVIDER", &settings.provider),
+        ("PIXIE_PROVIDER", &settings.provider),
     ] {
         if !val.trim().is_empty() {
             out.insert(key.into(), val.trim().to_string());
@@ -258,7 +265,7 @@ pub fn key_for(app_data: &Path, settings: &Settings, provider: &str) -> Option<S
 }
 
 /// Apply sound settings (master volume, mute, per-sound choices) to the bus.
-pub fn apply_audio<O: openclicky_voice::AudioOutput>(bus: &mut openclicky_voice::AudioBus<O>, s: &Settings) {
+pub fn apply_audio<O: pixie_voice::AudioOutput>(bus: &mut pixie_voice::AudioBus<O>, s: &Settings) {
     let mut g = bus.gains();
     g.master = s.master_volume.clamp(0.0, 1.5);
     bus.set_gains(g);
@@ -277,7 +284,7 @@ pub fn effective_models(app_data: &Path, settings: &Settings) -> BTreeMap<String
         .into_iter()
         .filter_map(|(p, key)| {
             let mut v = base.clone();
-            v.insert("OPENCLICKY_PROVIDER".into(), p.into());
+            v.insert("PIXIE_PROVIDER".into(), p.into());
             v.entry(key.into()).or_insert_with(|| "x".into());
             let c = ProviderConfig::from_vars(&v)?;
             Some((p.to_string(), ModelChoice { fast: c.fast_model, deep: c.deep_model }))
@@ -289,7 +296,7 @@ pub fn effective_models(app_data: &Path, settings: &Settings) -> BTreeMap<String
 pub fn fallback_config(app_data: &Path, settings: &Settings) -> Option<ProviderConfig> {
     let (provider, model) = settings.fallback.split_once(':')?;
     let mut v = vars(app_data, settings);
-    v.insert("OPENCLICKY_PROVIDER".into(), provider.to_string());
+    v.insert("PIXIE_PROVIDER".into(), provider.to_string());
     let prefix = match provider {
         "claude" => "ANTHROPIC",
         "openai" => "OPENAI",

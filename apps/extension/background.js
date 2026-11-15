@@ -1,8 +1,8 @@
-// openclicky browser bridge (MV3 service worker).
-// App ⇄ native host (com.openclicky.browser) ⇄ here. Requests: {id, operation, tabId?, ...args}.
+// Pixie browser bridge (MV3 service worker).
+// App ⇄ native host (pixie.s41r4j.in.browser) ⇄ here. Requests: {id, operation, tabId?, ...args}.
 // Replies: {type: "result", id, result} or {type: "result", id, error}.
 
-const HOST = "com.openclicky.browser";
+const HOST = "pixie.s41r4j.in.browser";
 const VERSION = chrome.runtime.getManifest().version;
 // Same timeout table as the reference protocol (the model's prompt depends on it).
 const LIMITS = { load: 8000, saving: 3000, batch: 30000, single: 20000, batchSteps: 20, wait: 10000, waitMax: 20000, cursorGlide: 240 };
@@ -33,12 +33,12 @@ function connect() {
 function setBadge(on) {
   chrome.action.setBadgeText({ text: on ? "" : "off" });
   chrome.action.setBadgeBackgroundColor({ color: "#5C5E6A" });
-  chrome.action.setTitle({ title: on ? "openclicky is connected" : "openclicky isn't running" });
+  chrome.action.setTitle({ title: on ? "Pixie is connected" : "Pixie isn't running" });
 }
 
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
-chrome.alarms.create("openclicky-keepalive", { periodInMinutes: 0.5 });
+chrome.alarms.create("pixie-keepalive", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(() => connect());
 chrome.action.onClicked.addListener(() => connect());
 connect();
@@ -111,7 +111,7 @@ async function groupTab(tabId) {
       }
     }
     gid = await chrome.tabs.group(gid === undefined ? { tabIds: [tabId] } : { tabIds: [tabId], groupId: gid });
-    await chrome.tabGroups.update(gid, { title: ":) openclicky", color: "blue" });
+    await chrome.tabGroups.update(gid, { title: ":) Pixie", color: "blue" });
     await chrome.storage.session.set({ groupId: gid });
   } catch {
     /* groups are a nicety */
@@ -209,10 +209,10 @@ function pageAct(action, ref, text, submit, glide) {
   const el = ref ? document.querySelector(`[data-oc-ref="${ref}"]`) : document.activeElement;
   if (ref && !el) return { __error: `No element ${ref}. Take a new snapshot.` };
   const cursor = () => {
-    let c = document.getElementById("__openclicky_cursor");
+    let c = document.getElementById("__pixie_cursor");
     if (!c) {
       c = document.createElement("div");
-      c.id = "__openclicky_cursor";
+      c.id = "__pixie_cursor";
       c.style.cssText =
         "position:fixed;z-index:2147483647;width:18px;height:18px;border-radius:50%;pointer-events:none;left:50vw;top:-20px;" +
         "background:radial-gradient(circle at 35% 30%,#fff 0 8%,#8EC5FF 30%,#5AA8F5 60%,#221898);box-shadow:0 0 0 2px #fff,0 0 16px rgba(90,168,245,.8);" +

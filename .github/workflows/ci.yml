@@ -46,9 +46,9 @@ jobs:
       # tauri::generate_context! needs the built frontend.
       - run: npm ci && npm run build
       - name: Clippy (desktop + tools)
-        run: cargo clippy -p openclicky-desktop -p openclicky-tools -- -D warnings
+        run: cargo clippy -p pixie-desktop -p pixie-tools -- -D warnings
       - name: Tests
-        run: cargo test -p openclicky-desktop -p openclicky-tools
+        run: cargo test -p pixie-desktop -p pixie-tools
 
   check-linux:
     runs-on: ubuntu-22.04
@@ -69,6 +69,6 @@ jobs:
       # tauri::generate_context! needs the built frontend.
       - run: npm ci && npm run build
       - name: Clippy (desktop + tools)
-        run: cargo clippy -p openclicky-desktop -p openclicky-tools -- -D warnings
+        run: cargo clippy -p pixie-desktop -p pixie-tools -- -D warnings
       - name: Tests
-        run: cargo test -p openclicky-desktop -p openclicky-tools
+        run: cargo test -p pixie-desktop -p pixie-tools

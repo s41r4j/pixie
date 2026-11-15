@@ -17,8 +17,8 @@ pub mod web;
 pub use agent::{run, AgentEvent, AgentOptions, AgentOutcome};
 pub use exec::execute;
 
-use openclicky_core::prompt::Mode;
-use openclicky_llm::ToolDef;
+use pixie_core::prompt::Mode;
+use pixie_llm::ToolDef;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,7 +61,7 @@ pub struct ToolCtx {
     pub job_id: Option<String>,
     pub host: Arc<dyn Host>,
     pub cancel: CancellationToken,
-    /// `openclicky-helper` (PDF, document text) if available.
+    /// `pixie-helper` (PDF, document text) if available.
     pub helper: Option<PathBuf>,
     /// Settings → Coding.
     pub coding: coders::Prefs,

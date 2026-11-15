@@ -1,6 +1,6 @@
 //! LLM provider trait + the Anthropic Messages implementation.
 //!
-//! Every model call in openclicky goes through [`Provider`]. The default implementation speaks
+//! Every model call in Pixie goes through [`Provider`]. The default implementation speaks
 //! the Anthropic Messages API, which both Claude (`api.anthropic.com`) and DeepSeek
 //! (`api.deepseek.com/anthropic`) serve, so one client covers both; [`ProviderConfig::from_env`]
 //! picks which. [`ScriptedProvider`] replays canned responses for tests.

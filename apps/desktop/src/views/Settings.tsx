@@ -258,7 +258,7 @@ function VoiceDownload({ auto = false }: { auto?: boolean }) {
     load().then((v) => {
       if (auto && v && !v.installed && !v.installing) api.voiceInstall().catch((e) => setErr(String(e)));
     }).catch(() => {});
-    const t = setInterval(load, 1000);
+    const t = setInterval(() => document.visibilityState === "visible" && load(), 1000);
     const un = onEvent((e) => {
       if (e.kind !== "voice.install") return;
       setStep(e.payload.step);
@@ -301,6 +301,78 @@ function VoiceDownload({ auto = false }: { auto?: boolean }) {
   );
 }
 
+/** Pixie's own speech to text: download it, choose when it's used, and type as you speak. */
+function SpeechEngine({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
+  const [st, setSt] = useState<Awaited<ReturnType<typeof api.sttStatus>> | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    const load = () => api.sttStatus().then(setSt).catch(() => {});
+    load();
+    const un = onEvent((e) => {
+      if (e.kind !== "stt.install") return;
+      if (e.payload.step === "error") setErr(String(e.payload.error ?? "The download failed."));
+      load();
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+  const s = view?.settings;
+  const save = (patch: Partial<SettingsT>) => api.setSettings(patch).then(onSaved).then(() => api.sttStatus().then(setSt));
+  const engine = s?.stt_engine || "auto";
+  const system = IS_MAC ? "Apple's" : OS === "windows" ? "Windows'" : "the system's";
+  const pct = st && st.total > 0 ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
+  if (st && !st.supported) return <p className="row__why">Pixie's own speech to text isn't available for this kind of computer yet.</p>;
+  return (
+    <div className="stack-gap" data-sid="stt_engine">
+      <div className="choice-cards choice-cards--2">
+        <button className={`choice ${engine !== "system" ? "choice--on" : ""}`} onClick={() => save({ stt_engine: engine === "pixie" ? "pixie" : "auto" })}>
+          <b>Pixie's speech to text</b>
+          <span>{st?.installed ? "Ready · on this computer, offline. Words appear as you speak. English." : st?.installing ? `Downloading… ${pct}%` : "Not downloaded yet · about 75 MB (115 MB without the natural voice)"}</span>
+        </button>
+        <button className={`choice ${engine === "system" ? "choice--on" : ""}`} onClick={() => save({ stt_engine: "system" })}>
+          <b>System speech to text</b>
+          <span>{OS === "linux" ? "Linux has none of its own, so Pixie can't hear you with this." : `${system} recogniser. Nothing to download; the text goes in when you stop.`}</span>
+        </button>
+      </div>
+      {engine !== "system" && st && !st.installed && (
+        <div className="row-actions">
+          <button
+            className="btn btn--primary"
+            disabled={st.installing}
+            onClick={() => {
+              setErr("");
+              api.sttInstall().then(() => api.sttStatus().then(setSt)).catch((e) => setErr(String(e)));
+            }}
+          >
+            {st.installing ? `Downloading… ${pct}%` : "Download"}
+          </button>
+          {err && <span className="bad-text small">{err}</span>}
+        </div>
+      )}
+      {engine !== "system" && st?.installed && (
+        <>
+          <label className="field">
+            <span>Use it for</span>
+            <select value={engine} onChange={(e) => save({ stt_engine: e.target.value })}>
+              <option value="auto">Dictation{OS === "linux" ? " and talking to Pixie" : ` (talking to Pixie uses ${system})`}</option>
+              <option value="pixie">Dictation and talking to Pixie</option>
+            </select>
+          </label>
+          <ul className="rows">
+            <SRow sid="dictate_live" label="Type as I speak" why="Dictated words go into the text field while you talk; punctuation and capitals are tidied when you stop. Off: the text goes in when you stop.">
+              <Switch label="Type as I speak" on={s?.dictate_live ?? true} onChange={(v) => save({ dictate_live: v })} />
+            </SRow>
+          </ul>
+          <div className="row-actions">
+            <button className="btn" onClick={() => api.sttRemove().then(() => api.sttStatus().then(setSt))}>Remove the download</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v: SettingsView) => void }) {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [def, setDef] = useState("");
@@ -312,7 +384,7 @@ function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
     }).catch(() => {});
     const load = () => api.voiceStatus().then(setVs).catch(() => {});
     load();
-    const t = setInterval(load, 2500);
+    const t = setInterval(() => document.visibilityState === "visible" && load(), 2500);
     return () => clearInterval(t);
   }, []);
   const s = view?.settings;
@@ -392,6 +464,7 @@ function VoicePanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
         <button className="btn btn--primary" onClick={() => api.voiceTest()}>Hear it</button>
       </div>
       <h3 className="sub">Listening</h3>
+      <SpeechEngine view={view} onSaved={onSaved} />
       <MicCheck />
       <label className="field" data-sid="locale">
         <span>Speech recognition language</span>
@@ -853,6 +926,11 @@ function AboutPanel({ view, onSaved }: { view: SettingsView | null; onSaved: (v:
         </div>
         <p className="muted small">Ideas, bugs and pull requests are welcome on GitHub.</p>
       </div>
+      <h3 className="sub" data-sid="credits">Built with</h3>
+      <p className="muted small">Pixie is MIT-licensed and stands on open-source work: <b>Excalidraw</b> (the canvas), <b>Mermaid</b> (flowcharts), <b>three.js</b> (3D), <b>React</b> and <b>Tauri</b> (the app), <b>sherpa-onnx</b> and the <b>Kokoro</b> voice (downloaded when you ask for it), and fonts under the SIL Open Font License. Thank you.</p>
+      <div className="row-actions">
+        <button className="btn btn--ghost" onClick={() => api.showNotices()}>Open-source licences</button>
+      </div>
       <h3 className="sub">This {MACHINE}</h3>
       <ul className="kv">
         <li><span>Model</span><b>{st?.provider ?? "not set"}</b></li>
@@ -905,9 +983,14 @@ function ShortcutRows({ view, onSaved }: { view: SettingsView | null; onSaved: (
       <SRow sid="shortcut_talk" label="Talk to Pixie" why="Hold to talk, let go to send. A quick tap opens the text box.">
         <ShortcutPicker value={talk} other={dictate} onPick={(c) => api.setSettings({ shortcut_talk: c }).then(onSaved)} />
       </SRow>
-      <SRow sid="shortcut_dictate" label="Dictate" why={s?.dictate_mode === "toggle" ? "Press once and speak, press again to stop: clean text is typed into whatever field has focus." : "Hold and speak: clean text is typed into whatever field has focus."}>
+      <SRow sid="shortcut_dictate" label="Dictate" why={s?.dictate_mode === "toggle" ? (dictate === "fn" ? "Hold fn a moment to start and speak, press it again to stop: clean text is typed into whatever field has focus." : "Press once and speak, press again to stop: clean text is typed into whatever field has focus.") : "Hold and speak: clean text is typed into whatever field has focus."}>
         <ShortcutPicker value={dictate} other={talk} onPick={(c) => api.setSettings({ shortcut_dictate: c }).then(onSaved)} />
       </SRow>
+      {(talk === "fn" || dictate === "fn") && (
+        <li className="muted small" style={{ listStyle: "none", padding: "0 0 8px" }}>
+          fn on its own is shared with your Mac (press it twice for the Mac's own Dictation), so Pixie only starts once you've held fn for a moment. Quick presses stay the Mac's.
+        </li>
+      )}
       <SRow sid="dictate_mode" label="Press to start, press to stop" why="Dictate without holding the keys: press the dictate shortcut once to start, again to stop. Off: hold while you speak.">
         <Switch label="Dictate toggle" on={s?.dictate_mode === "toggle"} onChange={(v) => api.setSettings({ dictate_mode: v ? "toggle" : "hold" }).then(onSaved)} />
       </SRow>
@@ -1102,6 +1185,8 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "general", sid: "shortcut_dictate", title: "Dictate shortcut", words: "hotkey keys keyboard shortcut fn dictation" },
   { tab: "general", sid: "dictate_mode", title: "Dictate: press to start, press to stop", words: "dictation toggle hold tap start stop hands free" },
   { tab: "general", sid: "notch_screen", title: "Notch on: which screen Pixie uses", words: "screen display monitor external second built-in laptop notch where multiple displays" },
+  { tab: "voice", sid: "stt_engine", title: "Speech to text", words: "stt dictation engine pixie own recogniser realtime live type as you speak words appear offline download model whisper" },
+  { tab: "voice", sid: "dictate_live", title: "Type as I speak", words: "dictation live typing realtime words appear while talking" },
   { tab: "experimental", sid: "exp_type_live", title: "Type as you speak (Experimental)", words: "dictation live typing words appear while talking realtime stt speech to text" },
   { tab: "voice", sid: "locale", title: "Test my mic", words: "microphone check hear listen" },
   { tab: "sounds", sid: "master_volume", title: "Overall volume", words: "loud quiet master" },
@@ -1128,6 +1213,7 @@ const INDEX: { tab: Tab; sid?: string; title: string; words: string }[] = [
   { tab: "setup", title: "Microphone, Speech, Screen Recording, Accessibility", words: "permission privacy allow reset tcc" },
   { tab: "apps", sid: "chrome", title: "Chrome extension", words: "browser tabs extension" },
   { tab: "experimental", sid: "exp_connectors", title: "Connectors switch (Experimental)", words: "mcp connectors integrations github notion slack linear turn on show" },
+  { tab: "about", sid: "credits", title: "Built with, open-source licences", words: "credits licence license licenses open source excalidraw mermaid three react tauri sherpa kokoro fonts thanks notices" },
   { tab: "about", sid: "health", title: "Checkup, report a problem, log", words: "health checkup check yourself problem bug report issue github log crash broken fix" },
   { tab: "experimental", sid: "exp_3d", title: "3D explanations (Experimental)", words: "3d three model spin rotate anatomy molecule explain" },
   { tab: "connectors", title: "Connectors: GitHub, Notion, Slack, Linear, Jira, Brave Search", words: "mcp notion github slack linear jira confluence atlassian brave search folder connectors integrations" },

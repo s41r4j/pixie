@@ -30,6 +30,10 @@ pub struct Element {
     pub role: String,
     pub label: String,
     pub frame: Frame,
+    /// Its middle can't be clicked right now: scrolled out of its list, outside the window or off
+    /// every screen (the helper works it out from the scroll areas it sits in).
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -61,6 +65,9 @@ pub struct Capture {
     /// The front app's windows that aren't on screen (another desktop, or minimized).
     #[serde(default)]
     pub elsewhere: Vec<String>,
+    /// The helper's snapshot these controls came from (it keeps the exact elements per snapshot).
+    #[serde(default)]
+    pub gen: Option<i64>,
     #[serde(skip)]
     pub error: Option<String>,
     /// Control ids the model saw earlier this turn that aren't on screen any more.
@@ -157,7 +164,7 @@ impl Capture {
             s.push_str("\nControls in the frontmost window (id, kind, label, x y w h; ids stay the same for this request):\n");
             for e in &elements {
                 let f = &e.frame;
-                s.push_str(&format!("{} {} \"{}\" {} {} {} {}\n", e.id, e.role, trunc(&e.label, 60), f.x, f.y, f.w, f.h));
+                s.push_str(&format!("{} {} \"{}\" {} {} {} {}{}\n", e.id, e.role, trunc(&e.label, 60), f.x, f.y, f.w, f.h, out_of_view(e)));
             }
         }
         let mut text = pick(&self.text, max_text, &words, pointer, |t| (t.text.clone(), &t.frame));
@@ -237,6 +244,15 @@ fn pick<'a, T>(items: &'a [T], n: usize, words: &[String], pointer: Option<(f64,
     keep.into_iter().map(|(_, t)| t).collect()
 }
 
+/// Marks a control that can't be clicked where it is (clicking its id scrolls to it first).
+fn out_of_view(e: &Element) -> &'static str {
+    if e.hidden {
+        " (out of view: click its id and Pixie scrolls to it first; never click its x y)"
+    } else {
+        ""
+    }
+}
+
 fn trunc(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.replace('\n', " ")
@@ -262,6 +278,19 @@ struct Known {
     role: String,
     label: String,
     frame: Frame,
+    gen: Option<i64>,
+    hidden: bool,
+}
+
+/// A control id the model used, resolved against the latest snapshot.
+#[derive(Debug, Clone)]
+pub struct Target {
+    pub frame: Frame,
+    pub label: String,
+    /// The helper's own id for it in snapshot `gen`.
+    pub raw: String,
+    pub gen: Option<i64>,
+    pub hidden: bool,
 }
 
 #[derive(Default)]
@@ -287,7 +316,7 @@ fn near(a: &Frame, b: &Frame) -> bool {
 }
 
 /// Give a fresh snapshot's controls Pixie's ids (rewriting `id`); returns the ids that went away.
-pub fn stabilize(elements: &mut [Element]) -> Vec<String> {
+pub fn stabilize(elements: &mut [Element], gen: Option<i64>) -> Vec<String> {
     let mut g = ids().lock().unwrap();
     let turn = TURN.load(Ordering::SeqCst);
     if g.turn != turn {
@@ -326,7 +355,7 @@ pub fn stabilize(elements: &mut [Element]) -> Vec<String> {
                 format!("e{}", g.next)
             }
         };
-        last.push(Known { id: id.clone(), raw: std::mem::replace(&mut e.id, id), role: e.role.clone(), label: e.label.clone(), frame: e.frame.clone() });
+        last.push(Known { id: id.clone(), raw: std::mem::replace(&mut e.id, id), role: e.role.clone(), label: e.label.clone(), frame: e.frame.clone(), gen, hidden: e.hidden });
     }
     g.last = last;
     prev.into_iter().zip(used).filter(|(_, u)| !u).map(|(k, _)| k.id).collect()
@@ -334,7 +363,7 @@ pub fn stabilize(elements: &mut [Element]) -> Vec<String> {
 
 /// A control id ("e12") the model used → its frame, label and the helper's own id for it, from
 /// the latest snapshot. `Err` when it isn't on screen any more.
-pub fn element(id: &str) -> Option<Result<(Frame, String, String), String>> {
+pub fn element(id: &str) -> Option<Result<Target, String>> {
     let id = id.trim().to_ascii_lowercase();
     let is_id = id.len() > 1 && id.starts_with('e') && id[1..].chars().all(|c| c.is_ascii_digit());
     if !is_id {
@@ -342,7 +371,7 @@ pub fn element(id: &str) -> Option<Result<(Frame, String, String), String>> {
     }
     let g = ids().lock().unwrap();
     Some(match g.last.iter().find(|k| k.id == id) {
-        Some(k) => Ok((k.frame.clone(), k.label.clone(), k.raw.clone())),
+        Some(k) => Ok(Target { frame: k.frame.clone(), label: k.label.clone(), raw: k.raw.clone(), gen: k.gen, hidden: k.hidden }),
         None => Err(format!("{id} isn't on screen any more (the window changed). Use an id from the latest controls list, or call look.")),
     })
 }
@@ -371,16 +400,19 @@ pub async fn capture_on(app: &AppHandle, n: u64, max_width: u32, at: Option<(f64
     if let Some((x, y)) = at {
         args["at"] = json!({ "x": x, "y": y });
     }
+    let started = std::time::Instant::now();
     let r = state.helper.call("capture", args, Duration::from_secs(8)).await;
     match r {
         Ok(v) => {
+            // How long each part took in the helper (image, text, controls, all), in ms.
+            let took = v.get("took_ms").map(|t| t.to_string()).unwrap_or_default();
             let mut c: Capture = serde_json::from_value(v).unwrap_or_default();
             if c.path.as_ref().map(|p| !p.exists()).unwrap_or(false) {
                 c.path = None;
             }
-            c.gone = stabilize(&mut c.elements);
+            c.gone = stabilize(&mut c.elements, c.gen);
             let icons: Vec<&str> = c.elements.iter().filter(|e| e.role == "menubaritem" && e.frame.x > c.display.x + c.display.w / 2.0).map(|e| e.label.as_str()).collect();
-            log::info!("capture: {} ({}), {} controls (accessibility {:?}), {} text lines, menu bar icons: {}", c.app, c.window, c.elements.len(), c.ax_trusted, c.text.len(), icons.join(", "));
+            log::info!("capture: {} ({}), {} controls (accessibility {:?}), {} text lines, menu bar icons: {}; {} ms in all, parts {took}", c.app, c.window, c.elements.len(), c.ax_trusted, c.text.len(), icons.join(", "), started.elapsed().as_millis());
             // Pointing and clicking snap against the newest screen only.
             *state.last_capture.lock().unwrap() = Some(c.clone());
             c
@@ -546,6 +578,8 @@ struct RawState {
     texts: Vec<TextLine>,
     #[serde(default)]
     cursor: Option<Value>,
+    #[serde(default)]
+    gen: Option<i64>,
 }
 
 /// How long the UI gets to settle after an action before Pixie looks again.
@@ -582,9 +616,10 @@ pub async fn after_action(app: &AppHandle, at: Option<(f64, f64)>, settle: Durat
         // The screenshot is from before the action, so it no longer applies.
         display: prev.as_ref().map(|p| p.display.clone()).unwrap_or_default(),
         ax_text: true,
+        gen: raw.gen,
         ..Default::default()
     };
-    now.gone = stabilize(&mut now.elements);
+    now.gone = stabilize(&mut now.elements, raw.gen);
     let text = describe_after(prev.as_ref(), &now, raw.focused.as_ref(), at, raw.trusted == Some(false));
     *st.last_capture.lock().unwrap() = Some(now);
     text
@@ -624,7 +659,7 @@ pub fn describe_after(prev: Option<&Capture>, now: &Capture, focused: Option<&Va
         s.push_str("Controls nearest where you acted (id kind \"label\" x y w h):\n");
         for e in els.iter().take(SHOWN) {
             let f = &e.frame;
-            s.push_str(&format!("{} {} \"{}\" {} {} {} {}\n", e.id, e.role, trunc(&e.label, 60), f.x, f.y, f.w, f.h));
+            s.push_str(&format!("{} {} \"{}\" {} {} {} {}{}\n", e.id, e.role, trunc(&e.label, 60), f.x, f.y, f.w, f.h, out_of_view(e)));
         }
         if els.len() > SHOWN {
             s.push_str(&format!("({} more controls; call look to see the whole screen.)\n", els.len() - SHOWN));
@@ -672,9 +707,11 @@ pub fn find(c: &Capture, target: &str, near: Option<(f64, f64)>) -> Option<Frame
         return Some(e.frame.clone());
     }
     let tl = t.to_lowercase();
+    // A control out of view can't be clicked where it's listed.
     let cands: Vec<(Frame, String)> = c
         .elements
         .iter()
+        .filter(|e| !e.hidden)
         .map(|e| (e.frame.clone(), e.label.to_lowercase()))
         .chain(c.text.iter().map(|x| (x.frame.clone(), x.text.to_lowercase())))
         .filter(|(f, s)| f.w > 0.0 && f.h > 0.0 && !s.trim().is_empty())
@@ -731,7 +768,7 @@ mod tests {
 
     fn cap() -> Capture {
         Capture {
-            elements: vec![Element { id: "e1".into(), role: "button".into(), label: "Share".into(), frame: Frame { x: 1500.0, y: 10.0, w: 30.0, h: 24.0 } }],
+            elements: vec![Element { id: "e1".into(), role: "button".into(), label: "Share".into(), frame: Frame { x: 1500.0, y: 10.0, w: 30.0, h: 24.0 }, hidden: false }],
             text: vec![TextLine { text: "Total $42".into(), frame: Frame { x: 200.0, y: 600.0, w: 90.0, h: 18.0 } }],
             ..Default::default()
         }
@@ -811,16 +848,16 @@ mod tests {
 #[cfg(test)]
 mod multi_step {
     use super::*;
-    use openclicky_core::prompt::Mode;
-    use openclicky_llm::{Content, LlmError, Message, OnEvent, Provider, Request, Response, Role};
-    use openclicky_tools::{AgentOptions, CancellationToken, Host, ToolCtx, ToolOutput};
+    use pixie_core::prompt::Mode;
+    use pixie_llm::{Content, LlmError, Message, OnEvent, Provider, Request, Response, Role};
+    use pixie_tools::{AgentOptions, CancellationToken, Host, ToolCtx, ToolOutput};
     use std::sync::{Arc, Mutex};
 
     /// The id registry is shared, so these tests take turns.
     static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     fn el(role: &str, label: &str, x: f64, y: f64, w: f64, h: f64) -> Element {
-        Element { id: String::new(), role: role.into(), label: label.into(), frame: Frame { x, y, w, h } }
+        Element { id: String::new(), role: role.into(), label: label.into(), frame: Frame { x, y, w, h }, hidden: false }
     }
 
     /// The window at each stage, in the order the helper would list it (its own e1, e2…).
@@ -865,7 +902,7 @@ mod multi_step {
             if stage == 3 {
                 now.text.push(TextLine { text: "Groceries".into(), frame: Frame { x: 40.0, y: 120.0, w: 90.0, h: 18.0 } });
             }
-            now.gone = stabilize(&mut now.elements);
+            now.gone = stabilize(&mut now.elements, None);
             self.search_ids.lock().unwrap().extend(now.elements.iter().filter(|e| e.label == "Search").map(|e| e.id.clone()));
             let focused = json!({ "role": "AXTextField", "label": self.focused.lock().unwrap().clone() });
             let prev = self.prev.lock().unwrap().take();
@@ -884,7 +921,7 @@ mod multi_step {
             let action = input["action"].as_str().unwrap_or("");
             let (x, y) = match action {
                 "press" => match element(input["target"].as_str().unwrap_or("")) {
-                    Some(Ok((f, _, _))) => (f.x + f.w / 2.0, f.y + f.h / 2.0),
+                    Some(Ok(t)) => (t.frame.x + t.frame.w / 2.0, t.frame.y + t.frame.h / 2.0),
                     Some(Err(e)) => return Some(ToolOutput::err(e)),
                     None => return Some(ToolOutput::err("press needs an id here")),
                 },
@@ -948,11 +985,11 @@ mod multi_step {
         async fn complete(&self, req: &Request, _: OnEvent<'_>) -> Result<Response, LlmError> {
             let text = latest_text(req);
             let Some((action, label)) = self.goals.lock().unwrap().pop_front() else {
-                return Ok(openclicky_llm::ScriptedProvider::reply(vec![Content::text("Done: the note is saved.")]));
+                return Ok(pixie_llm::ScriptedProvider::reply(vec![Content::text("Done: the note is saved.")]));
             };
             let (id, x, y) = find_line(&text, label).unwrap_or_else(|| panic!("the model can't see {label} in:\n{text}"));
             let input = if action == "type" { json!({ "action": "type", "target": "Groceries", "x": x, "y": y }) } else { json!({ "action": "press", "target": id }) };
-            Ok(openclicky_llm::ScriptedProvider::reply(vec![Content::ToolUse { id: format!("t-{label}"), name: "mac_step".into(), input }]))
+            Ok(pixie_llm::ScriptedProvider::reply(vec![Content::ToolUse { id: format!("t-{label}"), name: "mac_step".into(), input }]))
         }
     }
 
@@ -963,7 +1000,7 @@ mod multi_step {
         let host = Arc::new(FakeApp::default());
         // The first look (what the voice turn starts with).
         let mut first = Capture { app: "Notes".into(), elements: screen(0), ..Default::default() };
-        first.gone = stabilize(&mut first.elements);
+        first.gone = stabilize(&mut first.elements, None);
         let start = first.describe();
         *host.prev.lock().unwrap() = Some(first);
 
@@ -979,8 +1016,8 @@ mod multi_step {
             helper: None,
             coding: Default::default(),
         };
-        let tools = openclicky_tools::defs::for_mode(Mode::Voice, false);
-        let out = openclicky_tools::run(&model, "test", vec![Message::user_text(format!("{start}\nMake a note called Groceries."))], tools, &ctx, &AgentOptions { max_steps: 12, ..Default::default() }, &mut |_| {})
+        let tools = pixie_tools::defs::for_mode(Mode::Voice, false);
+        let out = pixie_tools::run(&model, "test", vec![Message::user_text(format!("{start}\nMake a note called Groceries."))], tools, &ctx, &AgentOptions { max_steps: 12, ..Default::default() }, &mut |_| {})
             .await
             .unwrap();
         assert_eq!(*host.pressed.lock().unwrap(), vec!["File", "New Note", "Save"]);
@@ -996,16 +1033,36 @@ mod multi_step {
         let _one = SERIAL.blocking_lock();
         begin_turn(9_000_002);
         let mut a = screen(2);
-        stabilize(&mut a);
+        stabilize(&mut a, None);
         let save = a.iter().find(|e| e.label == "Save").unwrap().id.clone();
         let mut b = screen(3);
-        let gone = stabilize(&mut b);
+        let gone = stabilize(&mut b, None);
         assert!(gone.contains(&save));
         assert!(element(&save).unwrap().is_err());
         // A new request starts the numbering again.
         begin_turn(9_000_003);
         let mut c = screen(0);
-        stabilize(&mut c);
+        stabilize(&mut c, None);
         assert_eq!(c[0].id, "e1");
+    }
+
+    /// A chat list where "M0M" is scrolled below the window (the 0.8.0 bug clicked it at y 1132
+    /// on a screen 1107 high): it keeps its id and the snapshot it came from, it's marked out of
+    /// view for the model, and a click by its name doesn't pick it.
+    #[test]
+    fn rows_out_of_view_are_marked_and_not_clicked_by_name() {
+        let _one = SERIAL.blocking_lock();
+        begin_turn(9_000_004);
+        let mut rows = vec![el("button", "Family", 0.0, 540.0, 520.0, 70.0), el("button", "M0M", 0.0, 1100.0, 520.0, 70.0)];
+        rows[1].hidden = true;
+        stabilize(&mut rows, Some(41));
+        let mom = rows[1].id.clone();
+        let t = element(&mom).unwrap().unwrap();
+        assert!(t.hidden);
+        assert_eq!(t.gen, Some(41));
+        let c = Capture { elements: rows.clone(), ..Default::default() };
+        assert!(describe_after(None, &c, None, Some((10.0, 10.0)), false).contains("\"M0M\" 0 1100 520 70 (out of view"));
+        assert!(find(&c, "M0M", None).is_none());
+        assert!(find(&c, "Family", None).is_some());
     }
 }

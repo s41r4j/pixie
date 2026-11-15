@@ -1,5 +1,5 @@
 [package]
-name = "openclicky-mcp"
+name = "pixie-mcp"
 description = "MCP connector host: stdio JSON-RPC client, tools/list, tools/call"
 version.workspace = true
 edition.workspace = true

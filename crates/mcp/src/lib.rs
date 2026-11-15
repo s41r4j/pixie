@@ -180,7 +180,7 @@ impl Client {
                 json!({
                     "protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": { "name": "openclicky", "version": env!("CARGO_PKG_VERSION") }
+                    "clientInfo": { "name": "pixie", "version": env!("CARGO_PKG_VERSION") }
                 }),
                 Duration::from_secs(60),
             )

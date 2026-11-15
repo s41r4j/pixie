@@ -99,7 +99,7 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
         h.was_inside = inside;
         st.session.set_hovered(inside);
         // The notch drops down to show the conversation while hovered mid-answer.
-        crate::emit(app, openclicky_core::Event::new("panel.hover", serde_json::json!({ "inside": inside })));
+        crate::emit(app, pixie_core::Event::new("panel.hover", serde_json::json!({ "inside": inside })));
     }
     let in_for = h.inside_since.map(|t| now - t).unwrap_or_default();
     let out_for = h.outside_since.map(|t| now - t).unwrap_or_default();
@@ -111,8 +111,8 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
     }
 }
 
-/// Called from the poll thread (~50 Hz).
-pub fn tick(app: &AppHandle) {
+/// Called from the poll thread (50 times a second, 25 at rest). Returns where the pointer is.
+pub fn tick(app: &AppHandle) -> (f64, f64) {
     let (cx, cy) = macos::cursor();
     notch_hover(app, cx, cy);
     crate::buddy::tick(app, cx, cy);
@@ -138,4 +138,5 @@ pub fn tick(app: &AppHandle) {
             }
         });
     }
+    (cx, cy)
 }

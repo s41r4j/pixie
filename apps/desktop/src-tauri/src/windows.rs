@@ -2,7 +2,7 @@
 //! asked for them.
 
 use crate::{emit, CANVAS, NOTE, SETTINGS};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde_json::json;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 

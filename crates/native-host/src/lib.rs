@@ -1,4 +1,4 @@
-//! Chrome native messaging host `com.openclicky.browser` (M7).
+//! Chrome native messaging host `pixie.s41r4j.in.browser` (M7).
 //!
 //! Chrome starts this with the extension origin as its first argument and talks over stdio
 //! using 4-byte little-endian length-prefixed JSON. We relay every message, as one JSON line,
@@ -15,7 +15,7 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub const HOST_NAME: &str = "com.openclicky.browser";
+pub const HOST_NAME: &str = "pixie.s41r4j.in.browser";
 pub const EXTENSION_ID: &str = "hdbcbdoddehijplnbajmbhlpjammchmf";
 /// Chrome's limit for host → extension messages.
 const MAX_OUT: usize = 1024 * 1024;
@@ -27,11 +27,11 @@ pub fn is_native_host_launch(args: &[String]) -> bool {
 pub fn default_socket() -> PathBuf {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     if cfg!(target_os = "macos") {
-        return home.join("Library/Application Support/com.openclicky.app/browser.sock");
+        return home.join("Library/Application Support/pixie.s41r4j.in/browser.sock");
     }
     // Linux: the app's data folder (Tauri's app_data_dir).
     let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
-    data.join("com.openclicky.app/browser.sock")
+    data.join("pixie.s41r4j.in/browser.sock")
 }
 
 /// Read one native message (None on EOF).
@@ -66,7 +66,7 @@ fn connect(socket: &PathBuf) -> io::Result<UnixStream> {
             Err(e) => {
                 if i == 0 {
                     // Start the app if it isn't running.
-                    let _ = std::process::Command::new("/usr/bin/open").args(["-g", "-b", "com.openclicky.app"]).status();
+                    let _ = std::process::Command::new("/usr/bin/open").args(["-g", "-b", "pixie.s41r4j.in"]).status();
                 }
                 last = Some(e);
                 std::thread::sleep(Duration::from_millis(250));
@@ -79,7 +79,7 @@ fn connect(socket: &PathBuf) -> io::Result<UnixStream> {
 /// The browser bridge is macOS-only for now (it relays over a unix socket).
 #[cfg(not(unix))]
 pub fn run(_socket: PathBuf) -> i32 {
-    eprintln!("openclicky native host: the browser bridge isn't available on this system yet");
+    eprintln!("Pixie native host: the browser bridge isn't available on this system yet");
     1
 }
 
@@ -89,7 +89,7 @@ pub fn run(socket: PathBuf) -> i32 {
     let stream = match connect(&socket) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("openclicky native host: can't reach the app at {}: {e}", socket.display());
+            eprintln!("Pixie native host: can't reach the app at {}: {e}", socket.display());
             return 1;
         }
     };
@@ -128,7 +128,7 @@ pub fn run(socket: PathBuf) -> i32 {
 pub fn host_manifest(binary: &std::path::Path) -> String {
     serde_json::json!({
         "name": HOST_NAME,
-        "description": "openclicky browser bridge",
+        "description": "Pixie browser bridge",
         "path": binary,
         "type": "stdio",
         "allowed_origins": [format!("chrome-extension://{EXTENSION_ID}/")],
@@ -176,8 +176,8 @@ mod tests {
     fn launch_detection_and_manifest() {
         assert!(is_native_host_launch(&["x".into(), "chrome-extension://abc/".into()]));
         assert!(!is_native_host_launch(&["x".into(), "--show-panel".into()]));
-        let m: serde_json::Value = serde_json::from_str(&host_manifest(std::path::Path::new("/A/openclicky"))).unwrap();
+        let m: serde_json::Value = serde_json::from_str(&host_manifest(std::path::Path::new("/A/pixie"))).unwrap();
         assert_eq!(m["allowed_origins"][0], format!("chrome-extension://{EXTENSION_ID}/"));
-        assert_eq!(m["path"], "/A/openclicky");
+        assert_eq!(m["path"], "/A/pixie");
     }
 }

@@ -60,10 +60,12 @@ fn install(app: &AppHandle, data: &Path) {
         }
     }
     let Ok(exe) = std::env::current_exe() else { return };
-    let manifest = openclicky_native_host::host_manifest(&exe);
-    for dir in openclicky_native_host::manifest_dirs() {
+    let manifest = pixie_native_host::host_manifest(&exe);
+    for dir in pixie_native_host::manifest_dirs() {
         let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join(format!("{}.json", openclicky_native_host::HOST_NAME));
+        // The registration under the old app ID points at a name nothing answers any more.
+        let _ = std::fs::remove_file(dir.join(format!("{}.json", crate::rename::OLD_HOST_NAME)));
+        let path = dir.join(format!("{}.json", pixie_native_host::HOST_NAME));
         if std::fs::read_to_string(&path).ok().as_deref() != Some(manifest.as_str()) {
             match std::fs::write(&path, &manifest) {
                 Ok(()) => log::info!("browser: registered native host in {}", dir.display()),
@@ -114,7 +116,7 @@ pub fn start(app: AppHandle) {
                         "hello" => {
                             bridge().hello.store(true, Ordering::SeqCst);
                             log::info!("browser: extension {} connected", v["version"]);
-                            crate::emit(&app2, openclicky_core::Event::new("browser.connected", json!({ "connected": true })));
+                            crate::emit(&app2, pixie_core::Event::new("browser.connected", json!({ "connected": true })));
                         }
                         "result" => {
                             if let Some(id) = v["id"].as_u64() {
@@ -136,7 +138,7 @@ pub fn start(app: AppHandle) {
                     let _ = tx.send(Err("The browser disconnected.".into()));
                 }
                 log::info!("browser: disconnected");
-                crate::emit(&app2, openclicky_core::Event::new("browser.connected", json!({ "connected": false })));
+                crate::emit(&app2, pixie_core::Event::new("browser.connected", json!({ "connected": false })));
             });
         }
     });

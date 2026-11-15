@@ -11,7 +11,7 @@ description: one line that says when to use it
 ```
 
 The app lists every skill (name, description, path) in the prompt's environment block. Users can
-add their own in `~/Library/Application Support/com.openclicky.app/skills/`.
+add their own in `~/Library/Application Support/pixie.s41r4j.in/skills/`.
 
-These playbooks are openclicky's own. MIT-licensed playbooks from other projects (e.g.
+These playbooks are Pixie's own. MIT-licensed playbooks from other projects (e.g.
 NousResearch/hermes-agent) can be dropped in with their attribution kept.

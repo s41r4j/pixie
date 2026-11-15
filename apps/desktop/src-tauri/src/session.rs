@@ -8,10 +8,10 @@ use crate::panel::{self, PanelMode};
 use crate::screen::{self, Capture};
 use crate::speech::{self, SpeechStream};
 use crate::{emit, overlay, AppState};
-use openclicky_core::prompt::{self, Mode, PromptInput};
-use openclicky_core::Event;
-use openclicky_llm::{Content, Effort, Message, Request};
-use openclicky_tools::{AgentEvent, AgentOptions, CancellationToken, ToolCtx};
+use pixie_core::prompt::{self, Mode, PromptInput};
+use pixie_core::Event;
+use pixie_llm::{Content, Effort, Message, Request};
+use pixie_tools::{AgentEvent, AgentOptions, CancellationToken, ToolCtx};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -307,14 +307,17 @@ fn start_listening(app: &AppHandle, kind: Listening) {
     }
     panel::set_mode(app, if kind == Listening::Talk { PanelMode::Listening } else { PanelMode::Dictating });
     emit(app, Event::new("mic.start", json!({ "turn": n, "kind": if kind == Listening::Talk { "talk" } else { "dictate" } })));
-    // Type as you speak is in Settings → Experimental (off: the text goes in when you stop).
-    let (locale, live) = st.settings.lock().map(|s| (s.locale.clone(), s.experiment(LIVE_TYPING))).unwrap_or_default();
+    // Pixie's own engine types as you speak unless that's switched off (Settings → Voice). With
+    // the system's recogniser it's still in Settings → Experimental (off: the text goes in when
+    // you stop).
+    let own = crate::stt::wanted(app, if kind == Listening::Talk { crate::stt::For::Talk } else { crate::stt::For::Dictate });
+    let (locale, live) = st.settings.lock().map(|s| (s.locale.clone(), if own { s.dictate_live } else { s.experiment(LIVE_TYPING) })).unwrap_or_default();
     let live = live && kind == Listening::Dictate;
     let helper = st.helper.clone();
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         let args = json!({ "locale": locale, "on_device": true, "live_type": live });
-        let started = helper.call("listen_start", args, Duration::from_secs(15)).await;
+        let started = if own { crate::stt::begin(&app2, live).await } else { helper.call("listen_start", args, Duration::from_secs(15)).await };
         if started.is_ok() {
             // Key press to microphone on (the speed pass measures this).
             log::info!("listening: mic on {} ms after the press was seen (helper {})", t0.elapsed().as_millis(), started.as_ref().map(|v| v["ms"].to_string()).unwrap_or_default());
@@ -348,7 +351,12 @@ static NO_SURFACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// when it was on.
 async fn stop_listening_live(app: &AppHandle) -> (String, Option<Value>) {
     let helper = state(app).helper.clone();
-    match helper.call("listen_stop", json!({}), Duration::from_secs(5)).await {
+    // Pixie's own engine, when this recording was started with it.
+    let stopped = match crate::stt::finish(app).await {
+        Some(v) => Ok(v),
+        None => helper.call("listen_stop", json!({}), Duration::from_secs(5)).await,
+    };
+    match stopped {
         Ok(v) => {
             NO_SURFACE.store(v["no_surface"].as_bool().unwrap_or(false), std::sync::atomic::Ordering::SeqCst);
             (v["text"].as_str().unwrap_or("").trim().to_string(), v.get("live").filter(|l| l.is_object()).cloned())
@@ -414,7 +422,11 @@ pub fn ask_text(app: &AppHandle, text: String) {
 pub fn escape(app: &AppHandle) {
     let listening = state(app).session.inner.lock().unwrap().listening.take();
     if listening.is_some() {
-        state(app).helper.send("listen_cancel", json!({}));
+        if crate::stt::recording() {
+            crate::stt::cancel(app);
+        } else {
+            state(app).helper.send("listen_cancel", json!({}));
+        }
     }
     interrupt(app);
     crate::jobs::cancel_live(app);
@@ -463,7 +475,12 @@ pub fn dictate_up(app: &AppHandle) {
             let r = state(&app).helper.call("live_type_now", json!({ "text": raw }), Duration::from_secs(5)).await;
             log::info!("dictation: raw text in {r:?}");
         }
-        let text = clean_dictation(&app, &raw).await.unwrap_or(raw);
+        // Pixie's engine writes without capitals: when the tidy-up doesn't run, start with one.
+        let text = match clean_dictation(&app, &raw).await {
+            Some(t) => t,
+            None if raw.chars().next().is_some_and(|c| c.is_lowercase()) => crate::stt::sentence(&raw),
+            None => raw,
+        };
         let st = app.state::<AppState>();
         if live.is_some() && (still_live || !typed_live.is_empty()) {
             // Type as you speak: the words are already in the field; swap in the cleaned text.
@@ -588,7 +605,7 @@ fn environment(app: &AppHandle, cwd: &std::path::Path, capture: Option<&Capture>
         skills: st.skills.clone(),
         memory: crate::memory::prompt_lines(app),
         helper: crate::jobs::helper_hint(&st),
-        coders: openclicky_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
+        coders: pixie_tools::coders::detect().iter().map(|c| c.label.to_string()).collect(),
         persona: s.persona.clone(),
         spicy: s.spicy,
         canvas: s.canvas_use.clone(),
@@ -617,6 +634,8 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         crate::myself::run_quick(&app, q);
         return;
     }
+    // Stage times go to the log, so a slow answer shows where the time went.
+    let began = std::time::Instant::now();
     let st = app.state::<AppState>();
     let cancel = CancellationToken::new();
     {
@@ -724,14 +743,15 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         helper: st.helper.path.clone(),
         coding: st.settings.lock().map(|s| s.coding.clone()).unwrap_or_default(),
     };
-    let mut tools = openclicky_tools::defs::for_mode(mode, crate::browser::connected(&app));
-    tools.extend(openclicky_tools::Host::extra_tools(host.as_ref(), mode));
+    let mut tools = pixie_tools::defs::for_mode(mode, crate::browser::connected(&app));
+    tools.extend(pixie_tools::Host::extra_tools(host.as_ref(), mode));
     crate::connectors::trim(&mut tools, &text);
     // Everything before the new message is earlier conversation (cached for the next turn).
     let opts = AgentOptions { max_steps: 12, effort: Effort::Fast, max_tokens: 1500, history: Some(messages.len().saturating_sub(1)) };
 
     let mut voice = SpeechStream::new(&app, n, !text_reply);
     let started = std::time::Instant::now();
+    log::info!("turn {n}: asking the model {} ms after the turn began (screen read, prompt built)", began.elapsed().as_millis());
     // Which tools this answer used, kept with it in history: without them a repeated request
     // ("start a job…") reads like it was answered in words only, and the model may copy that.
     let used = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -756,11 +776,11 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
                     u.push(name.clone());
                 }
             }
-            log::info!("turn {n}: {name} {}", input.to_string().chars().take(240).collect::<String>());
+            log::info!("turn {n}: {name} at {} ms {}", started.elapsed().as_millis(), input.to_string().chars().take(240).collect::<String>());
             emit(&app_ev, Event::new("turn.tool", json!({ "turn": n, "name": name, "input": input })));
         }
         AgentEvent::ToolEnd { name, ok, summary } => {
-            log::info!("turn {n}: {name} {} {summary}", if ok { "ok" } else { "failed" });
+            log::info!("turn {n}: {name} {} at {} ms {summary}", if ok { "ok" } else { "failed" }, started.elapsed().as_millis());
             emit(&app_ev, Event::new("turn.tool_done", json!({ "turn": n, "name": name, "ok": ok, "summary": summary })));
         }
         AgentEvent::Step { .. } => {
@@ -771,6 +791,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
         }
     })
     .await;
+    log::info!("turn {n}: the model finished {} ms after it was asked", started.elapsed().as_millis());
     let held = voice.flush();
     if !held.is_empty() {
         emit(&app, Event::new("turn.delta", json!({ "turn": n, "text": held })));
@@ -827,7 +848,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
                 schedule_collapse(&app, Duration::from_secs((words / 3 + 6).clamp(12, 90)));
             }
         }
-        Err(openclicky_llm::LlmError::Cancelled) => finish_turn(&app, n, false),
+        Err(pixie_llm::LlmError::Cancelled) => finish_turn(&app, n, false),
         Err(e) => {
             log::warn!("turn {n}: {e}");
             let err = e.to_string();

@@ -2,10 +2,10 @@
 //! the browser and connectors.
 
 use crate::{browser, emit, jobs, overlay, speech, AppState};
-use openclicky_core::prompt::Mode;
-use openclicky_core::Event;
-use openclicky_llm::ToolDef;
-use openclicky_tools::{Host, ToolCtx, ToolOutput};
+use pixie_core::prompt::Mode;
+use pixie_core::Event;
+use pixie_llm::ToolDef;
+use pixie_tools::{Host, ToolCtx, ToolOutput};
 use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -74,6 +74,15 @@ async fn clipboard_mac(action: &str, text: &str) -> ToolOutput {
 /// change the screen ends with the fresh screen state (ids stay stable for the request).
 async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
     let st = app.state::<AppState>();
+    let target = s(input, "target");
+    // Typed commands, keys and menu items that delete, send or can't be undone: they say yes
+    // in a dialog first, before anything happens.
+    if let Some(what) = risk_of(app, action, target).await {
+        let pid = front_pid(app).await;
+        if !crate::safety::ask(app, &what, pid).await {
+            return ToolOutput::err(crate::safety::declined(&what));
+        }
+    }
     // type with x, y: click into that field first, so it lands in the right pane.
     let mut clicked = String::new();
     if action == "type" && input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some() {
@@ -84,27 +93,42 @@ async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
         }
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
-    // A control id (e12) is Pixie's own: act on that control where it is now.
-    let target = s(input, "target");
+    // A control id (e12) is Pixie's own: act on that exact control as it is now.
     let mut call = ("mac_step", input.clone());
     let mut at: Option<(f64, f64)> = None;
     if matches!(action, "press" | "focus" | "find") {
         if let Some(hit) = crate::screen::element(target) {
-            let (f, label, raw) = match hit {
-                Ok(h) => h,
+            let t = match hit {
+                Ok(t) => t,
                 Err(e) => return ToolOutput::err(e),
             };
-            let (x, y) = (f.x + f.w / 2.0, f.y + f.h / 2.0);
-            at = Some((x, y));
             if action == "find" {
-                return ToolOutput::ok(json!({ "id": target, "label": label, "frame": { "x": f.x, "y": f.y, "w": f.w, "h": f.h } }).to_string());
+                let f = &t.frame;
+                return ToolOutput::ok(json!({ "id": target, "label": t.label, "frame": { "x": f.x, "y": f.y, "w": f.w, "h": f.h }, "out_of_view": t.hidden }).to_string());
+            }
+            let (x, y, label, pid) = match crate::buddy::live_target(app, target, &t).await {
+                Ok(v) => v,
+                Err(e) => return ToolOutput::err(e),
+            };
+            at = Some((x, y));
+            if action == "press" && (crate::safety::risky_label(&label) || crate::safety::risky_label(&t.label)) {
+                let front = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+                let what = crate::safety::press_text(&label, &front);
+                if !crate::safety::ask(app, &what, pid).await {
+                    return ToolOutput::err(crate::safety::declined(&what));
+                }
             }
             call = if cfg!(target_os = "macos") {
-                (if action == "press" { "press_point" } else { "focus_point" }, json!({ "x": x, "y": y, "label": label }))
+                match (action, t.gen) {
+                    // The exact element Pixie saw, not whatever is at its old position.
+                    ("press", Some(g)) => ("press_element", json!({ "gen": g, "id": t.raw })),
+                    ("press", None) => ("press_point", json!({ "x": x, "y": y, "label": label })),
+                    _ => ("focus_point", json!({ "x": x, "y": y, "label": label })),
+                }
             } else {
                 // The native layer still knows its own numbering from the latest snapshot.
                 let mut v = input.clone();
-                v["target"] = json!(raw);
+                v["target"] = json!(t.raw);
                 ("mac_step", v)
             };
         }
@@ -159,6 +183,41 @@ async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
     };
     let now = crate::screen::after_action(app, at, crate::screen::settle_for(action)).await;
     ToolOutput::ok(format!("{first}\n{now}"))
+}
+
+/// The risk in a press-by-label, menu choice, key or typed text, as "what Pixie would do".
+async fn risk_of(app: &AppHandle, action: &str, target: &str) -> Option<String> {
+    let st = app.state::<AppState>();
+    let front = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+    let front = if front.is_empty() { front_app(app).await } else { front };
+    match action {
+        "type" => {
+            if let Some(p) = crate::safety::risky_text(target) {
+                let shown: String = target.chars().take(80).collect();
+                return Some(format!("type “{shown}” (it contains “{p}”, which can delete or change things for good)"));
+            }
+            if target.contains('\n') && crate::safety::risky_key("return", &front).is_some() {
+                return Some(format!("send a message in {}", crate::safety::app_name(&front)));
+            }
+            None
+        }
+        "key" => crate::safety::risky_key(target, &front),
+        "menu" => {
+            let item = target.rsplit(['>', '→']).next().unwrap_or(target).trim();
+            crate::safety::risky_label(item).then(|| format!("choose “{}” in {}", target.trim(), crate::safety::app_name(&front)))
+        }
+        // A press by label (an id is checked against the live control instead).
+        "press" if crate::screen::element(target).is_none() => crate::safety::risky_label(target).then(|| crate::safety::press_text(target, &front)),
+        _ => None,
+    }
+}
+
+async fn front_app(app: &AppHandle) -> String {
+    app.state::<AppState>().helper.call("frontmost", json!({}), Duration::from_secs(2)).await.ok().and_then(|v| v["app"].as_str().map(String::from)).unwrap_or_default()
+}
+
+async fn front_pid(app: &AppHandle) -> Option<i64> {
+    app.state::<AppState>().helper.call("frontmost", json!({}), Duration::from_secs(2)).await.ok().and_then(|v| v["pid"].as_i64()).filter(|p| *p > 0)
 }
 
 pub struct AppHost {
@@ -218,7 +277,7 @@ impl Host for AppHost {
                 let full = input.get("full").and_then(Value::as_bool).unwrap_or(false);
                 let width = if full { 4096 } else { crate::screen::IMAGE_WIDTH };
                 // Only models that take images get the screenshot; the rest work from the lists.
-                let effort = if ctx.mode == Mode::Live { openclicky_llm::Effort::Balanced } else { openclicky_llm::Effort::Fast };
+                let effort = if ctx.mode == Mode::Live { pixie_llm::Effort::Balanced } else { pixie_llm::Effort::Fast };
                 let vision = st.provider().is_some_and(|p| p.sees_images_at(effort));
                 // Live agents stay on the screen of the app they work in, wherever the mouse goes.
                 let want = match s(input, "display") {
@@ -294,7 +353,7 @@ impl Host for AppHost {
 
     fn note_changed(&self, ctx: &ToolCtx) {
         let src = std::fs::read_to_string(&ctx.note_path).unwrap_or_default();
-        let doc = openclicky_core::note::parse(&src);
+        let doc = pixie_core::note::parse(&src);
         match &ctx.job_id {
             Some(id) => {
                 emit(&self.app, Event::with_job("job.note", id, json!({ "doc": doc })));

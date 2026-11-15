@@ -9,15 +9,15 @@
 //!   auth) still apply.
 //! - **Pixie's tools.** opencode is an agent with its own tools; those are all denied. Pixie's
 //!   tools are served to it over a small MCP endpoint inside Pixie (localhost, random token).
-//!   Every call runs through `openclicky_tools::execute` with the turn's own `ToolCtx`, exactly
+//!   Every call runs through `pixie_tools::execute` with the turn's own `ToolCtx`, exactly
 //!   as with an API model; calls are routed by opencode's session id.
 //! - **A turn.** One opencode session per turn (or job run), Pixie's system prompt set as that
 //!   session's instructions, earlier conversation and the screenshot in the prompt. Text deltas
 //!   stream back as `AgentEvent::Text`, so speech starts on the first sentence.
 
 use crate::AppState;
-use openclicky_llm::{Content, Effort, LlmError, Message, OnEvent, Provider, Request, Response, Role, StopReason, StreamEvent, ToolDef};
-use openclicky_tools::{AgentEvent, AgentOptions, AgentOutcome, ToolCtx};
+use pixie_llm::{Content, Effort, LlmError, Message, OnEvent, Provider, Request, Response, Role, StopReason, StreamEvent, ToolDef};
+use pixie_tools::{AgentEvent, AgentOptions, AgentOutcome, ToolCtx};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write;
@@ -121,7 +121,7 @@ pub fn init(app: &AppHandle) {
 
 /// The opencode CLI on this computer, if any.
 pub fn binary() -> Option<PathBuf> {
-    openclicky_tools::coders::detect().into_iter().find(|c| c.name == "opencode").map(|c| c.path)
+    pixie_tools::coders::detect().into_iter().find(|c| c.name == "opencode").map(|c| c.path)
 }
 
 /// opencode is the chosen model provider (and installed).
@@ -360,12 +360,12 @@ pub async fn status(app: &AppHandle, start: bool) -> Value {
 
 /// Every tool any mode may use; a turn only runs the ones it was given.
 fn all_tools(app: &AppHandle) -> Vec<ToolDef> {
-    use openclicky_core::prompt::Mode;
+    use pixie_core::prompt::Mode;
     let host = crate::host::AppHost { app: app.clone() };
     let browser = crate::browser::connected(app);
     let mut out: Vec<ToolDef> = Vec::new();
     for mode in [Mode::Voice, Mode::Live, Mode::Job] {
-        for t in openclicky_tools::defs::for_mode(mode, browser).into_iter().chain(openclicky_tools::Host::extra_tools(&host, mode)) {
+        for t in pixie_tools::defs::for_mode(mode, browser).into_iter().chain(pixie_tools::Host::extra_tools(&host, mode)) {
             if !out.iter().any(|x| x.name == t.name) {
                 out.push(t);
             }
@@ -503,7 +503,7 @@ async fn tool_call(params: &Value) -> Value {
     }
     touch();
     let _ = events.send(AgentEvent::ToolStart { name: name.clone(), input: input.clone() });
-    let out = openclicky_tools::execute(&ctx, &name, &input).await;
+    let out = pixie_tools::execute(&ctx, &name, &input).await;
     let summary = out.text.lines().next().unwrap_or("").chars().take(120).collect::<String>();
     let _ = events.send(AgentEvent::ToolEnd { name, ok: !out.is_error, summary });
     let mut content = vec![json!({ "type": "text", "text": if out.text.is_empty() { "done".to_string() } else { out.text } })];
@@ -592,7 +592,7 @@ fn explain(err: &Value) -> String {
     msg.to_string()
 }
 
-/// Run a turn (or a job run) on opencode: like `openclicky_tools::run`, but opencode runs the
+/// Run a turn (or a job run) on opencode: like `pixie_tools::run`, but opencode runs the
 /// tool loop and calls Pixie's tools back over MCP.
 pub async fn run(
     app: &AppHandle,
@@ -748,7 +748,7 @@ pub async fn run_agent(
     if selected(app) {
         run(app, system, messages, tools, ctx, opts, on_event).await
     } else {
-        openclicky_tools::run(provider, system, messages, tools, ctx, opts, on_event).await
+        pixie_tools::run(provider, system, messages, tools, ctx, opts, on_event).await
     }
 }
 

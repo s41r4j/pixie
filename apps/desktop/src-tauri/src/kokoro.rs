@@ -1,4 +1,4 @@
-//! Natural local voice: Kokoro (82M) through sherpa-onnx, run by the `openclicky-voice`
+//! Natural local voice: Kokoro (82M) through sherpa-onnx, run by the `pixie-voice`
 //! sidecar. Sentences are synthesised in order and handed to the helper for playback (with word
 //! timing), so speech starts while the answer is still streaming.
 //!
@@ -54,7 +54,7 @@ struct Engine {
     installing: AtomicBool,
     /// Kokoro's word list, loaded with the model: Pixie turns text into phonemes itself so words
     /// the model's own lookup lacks ("opened", "GitHub", numbers) aren't skipped.
-    lexicon: Mutex<Option<std::sync::Arc<openclicky_voice::say::Lexicon>>>,
+    lexicon: Mutex<Option<std::sync::Arc<pixie_voice::say::Lexicon>>>,
     /// The server's pid and when it last answered (or was first asked something), for the
     /// watchdog.
     pid: std::sync::atomic::AtomicU32,
@@ -92,7 +92,7 @@ pub fn installed(data: &Path) -> bool {
 
 fn binary() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    let p = exe.parent()?.join("openclicky-voice");
+    let p = exe.parent()?.join("pixie-voice");
     p.is_file().then_some(p)
 }
 
@@ -155,7 +155,7 @@ pub fn status(app: &AppHandle) -> Status {
 /// At launch: nothing loads yet; a watcher unloads the model when it's been quiet a while.
 pub fn start(_app: AppHandle) {
     std::thread::Builder::new()
-        .name("openclicky-voice-idle".into())
+        .name("pixie-voice-idle".into())
         .spawn(|| loop {
             std::thread::sleep(Duration::from_secs(30));
             let e = engine();
@@ -190,11 +190,11 @@ fn launch(app: AppHandle) {
         return;
     };
     std::thread::Builder::new()
-        .name("openclicky-voice".into())
+        .name("pixie-voice".into())
         .spawn(move || {
             let v = voices_dir(&data);
             if engine().lexicon.lock().unwrap().is_none() {
-                match openclicky_voice::say::Lexicon::load(&v.join("kokoro/lexicon-us-en.txt")) {
+                match pixie_voice::say::Lexicon::load(&v.join("kokoro/lexicon-us-en.txt")) {
                     Ok(l) => *engine().lexicon.lock().unwrap() = Some(std::sync::Arc::new(l)),
                     Err(e) => log::warn!("voice: lexicon: {e}"),
                 }
@@ -333,7 +333,7 @@ fn loudness_db(l: &str) -> f32 {
 /// One request for the voice server. The lexicon is loaded on the voice thread before the
 /// model, so it's normally there; until then the server reads the text itself.
 fn request_line(id: &str, wav: &Path, sid: i32, speed: f64, loudness: &str, text: &str) -> String {
-    let said = openclicky_voice::say::normalize(text);
+    let said = pixie_voice::say::normalize(text);
     let lex = engine().lexicon.lock().unwrap().clone();
     let phonemes = lex.map(|l| l.phonemes(&said)).unwrap_or_default().replace(['\t', '\n'], " ");
     format!("{id}\t{sid}\t{speed:.2}\t{}\t{:.1}\t{said}\t{phonemes}\n", wav.display(), loudness_db(loudness))
@@ -403,7 +403,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
                 if v.join(dest).exists() {
                     continue;
                 }
-                crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": dest })));
+                crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": dest })));
                 let stage = v.join(format!("dl-{dest}"));
                 let _ = std::fs::remove_dir_all(&stage);
                 std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
@@ -418,7 +418,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
                     progress().lock().unwrap().0 = now_bytes;
                     if last_emit.elapsed() > std::time::Duration::from_millis(400) {
                         last_emit = std::time::Instant::now();
-                        crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": dest, "done": now_bytes, "total": total })));
+                        crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": dest, "done": now_bytes, "total": total })));
                     }
                     std::thread::sleep(std::time::Duration::from_millis(150));
                 };
@@ -426,7 +426,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
                     return Err(format!("download failed: {url}"));
                 }
                 before += std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
-                crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "unpack", "done": before, "total": total })));
+                crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": "unpack", "done": before, "total": total })));
                 let ok = Command::new("/usr/bin/tar").args(["xjf", "pkg.tar.bz2"]).current_dir(&stage).status().map_err(|e| e.to_string())?;
                 if !ok.success() {
                     return Err("couldn't unpack".into());
@@ -439,10 +439,10 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         engine().installing.store(false, Ordering::SeqCst);
         match r {
             Ok(()) => {
-                crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "done" })));
+                crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": "done" })));
                 warm(&app);
             }
-            Err(e) => crate::emit(&app, openclicky_core::Event::new("voice.install", json!({ "step": "error", "error": e }))),
+            Err(e) => crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": "error", "error": e }))),
         }
     });
     Ok(())

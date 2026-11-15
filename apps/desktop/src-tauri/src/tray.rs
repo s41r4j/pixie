@@ -1,7 +1,7 @@
 //! Menu-bar icon (the `:)` mark): left click opens the panel to type; right click for the menu.
 
 use crate::{commands, panel, AppState};
-use openclicky_core::ResourceKind;
+use pixie_core::ResourceKind;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};

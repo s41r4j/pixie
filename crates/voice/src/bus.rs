@@ -4,7 +4,7 @@
 //! The bus is pure logic over an [`AudioOutput`]; [`RodioOutput`] is the real speaker
 //! backend, tests use a recording fake. A missing device or file never panics.
 
-use openclicky_core::resources::{ResourceKind, ResourceStore, SoundCategory};
+use pixie_core::resources::{ResourceKind, ResourceStore, SoundCategory};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -220,7 +220,7 @@ mod rodio_out {
         pub fn spawn() -> Self {
             let (tx, rx) = mpsc::channel();
             std::thread::Builder::new()
-                .name("openclicky-audio".into())
+                .name("pixie-audio".into())
                 .spawn(move || run(rx))
                 .expect("spawn audio thread");
             Self { tx }
@@ -308,7 +308,7 @@ mod rodio_out {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openclicky_core::resources::Manifest;
+    use pixie_core::resources::Manifest;
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug, Clone, PartialEq)]

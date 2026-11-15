@@ -1,5 +1,5 @@
 [package]
-name = "openclicky-llm"
+name = "pixie-llm"
 description = "LLM provider trait + Anthropic Messages implementation (Claude default, DeepSeek compatible)"
 version.workspace = true
 edition.workspace = true

@@ -1,4 +1,4 @@
-//! Client for the Swift helper sidecar (`openclicky-helper`): JSON lines over stdio.
+//! Client for the Swift helper sidecar (`pixie-helper`): JSON lines over stdio.
 //! It is restarted automatically if it exits.
 
 use serde_json::{json, Value};
@@ -6,10 +6,13 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, oneshot};
+
+/// Set when Pixie quits, so the helper going with it isn't logged as a failure or restarted.
+pub static QUITTING: AtomicBool = AtomicBool::new(false);
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
 
@@ -22,17 +25,17 @@ pub struct Helper {
     events: broadcast::Sender<(String, Value)>,
 }
 
-/// `openclicky-helper` next to the main binary (bundle: Contents/MacOS; dev: target/debug).
+/// `pixie-helper` next to the main binary (bundle: Contents/MacOS; dev: target/debug).
 pub fn locate() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let p = dir.join("openclicky-helper");
+    let p = dir.join("pixie-helper");
     if p.is_file() {
         return Some(p);
     }
     // `cargo run` without tauri's sidecar copy.
     let target = std::env::var("TARGET").unwrap_or_else(|_| "aarch64-apple-darwin".into());
-    let alt = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("binaries/openclicky-helper-{target}"));
+    let alt = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("binaries/pixie-helper-{target}"));
     alt.is_file().then_some(alt)
 }
 
@@ -56,11 +59,11 @@ impl Helper {
         #[allow(unreachable_code)]
         match &h.path {
             Some(p) => log::info!("helper: {}", p.display()),
-            None => log::error!("helper: openclicky-helper not found next to the app; voice and screen are off"),
+            None => log::error!("helper: pixie-helper not found next to the app; voice and screen are off"),
         }
         let sup = h.clone();
         std::thread::Builder::new()
-            .name("openclicky-helper".into())
+            .name("pixie-helper".into())
             .spawn(move || sup.supervise())
             .expect("helper thread");
         h
@@ -71,8 +74,8 @@ impl Helper {
         let mut backoff = Duration::from_millis(300);
         loop {
             let mut cmd = Command::new(&path);
-            if let Some(f) = openclicky_tools::children::file() {
-                cmd.env("OPENCLICKY_CHILDREN", f);
+            if let Some(f) = pixie_tools::children::file() {
+                cmd.env("PIXIE_CHILDREN", f);
             }
             let child = cmd
                 .stdin(Stdio::piped())
@@ -115,6 +118,10 @@ impl Helper {
                 let _ = tx.send(Err("The helper restarted.".into()));
             }
             let _ = self.events.send(("restarted".into(), Value::Null));
+            if QUITTING.load(Ordering::SeqCst) {
+                // Pixie is quitting and took the helper with it: nothing to report or restart.
+                return;
+            }
             log::warn!("helper exited; restarting in {backoff:?}");
             // Noted a moment later, so a helper ended by Pixie quitting (or being replaced) isn't.
             std::thread::spawn(|| {
@@ -149,19 +156,20 @@ impl Helper {
             // The helper may be starting up; wait briefly for stdin.
             let mut tries = 0;
             loop {
-                let mut guard = self.stdin.lock().unwrap();
-                if let Some(stdin) = guard.as_mut() {
-                    if writeln!(stdin, "{line}").and_then(|_| stdin.flush()).is_ok() {
-                        break;
-                    }
+                let sent = {
+                    let mut guard = self.stdin.lock().unwrap();
+                    guard.as_mut().is_some_and(|stdin| writeln!(stdin, "{line}").and_then(|_| stdin.flush()).is_ok())
+                };
+                if sent {
+                    break;
                 }
-                drop(guard);
                 tries += 1;
                 if tries > 30 || !self.available() {
                     self.pending.lock().unwrap().remove(&id);
                     return Err("The native helper isn't running.".into());
                 }
-                std::thread::sleep(Duration::from_millis(50));
+                // Not a thread sleep: this runs on the async workers every answer shares.
+                tokio::time::sleep(Duration::from_millis(50)).await;
             }
         }
         match tokio::time::timeout(timeout, rx).await {

@@ -1,7 +1,7 @@
 //! Tool schemas (BUILD-SPEC §5). Names are part of the prompt contract: change them together.
 
-use openclicky_core::prompt::Mode;
-use openclicky_llm::ToolDef;
+use pixie_core::prompt::Mode;
+use pixie_llm::ToolDef;
 use serde_json::{json, Value};
 
 fn def(name: &str, description: &str, schema: Value) -> ToolDef {

@@ -11,11 +11,11 @@ description: Make a good-looking PDF (one-pagers, reports, handouts, letters) fr
    - System fonts that look good: `-apple-system`, `"New York"`, `Georgia`, `"Avenir Next"`,
      `"SF Mono"` for code. 10–11.5 pt body text, 1.4 line height.
    - "One page" means it must fit 792 px (Letter) of content height: check, then trim.
-2. Render: `openclicky-helper pdf tmp/doc.html output/Name.pdf letter` (or `a4`). It prints the
+2. Render: `pixie-helper pdf tmp/doc.html output/Name.pdf letter` (or `a4`). It prints the
    page count; if it isn't what you wanted, change the HTML and render again.
-3. Check it: `openclicky-helper text output/Name.pdf` to read it back, and
+3. Check it: `pixie-helper text output/Name.pdf` to read it back, and
    `qlmanage -t -s 1200 -o tmp output/Name.pdf` then `view_image tmp/Name.pdf.png` to look at it.
 4. Put it where they asked with `device_save_file` (never overwrites), and list the saved path
    under ARTIFACTS.
 
-Reading a PDF: `device_read_file` (from their Mac) or `openclicky-helper text file.pdf`.
+Reading a PDF: `device_read_file` (from their Mac) or `pixie-helper text file.pdf`.

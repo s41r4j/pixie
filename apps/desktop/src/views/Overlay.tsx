@@ -118,7 +118,9 @@ export function Overlay() {
   const oy = win?.y ?? screen?.frame.y ?? 0;
   origin.current = { x: ox, y: oy };
 
-  // Follow / return loop.
+  // Follow / return loop. It rests once the buddy has caught up with a still pointer (a frame
+  // loop that never stops keeps the whole screen redrawing all day) and `wake` starts it again.
+  const wake = useRef(() => {});
   useEffect(() => {
     let raf = 0;
     const loop = (now: number) => {
@@ -137,11 +139,19 @@ export function Overlay() {
         s.pos = { x: s.from.x + (follow.x - s.from.x) * e, y: s.from.y + (follow.y - s.from.y) * e };
         if (t >= 1) s.mode = "follow";
       }
+      const settled = s.mode === "follow" && Math.abs(follow.x - s.pos.x) + Math.abs(follow.y - s.pos.y) < 0.2;
+      if (settled) s.pos = follow;
       if (buddyEl.current) buddyEl.current.style.transform = `translate(${s.pos.x - SIZE / 2}px, ${s.pos.y - SIZE / 2}px)`;
-      raf = requestAnimationFrame(loop);
+      raf = settled ? 0 : requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    wake.current = () => {
+      if (!raf) raf = requestAnimationFrame(loop);
+    };
+    wake.current();
+    return () => {
+      cancelAnimationFrame(raf);
+      wake.current = () => {};
+    };
   }, []);
 
   /** Move the buddy to p over ms along a slight arc. */
@@ -149,6 +159,7 @@ export function Overlay() {
     new Promise<void>((done) => {
       const s = b.current;
       s.mode = "manual";
+      wake.current();
       if (instant()) {
         s.pos = { ...p };
         if (buddyEl.current) buddyEl.current.style.transform = `translate(${p.x - SIZE / 2}px, ${p.y - SIZE / 2}px)`;
@@ -185,6 +196,7 @@ export function Overlay() {
       const t0 = performance.now();
       const s = b.current;
       s.mode = "manual";
+      wake.current();
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / ms);
         const e = 1 - Math.pow(1 - t, 2);
@@ -205,6 +217,7 @@ export function Overlay() {
       const ants = document.getElementById(`ants-${m.id}`);
       const s = b.current;
       s.mode = "manual";
+      wake.current();
       if (instant()) {
         for (const el of [fill, ants]) {
           el?.setAttribute("width", `${r.w + 12}`);
@@ -268,6 +281,8 @@ export function Overlay() {
   useEffect(() => {
     const un = onEvent((e) => {
       const p = e.payload;
+      // Anything may move the buddy or its target; a woken loop that finds nothing to do rests again.
+      wake.current();
       switch (e.kind) {
         case "overlay.screen":
           setScreen(p.screen);

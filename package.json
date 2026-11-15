@@ -1,5 +1,5 @@
 {
-  "name": "openclicky",
+  "name": "pixie",
   "private": true,
   "workspaces": [
     "apps/desktop"
@@ -15,6 +15,7 @@
     "test": "cargo test --workspace",
     "assets:local": "node scripts/local-assets.mjs",
     "app:install": "sh scripts/install-app.sh",
+    "notices": "node scripts/notices.mjs",
     "site": "sh scripts/build-site.sh && cd _site && python3 -m http.server 8000"
   }
 }

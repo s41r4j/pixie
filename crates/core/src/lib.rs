@@ -1,4 +1,4 @@
-//! openclicky core: data model (§4), UI events, resource slots (§8), the note DSL (§7),
+//! Pixie core: data model (§4), UI events, resource slots (§8), the note DSL (§7),
 //! the report contract and prompt assembly (§6).
 
 pub mod event;

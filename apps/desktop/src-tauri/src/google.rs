@@ -8,7 +8,7 @@
 use crate::AppState;
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use openclicky_llm::ToolDef;
+use pixie_llm::ToolDef;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -29,6 +29,12 @@ struct Tokens {
     /// Unix seconds.
     expires_at: i64,
     email: String,
+}
+
+/// One HTTP client for every Google call, so connections are reused.
+fn http() -> reqwest::Client {
+    static C: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    C.get_or_init(reqwest::Client::new).clone()
 }
 
 fn file(dir: &Path) -> PathBuf {
@@ -74,7 +80,7 @@ pub fn sign_out(app: &AppHandle) {
     if let Some(t) = load(&dir) {
         // Best effort: revoke the grant at Google too.
         tauri::async_runtime::spawn(async move {
-            let _ = reqwest::Client::new().post("https://oauth2.googleapis.com/revoke").form(&[("token", t.refresh_token)]).send().await;
+            let _ = http().post("https://oauth2.googleapis.com/revoke").form(&[("token", t.refresh_token)]).send().await;
         });
     }
     let _ = std::fs::remove_file(file(&dir));
@@ -157,7 +163,7 @@ pub async fn sign_in(app: &AppHandle) -> Result<String, String> {
     if !secret.is_empty() {
         form.push(("client_secret", secret.as_str()));
     }
-    let v: Value = reqwest::Client::new().post(TOKEN).form(&form).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    let v: Value = http().post(TOKEN).form(&form).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
     let refresh = v["refresh_token"].as_str().ok_or_else(|| format!("Google didn't return a token: {}", v["error_description"].as_str().or(v["error"].as_str()).unwrap_or("unknown error")))?;
     let email = v["id_token"].as_str().and_then(jwt_email).unwrap_or_default();
     let t = Tokens {
@@ -188,7 +194,7 @@ async fn access_token(app: &AppHandle) -> Result<String, String> {
     if !secret.is_empty() {
         form.push(("client_secret", secret.as_str()));
     }
-    let v: Value = reqwest::Client::new().post(TOKEN).form(&form).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    let v: Value = http().post(TOKEN).form(&form).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
     let at = v["access_token"].as_str().ok_or_else(|| format!("Google sign-in expired ({}); sign in again in Settings → Apps.", v["error"].as_str().unwrap_or("no token")))?;
     t.access_token = at.into();
     t.expires_at = chrono::Utc::now().timestamp() + v["expires_in"].as_i64().unwrap_or(3600) - 60;
@@ -198,7 +204,7 @@ async fn access_token(app: &AppHandle) -> Result<String, String> {
 
 async fn api(app: &AppHandle, method: reqwest::Method, url: &str, body: Option<Value>) -> Result<Value, String> {
     let token = access_token(app).await?;
-    let mut req = reqwest::Client::new().request(method, url).bearer_auth(token).timeout(Duration::from_secs(30));
+    let mut req = http().request(method, url).bearer_auth(token).timeout(Duration::from_secs(30));
     if let Some(b) = body {
         req = req.json(&b);
     }

@@ -25,9 +25,12 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Push-to-talk shortcut | ✅ | 🧪 | ❌ | Mac ⌃⌥, Windows Ctrl+Alt. Linux can't read held modifier keys yet. |
 | Dictation shortcut | ✅ | 🧪 | ❌ | Mac fn+⌃. Windows has no readable fn key, so it's Ctrl+Win. |
 | Dictation as a toggle (press to start, press to stop) | 🧪 | 🧪 | ❌ | 0.8.0. |
+| fn alone as a shortcut waits for a hold (0.3 s), so the Mac's fn-fn Dictation doesn't wake Pixie | 🧪 | n/a | n/a | 0.8.1. Unit-tested (double press, hold, toggle stop). Windows and Linux can't see fn. |
+| Rests when idle: the buddy stops redrawing on a still pointer, the shortcut poll halves its rate, fast events go to one window | 🧪 | 🧪 | 🧪 | 0.8.1. Built and unit-tested (poll pacing); the frame loop and event routing are shared code. Needs a day on battery to confirm the saving. |
 | Type as you speak, Experimental (dictated words appear while talking, then the tidied text) | 🧪 | ❌ | ❌ | 0.8.0. Live wherever there's a text cursor (Accessibility, or real keys for terminals like Warp); no cursor, clipboard. Checked by self-test in TextEdit, Terminal and Warp; not yet confirmed by a real dictation. |
 | Long spoken questions kept in full | 🧪 | 🧪 | ❌ | 0.8.0: pieces kept across recognizer restarts. |
 | Voice input (speech to text) | ✅ | 🧪 | ❌ | Mac: Apple Speech, on-device. Windows: Windows speech recognition (needs Settings → Privacy → Speech → Online speech recognition). |
+| Pixie's own speech to text (streaming, on-device, English): dictation types as you speak; Settings → Voice | 🧪 | 🧪 | 🧪 | 0.8.1. Mac: recognition checked on recorded speech through the app's audio path (words every ~0.3 s, final text 20 ms after stopping), microphone opened and read, model load ~1 s; live typing into a real text field and real spoken dictation not yet tried. Windows and Linux: compiles; never run. Linux needs xdotool to type. |
 | Live transcript while talking | ✅ | 🧪 | ❌ | |
 | Mic level waveform | ✅ | 🧪 | ❌ | |
 | Spoken answers: system voice | ✅ | 🧪 | 🧪 | Windows voices; Linux uses espeak-ng or pico2wave if installed. |
@@ -55,7 +58,7 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Drawing marks (circle, box, underline, arrow) | ✅ | 🧪 | 🧪 | |
 | Drawing while talking (each mark appears as its sentence is spoken) | ✅ | 🧪 | 🧪 | 0.8.0. Checked on the Mac with DeepSeek Flash: marks 5 to 7 s apart, in step with the voice. |
 | Fuller explanations when asked to explain or teach (4 to 8 sentences) | ✅ | 🧪 | 🧪 | 0.8.0. |
-| 3D explanations (Experimental) | ✅ | 🧪 | 🧪 | 0.8.0. Three.js window; checked on the Mac (scene built, view turned to each part as it was named). |
+| 3D explanations (Experimental): tubes, spun and extruded shapes, gears, parts, copies, materials, motion, Explode, Cut | 🧪 | 🧪 | 🧪 | 0.8.1 rewrite. Checked in the browser preview on this Mac's GPU: two sample scenes about 1 ms a frame (15 to 23 draw calls), exploded and cut views look right. Not yet driven by the model in the app. |
 | Menu bar icons (Wi-Fi, battery, clock, status items) in the control list | 🧪 | ❌ | ❌ | 0.8.0. Not yet tried live (the Mac was locked). |
 | Self-healing: log file, crash notes, last-good settings and memory, problems list | 🧪 | 🧪 | 🧪 | 0.8.0. Unit-tested; checkup run in the real app. |
 | Checkup ("check yourself", Settings → About) | ✅ | 🧪 | 🧪 | 0.8.0. |
@@ -71,11 +74,16 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Other desktops: the front app's windows elsewhere, when asked | 🧪 | ❌ | ❌ | 0.8.0. Unit-tested. |
 | Quit (or a crash) ends agents' commands and coding agents | 🧪 | 🧪 | 🧪 | 0.8.0. Mac: a job's 400 s command ended when Pixie was killed with kill -9. Windows ends them on Quit only. |
 | Report a problem (a filled-in GitHub issue you submit) | 🧪 | 🧪 | 🧪 | 0.8.0. Draft and redaction unit-tested; not opened in a browser in testing. |
+| New app ID (`pixie.s41r4j.in`) and program name (`pixie`): the old data folder moves over, linked at the old path | 🧪 | 🧪 | 🧪 | 0.8.1. Move, link and "both have data" unit-tested on the Mac; the bundle checked (names, signature). Not yet tried as a real update from 0.8.0. Windows links with a directory junction. |
+| Credits and open-source licences (Settings → About; THIRD_PARTY_NOTICES.md in the app) | 🧪 | 🧪 | 🧪 | 0.8.1. Notices generated from the shipped dependencies (`npm run notices`); the file is in the bundle. Opens in TextEdit / Notepad / the default app. |
 | Several screens: one line about them, look at another screen | 🧪 | 🧪 | ❌ | 0.8.0. Unit-tested; the dev Mac has one screen. Windows captures the pointer's screen only for now. |
 | Excalidraw canvas | ✅ | 🧪 | 🧪 | Editable diagrams in a canvas window; shapes, arrows, text or Mermaid; saves locally; exports .excalidraw, PNG, SVG to Downloads. Pixie can open, list and delete canvases; the window hides on a click outside; Show Canvas in the menu bar menu. Replaced the old board in 0.7.6. |
+| Canvas: laid out for you (tree, mind map, timeline, layers, cycle, compare, quadrant, charts, table, notes, code, wireframe), edit by id, glide to a part while speaking | 🧪 | 🧪 | 🧪 | 0.8.1. Layouts unit-tested (no overlaps, arrows join real shapes); every kind and the edit action rendered and checked in the preview. `[[canvas id]]` while speaking not yet tried in the app. |
 | Drawing on its own when it helps (Only when I ask / When it helps / Often) | 🧪 | 🧪 | 🧪 | Settings → General → Drawing, or "draw more". |
 | Click and type for you | ✅ | 🧪 | 🟡 | Windows SendInput. Linux xdotool, X11 only. |
 | Several steps in one request (fresh screen after every action, ids stable for the request, look in voice) | ✅ | 🧪 | 🟡 | 0.8.0. Checked on the Mac with DeepSeek Flash in Finder and System Settings; not yet on Claude. Linux has no control list, so only clicks by position. |
+| Exact clicks: an id goes to the live control (scrolled into view, refused if covered or changed); points aren't moved; each click says what it hit | 🧪 | 🧪 | 🧪 | 0.8.1. Unit-tested (out-of-view rows marked, not clicked by name); the helper's live checks type-check but weren't run against real apps here (no Accessibility for the test shell). Windows and Linux: out-of-view refused, no live check yet. |
+| Asks before risky actions (Delete, Send, Pay, Return in a chat, cmd+delete, `rm -rf`…): a dialog, Don't by default | 🧪 | 🧪 | 🧪 | 0.8.1. Rules unit-tested. Mac: osascript dialog; Windows: a message box; Linux: zenity or kdialog, and without either it doesn't do it. |
 | Press a control by name, open menus | ✅ | 🧪 | ❌ | Needs the UI tree. |
 | Keyboard shortcuts (key combos) | ✅ | 🧪 | 🟡 | On Windows ⌘ means Ctrl. Linux via xdotool. |
 | Scroll | ✅ | 🧪 | 🟡 | |

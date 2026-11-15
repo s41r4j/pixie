@@ -1,4 +1,4 @@
-/* Pixie: monochrome pixel design system v1 (design/OpenClicky_Pixel_Design_System_v1).
+/* Pixie: monochrome pixel design system v1 (design/Pixie_Pixel_Design_System_v1).
    Loaded last; overrides earlier component styles. Rules: black/white/greys only, no gradients
    (dither instead), no blurred shadows (hard 4px offset), chamfered corners, 2px outlines,
    stepped easing for cosmetic motion only, never for pointer/reticle tracking. */
@@ -694,6 +694,10 @@ html[data-view="canvas"], html[data-view="canvas"] body, html[data-view="canvas"
 .scene3d__labels { position: absolute; inset: 0; }
 .scene3d__top { position: absolute; top: 0; left: 0; right: 0; height: 38px; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
 .scene3d__title { font: 13px var(--oc-mono, ui-monospace, monospace); letter-spacing: 0.04em; color: #cfcfcf; pointer-events: none; }
+.scene3d__tools { position: absolute; top: 44px; right: 12px; display: flex; flex-direction: column; gap: 6px; }
+.scene3d__tools button { font: 11px var(--oc-mono, ui-monospace, monospace); letter-spacing: 0.04em; color: #cfcfcf; background: rgba(13, 13, 13, 0.78); border: 1px solid #3a3a3a; padding: 5px 10px; cursor: pointer; text-align: left; }
+.scene3d__tools button:hover { color: #fff; border-color: #8a8a8a; }
+.scene3d__tools button.is-on { color: #0d0d0d; background: #f2f2f2; border-color: #f2f2f2; }
 .scene3d__hint { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font: 11px var(--oc-mono, ui-monospace, monospace); color: #6f6f6f; pointer-events: none; }
 /* No transitions here: Three.js moves the labels every frame, and a transition on them makes them trail and stutter. */
 .scene3d__label { font: 12px var(--oc-mono, ui-monospace, monospace); color: #f2f2f2; background: rgba(13, 13, 13, 0.78); border: 1px solid #3a3a3a; padding: 2px 6px; white-space: nowrap; pointer-events: none; will-change: transform; }

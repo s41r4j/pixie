@@ -181,7 +181,7 @@ function ChromeCard() {
   useEffect(() => {
     const tick = () => api.status().then(setSt).catch(() => {});
     tick();
-    const t = setInterval(tick, 3000);
+    const t = setInterval(() => document.visibilityState === "visible" && tick(), 3000);
     return () => clearInterval(t);
   }, []);
   return (
@@ -479,7 +479,7 @@ export function ConnectorsPanel() {
       api.connectorsGallery().then(setG).catch(() => {});
     };
     tick();
-    const t = setInterval(tick, 3000);
+    const t = setInterval(() => document.visibilityState === "visible" && tick(), 3000);
     return () => clearInterval(t);
   }, []);
   const all = [...(g?.presets ?? []), ...(g?.custom ?? [])];

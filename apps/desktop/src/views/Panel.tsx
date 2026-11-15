@@ -8,7 +8,6 @@ import { Glyph, Smile } from "../components/Mark";
 import { NoteView } from "../components/NoteView";
 import { chordLabel, Kbd, useShortcuts } from "../lib/keys";
 
-const BARS = 22;
 
 interface Segment {
   id: string;
@@ -61,6 +60,44 @@ function Waveform({ levels, live }: { levels: number[]; live: boolean }) {
   );
 }
 
+/** The live microphone waveform. It listens for the level itself and moves its own bars, so the
+ *  ~30 levels a second while you talk don't re-render the whole notch. */
+function MicWave({ bars }: { bars: number }) {
+  const el = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const levels: number[] = Array(bars).fill(0);
+    const paint = () => {
+      const spans = el.current?.children;
+      if (!spans) return;
+      for (let i = 0; i < spans.length; i++) {
+        const l = levels[i] ?? 0;
+        const st = (spans[i] as HTMLElement).style;
+        st.height = `${3 + Math.round(l * 18)}px`;
+        st.opacity = `${0.45 + l * 0.55}`;
+      }
+    };
+    paint();
+    const un = onEvent((e) => {
+      if (e.kind === "mic.start") levels.fill(0);
+      else if (e.kind === "mic.level") {
+        levels.shift();
+        levels.push(Math.min(1, e.payload.level * 1.15));
+      } else return;
+      paint();
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [bars]);
+  return (
+    <div ref={el} className="wave wave--live" aria-hidden>
+      {Array.from({ length: bars }, (_, i) => (
+        <span key={i} />
+      ))}
+    </div>
+  );
+}
+
 /** A spoken segment with the current word lit. */
 function Spoken({ seg, word, spoken }: { seg: Segment; word: { at: number; len: number } | null; spoken: boolean }) {
   if (!word) return <span className={spoken ? "seg seg--spoken" : "seg"}>{seg.text} </span>;
@@ -77,7 +114,6 @@ function Spoken({ seg, word, spoken }: { seg: Segment; word: { at: number; len: 
 export function Panel() {
   const [mode, setMode] = useState<PanelMode>("hidden");
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
-  const [levels, setLevels] = useState<number[]>(() => Array(BARS).fill(0));
   const [partial, setPartial] = useState("");
   const [question, setQuestion] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -145,10 +181,6 @@ export function Panel() {
           turn.current = p.turn;
           reset();
           setNote(null);
-          setLevels(Array(BARS).fill(0));
-          break;
-        case "mic.level":
-          setLevels((l) => [...l.slice(1), Math.min(1, p.level * 1.15)]);
           break;
         case "mic.partial":
           setPartial(p.text);
@@ -296,12 +328,12 @@ export function Panel() {
     if (mode === "listening" && clickTalk)
       return (
         <button className="ear__stop" title="Done talking" onClick={() => api.talkStop()}>
-          <Waveform levels={levels.slice(-10)} live />
+          <MicWave bars={10} />
           <i />
         </button>
       );
-    if (mode === "listening") return <Waveform levels={levels.slice(-12)} live />;
-    if (mode === "dictating") return <Waveform levels={levels.slice(-12)} live />;
+    if (mode === "listening") return <MicWave bars={12} />;
+    if (mode === "dictating") return <MicWave bars={12} />;
     if (mode === "thinking")
       return (
         <span className="ear__dots" aria-label="thinking">
@@ -310,7 +342,7 @@ export function Panel() {
           <i />
         </span>
       );
-    if (mode === "answer") return <Waveform levels={speakingNow ? levels.map((_, i) => 0.25 + 0.55 * Math.abs(Math.sin((Date.now() / 140 + i) * 0.9))).slice(-12) : Array(12).fill(0.08)} live={speakingNow} />;
+    if (mode === "answer") return <Waveform levels={speakingNow ? Array.from({ length: 12 }, (_, i) => 0.25 + 0.55 * Math.abs(Math.sin((Date.now() / 140 + i) * 0.9))) : Array(12).fill(0.08)} live={speakingNow} />;
     if (mode === "toast")
       return (
         <button className={`ear__toast ear__toast--${toast?.kind ?? "info"}`} onClick={() => (toast?.job ? api.openNote(toast.job) : toast?.kind === "needs" ? api.showSettings("setup") : undefined)}>

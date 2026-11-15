@@ -1,0 +1,14 @@
+[package]
+name = "pixie-stt"
+description = "Pixie's own speech to text: streaming recognition (sherpa-onnx, loaded at runtime), the same on every system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libloading = "0.8"
+log.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

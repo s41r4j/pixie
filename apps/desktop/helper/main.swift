@@ -1,4 +1,4 @@
-// openclicky-helper: the native half of openclicky.
+// pixie-helper: the native half of Pixie.
 //
 // A small Swift process the Rust shell spawns and talks to over JSON lines on stdin/stdout:
 //   → {"id": 1, "cmd": "capture", "args": {...}}
@@ -8,11 +8,11 @@
 // Swift owns the Apple frameworks that are awkward from Rust: Speech (streaming dictation),
 // AVAudioEngine (mic + level meter), ScreenCaptureKit + Vision (screenshot + OCR),
 // AVSpeechSynthesizer (voice), Accessibility (read UI, press, type) and WebKit (HTML → PDF).
-// macOS attributes privacy permissions to the parent app, so prompts say "openclicky".
+// macOS attributes privacy permissions to the parent app, so prompts say "Pixie".
 //
 // Also a CLI for the job agent's bash tool:
-//   openclicky-helper pdf in.html out.pdf [letter|a4]   paginated, real paper sizes
-//   openclicky-helper text file.pdf                     text of PDF/Word/RTF/HTML
+//   pixie-helper pdf in.html out.pdf [letter|a4]   paginated, real paper sizes
+//   pixie-helper text file.pdf                     text of PDF/Word/RTF/HTML
 
 import AVFoundation
 import AppKit
@@ -149,7 +149,7 @@ final class Listener {
         authorize { ok in
             DispatchQueue.main.async {
                 guard self.session == mySession else { return }
-                if ok { begin() } else { fail(id, "openclicky needs Microphone and Speech Recognition access.") }
+                if ok { begin() } else { fail(id, "Pixie needs Microphone and Speech Recognition access.") }
             }
         }
     }
@@ -399,6 +399,144 @@ struct AXItem {
 
 enum AX {
     static var cache: [String: AXItem] = [:]
+    /// Each snapshot's controls by generation, so Pixie can act on the exact element it saw (its
+    /// live frame, after scrolling too), even if another snapshot was taken since. Last 8 kept.
+    static var gen = 0
+    static var gens: [Int: [String: AXItem]] = [:]
+
+    /// The union of all screens (global points, top-left origin).
+    static func onAnyScreen(_ p: CGPoint) -> Bool {
+        var n: UInt32 = 0
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        guard CGGetActiveDisplayList(16, &ids, &n) == .success else { return true }
+        return ids.prefix(Int(n)).contains { CGDisplayBounds($0).contains(p) }
+    }
+
+    /// The part of the screen an element can be seen through: its window, cut down by every
+    /// scroll area it sits in. A row scrolled out of a list is outside it.
+    static func viewport(_ el: AXUIElement) -> CGRect? {
+        var clip: CGRect? = nil
+        var node: AXUIElement? = el
+        for _ in 0..<40 {
+            guard let cur = node, let parentRef = attr(cur, kAXParentAttribute), CFGetTypeID(parentRef) == AXUIElementGetTypeID() else { break }
+            let parent = parentRef as! AXUIElement
+            let role = string(parent, kAXRoleAttribute) ?? ""
+            if role == "AXScrollArea" || role == "AXWindow", let f = frame(parent) {
+                clip = clip.map { $0.intersection(f) } ?? f
+            }
+            if role == "AXWindow" { break }
+            node = parent
+        }
+        return clip
+    }
+
+    /// Hidden: its middle can't be clicked (scrolled out of its list, outside the window, or off
+    /// every screen).
+    static func hidden(_ f: CGRect, clip: CGRect?) -> Bool {
+        let c = CGPoint(x: f.midX, y: f.midY)
+        if let k = clip, !k.contains(c) { return true }
+        return !onAnyScreen(c)
+    }
+
+    /// Is `hit` (what's under a point) the element itself or inside it, or a close parent of it?
+    static func same(_ hit: AXUIElement, _ el: AXUIElement) -> Bool {
+        var node: AXUIElement? = hit
+        for _ in 0..<15 {
+            guard let n = node else { break }
+            if CFEqual(n, el) { return true }
+            node = attr(n, kAXParentAttribute).flatMap { CFGetTypeID($0) == AXUIElementGetTypeID() ? ($0 as! AXUIElement) : nil }
+        }
+        // The point test can stop at a row while the control is a child of it.
+        var up: AXUIElement? = el
+        for _ in 0..<2 {
+            up = up.flatMap { attr($0, kAXParentAttribute) }.flatMap { CFGetTypeID($0) == AXUIElementGetTypeID() ? ($0 as! AXUIElement) : nil }
+            if let u = up, CFEqual(u, hit) { return true }
+        }
+        return false
+    }
+
+    static func item(_ args: [String: Any]) throws -> AXItem {
+        let g = args["gen"] as? Int ?? -1
+        let id = args["id"] as? String ?? ""
+        guard let it = gens[g]?[id] else { throw HelperError("gone: that control isn't in a recent view any more; look again.") }
+        return it
+    }
+
+    /// The control Pixie saw, as it is now: live frame and label, whether it can be seen, and
+    /// whether something else is on top of its middle.
+    static func live(_ it: AXItem) -> [String: Any] {
+        let el = it.element
+        guard let f = frame(el), f.width > 0, f.height > 0 else { return ["exists": false] }
+        let role = string(el, kAXRoleAttribute) ?? it.role
+        var out: [String: Any] = ["exists": true, "role": role, "label": label(el, role: role), "frame": rectJSON(f)]
+        let isHidden = hidden(f, clip: viewport(el))
+        out["hidden"] = isHidden
+        if !isHidden {
+            let sys = AXUIElementCreateSystemWide()
+            var hit: AXUIElement?
+            if AXUIElementCopyElementAtPosition(sys, Float(f.midX), Float(f.midY), &hit) == .success, let h = hit {
+                let ok = same(h, el)
+                out["under"] = ok
+                if !ok {
+                    let r = string(h, kAXRoleAttribute) ?? ""
+                    out["covered_by"] = "\(r.replacingOccurrences(of: "AX", with: "").lowercased()) \"\(label(h, role: r))\""
+                }
+            }
+        }
+        var pid: pid_t = 0
+        if AXUIElementGetPid(el, &pid) == .success { out["pid"] = Int(pid) }
+        return out
+    }
+
+    /// What's under a point: the deepest element and its parents (up to 8), and its app.
+    static func hitTest(x: Double, y: Double) -> [String: Any] {
+        let sys = AXUIElementCreateSystemWide()
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(sys, Float(x), Float(y), &hit) == .success, let h = hit else { return ["chain": [] as [Any]] }
+        var chain: [[String: Any]] = []
+        var node: AXUIElement? = h
+        for _ in 0..<8 {
+            guard let n = node else { break }
+            let role = string(n, kAXRoleAttribute) ?? ""
+            if role == "AXWindow" || role == "AXApplication" { break }
+            var names: CFArray?
+            let pressable = AXUIElementCopyActionNames(n, &names) == .success && ((names as? [String])?.contains(kAXPressAction as String) ?? false)
+            var e: [String: Any] = ["role": role, "label": label(n, role: role), "pressable": pressable]
+            if let f = frame(n) { e["frame"] = rectJSON(f) }
+            chain.append(e)
+            node = attr(n, kAXParentAttribute).flatMap { CFGetTypeID($0) == AXUIElementGetTypeID() ? ($0 as! AXUIElement) : nil }
+        }
+        var out: [String: Any] = ["chain": chain]
+        var pid: pid_t = 0
+        if AXUIElementGetPid(h, &pid) == .success {
+            out["pid"] = Int(pid)
+            out["app"] = NSRunningApplication(processIdentifier: pid)?.localizedName ?? ""
+        }
+        return out
+    }
+
+    /// Press the exact control Pixie saw (or the nearest pressable parent of it).
+    static func pressElement(_ it: AXItem) throws -> [String: Any] {
+        var el = it.element
+        for _ in 0..<6 {
+            var names: CFArray?
+            if AXUIElementCopyActionNames(el, &names) == .success, let list = names as? [String], list.contains(kAXPressAction as String) { break }
+            guard let parent = attr(el, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+            el = parent as! AXUIElement
+        }
+        let role = string(el, kAXRoleAttribute) ?? ""
+        let l = label(el, role: role)
+        let r = AXUIElementPerformAction(el, kAXPressAction as CFString)
+        if r != .success {
+            AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            if AXUIElementPerformAction(el, kAXConfirmAction as CFString) != .success {
+                throw HelperError("\"\(l.isEmpty ? it.label : l)\" didn't respond to a press (AX error \(r.rawValue)).")
+            }
+        }
+        var out: [String: Any] = ["pressed": l.isEmpty ? it.label : l, "role": role]
+        if let f = frame(el) { out["frame"] = rectJSON(f) }
+        return out
+    }
 
     static func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
@@ -517,13 +655,16 @@ enum AX {
         // screen (its controls aren't cut off at the edge).
         var area = screenRect
 
-        func walk(_ el: AXUIElement, depth: Int) {
+        func walk(_ el: AXUIElement, depth: Int, clip: CGRect? = nil) {
             if out.count >= limit || visited > 5000 || depth > 45 || Date() > deadline { return }
             visited += 1
             let role = string(el, kAXRoleAttribute) ?? ""
+            // What can be seen of this element's children: the window, cut by each scroll area.
+            var inner = clip
+            if role == "AXScrollArea" || role == "AXWindow", let f = frame(el) { inner = clip.map { $0.intersection(f) } ?? f }
             if wantTexts, texts.count < 120, role == "AXStaticText" || role == "AXHeading",
                let v = string(el, kAXValueAttribute) ?? string(el, kAXTitleAttribute), !v.isEmpty,
-               let f = frame(el), f.width > 1, f.height > 1, area.map({ $0.intersects(f) }) ?? true {
+               let f = frame(el), f.width > 1, f.height > 1, area.map({ $0.intersects(f) }) ?? true, !hidden(f, clip: clip) {
                 texts.append(["text": String(v.prefix(160)), "frame": rectJSON(f)])
             }
             if interesting.contains(role), let f = frame(el), f.width > 1, f.height > 1,
@@ -533,8 +674,10 @@ enum AX {
                     counter += 1
                     let id = "e\(counter)"
                     cache[id] = AXItem(id: id, role: role, label: l, frame: f, element: el)
-                    out.append(["id": id, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(),
-                                "label": l, "frame": rectJSON(f)])
+                    var e: [String: Any] = ["id": id, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(),
+                                            "label": l, "frame": rectJSON(f)]
+                    if hidden(f, clip: clip) { e["hidden"] = true }
+                    out.append(e)
                 }
             }
             if role == "AXMenuBar" {
@@ -542,7 +685,7 @@ enum AX {
                 for c in children(el) { walk(c, depth: 44) }
                 return
             }
-            for c in children(el) { walk(c, depth: depth + 1) }
+            for c in children(el) { walk(c, depth: depth + 1, clip: inner) }
         }
 
         let window = attr(root, kAXFocusedWindowAttribute).map { $0 as! AXUIElement }
@@ -565,7 +708,10 @@ enum AX {
             cache[id] = AXItem(id: id, role: "AXMenuBarItem", label: item.label, frame: item.frame, element: item.element)
             out.append(["id": id, "role": "menubaritem", "label": item.label, "frame": rectJSON(item.frame)])
         }
-        var result: [String: Any] = ["trusted": true, "window": title, "elements": out]
+        gen += 1
+        gens[gen] = cache
+        for k in gens.keys where k <= gen - 8 { gens.removeValue(forKey: k) }
+        var result: [String: Any] = ["trusted": true, "window": title, "elements": out, "gen": gen]
         if let f = windowFrame { result["window_frame"] = rectJSON(f) }
         if wantTexts { result["texts"] = texts }
         return result
@@ -887,11 +1033,11 @@ final class LiveTyper {
         return CFEqual(now, el)
     }
 
-    /// A newer transcript; applied at most every 120 ms, the latest one wins.
+    /// A newer transcript; applied at most every 50 ms, the latest one wins.
     func update(_ text: String) {
         guard active else { return }
         want = text
-        schedule(after: 0.12)
+        schedule(after: 0.05)
     }
 
     private func schedule(after gap: Double) {
@@ -916,9 +1062,19 @@ final class LiveTyper {
             return false
         }
         if useAX, let el = element {
-            let span = typed.utf16.count + selected
-            if Self.setRange(el, CFRange(location: start, length: span)),
-               AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
+            if text == typed && selected == 0 { return true }
+            // Only the end that changed is replaced, so the words already there don't flicker
+            // and the text grows as they speak. (The first time, their selection goes too.)
+            let old = Array(typed.utf16), new = Array(text.utf16)
+            var same = 0
+            if selected == 0 {
+                while same < old.count && same < new.count && old[same] == new[same] { same += 1 }
+                // Never split a surrogate pair.
+                if same > 0 && same < new.count && UTF16.isTrailSurrogate(new[same]) { same -= 1 }
+            }
+            let tail = String(utf16CodeUnits: Array(new[same...]), count: new.count - same)
+            if Self.setRange(el, CFRange(location: start + same, length: old.count - same + selected)),
+               AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, tail as CFTypeRef) == .success {
                 let caret = Self.range(el)
                 let value = AX.string(el, kAXValueAttribute)
                 // The app took it: the caret moved to the end of the new text, or the text is there.
@@ -1079,7 +1235,7 @@ enum Screen {
         }
         // Never trigger the system prompt from a voice turn: only capture once it's allowed.
         guard CGPreflightScreenCaptureAccess() else {
-            done(.failure(HelperError("Screen Recording is off for openclicky (Settings → Permissions).")))
+            done(.failure(HelperError("Screen Recording is off for Pixie (Settings → Permissions).")))
             return
         }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
@@ -1098,7 +1254,7 @@ enum Screen {
             }
             let mine: Set<pid_t> = [getpid(), getppid()]
             let excluded = content.applications.filter {
-                mine.contains($0.processID) || $0.bundleIdentifier == "com.openclicky.app"
+                mine.contains($0.processID) || $0.bundleIdentifier == "pixie.s41r4j.in"
             }
             let filter = SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
             let scale = CGFloat(filter.pointPixelScale)
@@ -1112,32 +1268,54 @@ enum Screen {
                     done(.failure(HelperError("Capture failed: \(error?.localizedDescription ?? "unknown")")))
                     return
                 }
-                DispatchQueue.global(qos: .userInitiated).async {
-                    var result: [String: Any] = [
-                        "secure": false,
-                        "display": rectJSON(display.frame),
-                        "scale": Double(scale),
-                        "cursor": ["x": Int(mouse.x), "y": Int(mouse.y)],
-                    ]
-                    if let path {
+                // The JPEG, the text recognition and the controls don't depend on each other, so
+                // they run side by side; each is timed (the app logs it).
+                let t0 = Date()
+                let since = { Int(Date().timeIntervalSince(t0) * 1000) }
+                let group = DispatchGroup()
+                let lock = NSLock()
+                var result: [String: Any] = [
+                    "secure": false,
+                    "display": rectJSON(display.frame),
+                    "scale": Double(scale),
+                    "cursor": ["x": Int(mouse.x), "y": Int(mouse.y)],
+                ]
+                var took: [String: Int] = [:]
+                let put = { (name: String, values: [String: Any]) in
+                    lock.lock()
+                    for (k, v) in values { result[k] = v }
+                    took[name] = since()
+                    lock.unlock()
+                }
+                if let path {
+                    DispatchQueue.global(qos: .userInitiated).async(group: group) {
                         // 1 image pixel = 1 screen point, so positions read off the image are exact.
                         let (w, h) = write(image, to: path, maxWidth: min(maxWidth, Int(display.frame.width)))
-                        result["path"] = path
-                        result["image"] = ["w": w, "h": h]
+                        put("image", ["path": path, "image": ["w": w, "h": h]])
                     }
-                    if ocr { result["text"] = recognize(image, in: display.frame) }
+                }
+                if ocr {
+                    DispatchQueue.global(qos: .userInitiated).async(group: group) {
+                        put("text", ["text": recognize(image, in: display.frame)])
+                    }
+                }
+                DispatchQueue.global(qos: .userInitiated).async(group: group) {
                     let app = NSWorkspace.shared.frontmostApplication
-                    result["app"] = app?.localizedName ?? ""
-                    result["bundle"] = app?.bundleIdentifier ?? ""
-                    if let pid = app?.processIdentifier { result["elsewhere"] = AX.elsewhere(pid) }
-                    DispatchQueue.main.async {
-                        let ax = AX.snapshot(on: display.frame)
-                        result["window"] = ax["window"] ?? ""
-                        if let wf = ax["window_frame"] { result["window_frame"] = wf }
-                        result["elements"] = ax["elements"] ?? []
-                        result["ax_trusted"] = ax["trusted"] ?? false
-                        done(.success(result))
-                    }
+                    var v: [String: Any] = ["app": app?.localizedName ?? "", "bundle": app?.bundleIdentifier ?? ""]
+                    if let pid = app?.processIdentifier { v["elsewhere"] = AX.elsewhere(pid) }
+                    put("app", v)
+                }
+                DispatchQueue.main.async(group: group) {
+                    let ax = AX.snapshot(on: display.frame)
+                    var v: [String: Any] = ["window": ax["window"] ?? "", "elements": ax["elements"] ?? [], "ax_trusted": ax["trusted"] ?? false]
+                    if let wf = ax["window_frame"] { v["window_frame"] = wf }
+                    if let g = ax["gen"] { v["gen"] = g }
+                    put("controls", v)
+                }
+                group.notify(queue: .main) {
+                    took["all"] = since()
+                    result["took_ms"] = took
+                    done(.success(result))
                 }
             }
         }
@@ -1586,6 +1764,19 @@ func handle(_ line: String) {
                 }
                 reply(id2, out)
             }
+        case "live_type_begin":
+            // Pixie's own speech engine drives the typing (the words come from the app).
+            let ok = liveTyper.begin()
+            reply(id, ["live": ok, "live_reason": liveTyper.stopReason, "live_how": liveTyper.how, "live_app": liveTyper.appName, "no_surface": liveTyper.noSurface])
+        case "live_type_update":
+            liveTyper.update(str(args, "text") ?? "")
+            reply(id)
+        case "live_type_end":
+            // What's in the field and whether it still is; `live_type_finish` lets go of it.
+            reply(id, ["live": ["active": liveTyper.active, "typed": liveTyper.typed, "reason": liveTyper.stopReason], "no_surface": liveTyper.noSurface])
+        case "live_type_cancel":
+            liveTyper.end()
+            reply(id)
         case "live_type_now":
             reply(id, liveTyper.now(str(args, "text") ?? ""))
         case "live_type_finish":
@@ -1644,6 +1835,22 @@ func handle(_ line: String) {
             let settle = args["settle"] as? Double ?? 0
             let id2 = id
             DispatchQueue.main.asyncAfter(deadline: .now() + settle) { reply(id2, AX.state()) }
+        case "element":
+            reply(id, AX.live(try AX.item(args)))
+        case "scroll_to":
+            let it = try AX.item(args)
+            AXUIElementPerformAction(it.element, "AXScrollToVisible" as CFString)
+            let id2 = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { reply(id2, AX.live(it)) }
+        case "press_element":
+            reply(id, try AX.pressElement(try AX.item(args)))
+        case "hit_test":
+            reply(id, AX.hitTest(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0))
+        case "activate":
+            if let pid = args["pid"] as? Int, let app = NSRunningApplication(processIdentifier: pid_t(pid)) {
+                app.activate()
+            }
+            reply(id, ["ok": true])
         case "press_point":
             reply(id, try AX.pressPoint(x: args["x"] as? Double ?? 0, y: args["y"] as? Double ?? 0, hint: str(args, "label") ?? ""))
         case "focus_point":
@@ -1776,7 +1983,7 @@ if argv.count >= 4 && argv[1] == "pdf" {
             DispatchQueue.main.async { handle(line) }
         }
         // Parent went away (quit, force-quit or crash): end the agents' processes it left.
-        if let f = ProcessInfo.processInfo.environment["OPENCLICKY_CHILDREN"],
+        if let f = ProcessInfo.processInfo.environment["PIXIE_CHILDREN"],
            let list = try? String(contentsOfFile: f, encoding: .utf8) {
             for line in list.split(separator: "\n") {
                 if let p = Int32(line.trimmingCharacters(in: .whitespaces)), p > 1 { kill(-p, SIGTERM) }

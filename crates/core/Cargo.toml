@@ -1,5 +1,5 @@
 [package]
-name = "openclicky-core"
+name = "pixie-core"
 description = "Jobs, turns, workspace, events, resource slots"
 version.workspace = true
 edition.workspace = true

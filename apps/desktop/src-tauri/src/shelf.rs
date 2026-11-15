@@ -3,7 +3,7 @@
 
 use crate::macos;
 use crate::{emit, hit, AppState, SHELF};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};

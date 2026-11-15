@@ -5,7 +5,7 @@ use crate::jobs::{self, JobView};
 use crate::macos::Rect;
 use crate::panel::{self, PanelMode};
 use crate::{hit, session, windows, AppState, PANEL, SHELF};
-use openclicky_core::resources::{MissingFile, ResourceKind};
+use pixie_core::resources::{MissingFile, ResourceKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -72,12 +72,12 @@ pub fn guide_show(app: AppHandle, id: String) {
             crate::macos::order_front_without_focus(&w);
         }
     });
-    crate::emit(&app, openclicky_core::Event::new("guide.show", json!({ "perm": id, "app": bundle, "icon": icon })));
+    crate::emit(&app, pixie_core::Event::new("guide.show", json!({ "perm": id, "app": bundle, "icon": icon })));
 }
 
 #[tauri::command]
 pub fn guide_hide(app: AppHandle) {
-    crate::emit(&app, openclicky_core::Event::new("guide.hide", json!({})));
+    crate::emit(&app, pixie_core::Event::new("guide.hide", json!({})));
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
         if let Some(w) = h.get_webview_window(crate::GUIDE) {
@@ -111,7 +111,7 @@ pub fn chat_log(state: State<'_, AppState>) -> Vec<crate::session::ChatEntry> {
 #[tauri::command]
 pub fn chat_clear(app: AppHandle, state: State<'_, AppState>) {
     state.session.chat_clear();
-    crate::emit(&app, openclicky_core::Event::new("chat.updated", serde_json::json!({ "log": [] })));
+    crate::emit(&app, pixie_core::Event::new("chat.updated", serde_json::json!({ "log": [] })));
 }
 
 /// Use a file of theirs for a sound slot (bytes come from the file picker in Settings).
@@ -180,7 +180,7 @@ pub fn chat_get(state: State<'_, AppState>, id: String) -> Option<crate::chats::
 #[tauri::command]
 pub fn chat_delete(app: AppHandle, state: State<'_, AppState>, id: String) {
     crate::chats::delete(&state.data_dir, &id);
-    crate::emit(&app, openclicky_core::Event::new("chats.changed", serde_json::json!({})));
+    crate::emit(&app, pixie_core::Event::new("chats.changed", serde_json::json!({})));
 }
 
 /// Click-to-talk from the peek (same as holding ⌃⌥).
@@ -216,7 +216,7 @@ pub fn session_note(state: State<'_, AppState>) -> Value {
     if src.trim().is_empty() {
         return Value::Null;
     }
-    serde_json::to_value(openclicky_core::note::parse(&src)).unwrap_or(Value::Null)
+    serde_json::to_value(pixie_core::note::parse(&src)).unwrap_or(Value::Null)
 }
 
 /// Play a UI sound by slot. Only slots in the manifest can play.
@@ -400,7 +400,7 @@ pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
             provider: p.as_ref().map(|p| p.label()),
             active: Some("opencode".into()),
             effective,
-            vision: json!({ "talk": p.as_ref().is_some_and(|p| p.sees_images_at(openclicky_llm::Effort::Fast)), "agents": p.as_ref().is_some_and(|p| p.sees_images_at(openclicky_llm::Effort::Deep)) }),
+            vision: json!({ "talk": p.as_ref().is_some_and(|p| p.sees_images_at(pixie_llm::Effort::Fast)), "agents": p.as_ref().is_some_and(|p| p.sees_images_at(pixie_llm::Effort::Deep)) }),
             key_hint: String::new(),
             settings: Settings {
                 deepseek_key: mask_if(&settings.deepseek_key),
@@ -479,7 +479,7 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
             crate::myself::check_choices(&app2, &provider_now).await;
         });
     }
-    crate::emit(&app, openclicky_core::Event::new("settings.changed", json!({})));
+    crate::emit(&app, pixie_core::Event::new("settings.changed", json!({})));
     Ok(settings_get(state))
 }
 
@@ -514,7 +514,7 @@ pub fn usage_summary(app: AppHandle, days: Option<i64>, provider: Option<String>
 
 #[tauri::command]
 pub fn coders_status() -> Value {
-    let found = openclicky_tools::coders::detect();
+    let found = pixie_tools::coders::detect();
     let agents: Vec<Value> = ["codex", "claude", "opencode"]
         .iter()
         .map(|name| {
@@ -524,9 +524,9 @@ pub fn coders_status() -> Value {
                 "label": match *name { "codex" => "Codex CLI", "claude" => "Claude Code", _ => "opencode" },
                 "installed": c.is_some(),
                 "path": c.map(|c| c.path.display().to_string()),
-                "version": c.map(openclicky_tools::coders::version),
+                "version": c.map(pixie_tools::coders::version),
                 // Read from the agent itself where it records it (Codex's session logs).
-                "usage": if *name == "codex" { openclicky_tools::coders::codex_usage().map(|u| json!(u)) } else { None },
+                "usage": if *name == "codex" { pixie_tools::coders::codex_usage().map(|u| json!(u)) } else { None },
             })
         })
         .collect();
@@ -539,7 +539,7 @@ pub fn coders_status() -> Value {
 pub async fn provider_test(app: AppHandle) -> Result<String, String> {
     let state = app.state::<AppState>();
     let p = state.provider().ok_or("No key yet.")?;
-    let mut req = openclicky_llm::Request::new("Reply with exactly: ready", vec![openclicky_llm::Message::user_text("ping")]);
+    let mut req = pixie_llm::Request::new("Reply with exactly: ready", vec![pixie_llm::Message::user_text("ping")]);
     req.max_tokens = 20;
     let started = std::time::Instant::now();
     let r = tokio::time::timeout(Duration::from_secs(20), p.complete(&req, &mut |_| {}))
@@ -568,6 +568,21 @@ pub fn voice_status(app: AppHandle) -> crate::kokoro::Status {
 #[tauri::command]
 pub fn voice_install(app: AppHandle) -> Result<(), String> {
     crate::kokoro::install(app)
+}
+
+#[tauri::command]
+pub fn stt_status(app: AppHandle) -> crate::stt::Status {
+    crate::stt::status(&app)
+}
+
+#[tauri::command]
+pub fn stt_install(app: AppHandle) -> Result<(), String> {
+    crate::stt::install(app)
+}
+
+#[tauri::command]
+pub fn stt_remove(app: AppHandle) {
+    crate::stt::remove(&app)
 }
 
 /// Onboarding mic check: listen without starting a turn (levels and words stream as events).
@@ -702,6 +717,26 @@ pub fn report_problem(app: AppHandle, what: Option<String>) -> Result<String, St
 }
 
 /// Settings → About → Show log: the log folder in Finder.
+/// Settings → About → Open-source licences: the notices file that ships with the app.
+#[tauri::command]
+pub fn show_notices(app: AppHandle) {
+    let name = "THIRD_PARTY_NOTICES.md";
+    let p = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|d| d.join(name))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../THIRD_PARTY_NOTICES.md")));
+    // As plain text: TextEdit, Notepad, or the default app on Linux.
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("-e").arg(&p).spawn();
+    #[cfg(windows)]
+    let _ = std::process::Command::new("notepad").arg(&p).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+}
+
 #[tauri::command]
 pub fn show_log(app: AppHandle) {
     let p = crate::heal::log_path(&app.state::<AppState>().data_dir);

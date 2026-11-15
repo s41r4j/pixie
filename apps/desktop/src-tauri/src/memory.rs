@@ -8,7 +8,7 @@
 //! refused. Settings → Memory → Off stops both reading and learning.
 
 use crate::AppState;
-use openclicky_llm::{Effort, Message, Request, ToolDef};
+use pixie_llm::{Effort, Message, Request, ToolDef};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -376,7 +376,7 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         }
         other => return Err(format!("Unknown memory action \"{other}\".")),
     };
-    crate::emit(app, openclicky_core::Event::new("memory.changed", json!({})));
+    crate::emit(app, pixie_core::Event::new("memory.changed", json!({})));
     Ok(out)
 }
 
@@ -440,7 +440,7 @@ pub async fn learn(app: &AppHandle, entries: &[crate::session::ChatEntry]) -> Ve
     }
     if !changed.is_empty() {
         log::info!("memory: learned {} note(s)", changed.len());
-        crate::emit(app, openclicky_core::Event::new("memory.changed", json!({})));
+        crate::emit(app, pixie_core::Event::new("memory.changed", json!({})));
     }
     changed
 }
@@ -457,7 +457,7 @@ pub fn memory_list(app: AppHandle) -> Vec<Note> {
 #[tauri::command]
 pub fn memory_add(app: AppHandle, text: String, kind: String) -> Result<Note, String> {
     let r = add(&app.state::<AppState>().data_dir, &text, &kind, "you").map(|(n, _)| n);
-    crate::emit(&app, openclicky_core::Event::new("memory.changed", json!({})));
+    crate::emit(&app, pixie_core::Event::new("memory.changed", json!({})));
     r
 }
 
@@ -474,7 +474,7 @@ pub fn memory_delete(app: AppHandle, id: String) {
 #[tauri::command]
 pub fn memory_clear(app: AppHandle) {
     clear(&app.state::<AppState>().data_dir);
-    crate::emit(&app, openclicky_core::Event::new("memory.changed", json!({})));
+    crate::emit(&app, pixie_core::Event::new("memory.changed", json!({})));
 }
 
 #[cfg(test)]

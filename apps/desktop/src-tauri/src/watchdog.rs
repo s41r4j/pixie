@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn permission_errors_are_recognised() {
         assert_eq!(permission_in("Accessibility access is off."), Some("accessibility"));
-        assert_eq!(permission_in("Screen Recording is off for openclicky (Settings → Permissions)."), Some("screen"));
+        assert_eq!(permission_in("Screen Recording is off for Pixie (Settings → Permissions)."), Some("screen"));
         assert_eq!(permission_in("I couldn't find \"Save\"."), None);
     }
 }

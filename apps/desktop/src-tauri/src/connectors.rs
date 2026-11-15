@@ -2,8 +2,8 @@
 //! offered to voice and jobs as `mcp__<server>__<tool>`.
 
 use crate::AppState;
-use openclicky_llm::ToolDef;
-use openclicky_mcp::{qualified, Client, Tool};
+use pixie_llm::ToolDef;
+use pixie_mcp::{qualified, Client, Tool};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -47,7 +47,7 @@ pub fn start(app: AppHandle) {
     if migrate(&mut file) {
         let _ = write_file(&app, &file);
     }
-    let servers = openclicky_mcp::load_config(&path);
+    let servers = pixie_mcp::load_config(&path);
     // Connectors moved behind Settings → Experimental in 0.8.0. People who already added one
     // keep them: the switch starts on for them.
     {
@@ -94,7 +94,7 @@ mod trim_tests {
     }
 }
 
-fn connect(name: String, cfg: openclicky_mcp::ServerConfig) {
+fn connect(name: String, cfg: pixie_mcp::ServerConfig) {
     errors().lock().unwrap().remove(&name);
     tauri::async_runtime::spawn(async move {
         let res = match Client::connect(&name, &cfg).await {
@@ -133,7 +133,7 @@ pub fn switched(app: &AppHandle) {
 
 /// Re-read mcp.json: drop servers that went away or changed, start the new ones.
 pub fn reload(app: &AppHandle) {
-    let servers = openclicky_mcp::load_config(&config_path(app));
+    let servers = pixie_mcp::load_config(&config_path(app));
     registry().lock().unwrap().clear(); // dropping a client stops its server
     errors().lock().unwrap().clear();
     if !enabled(app) {
@@ -394,7 +394,7 @@ pub fn save(app: &AppHandle, id: &str, values: &Value, on: bool) -> Result<(), S
 
 /// Try one connector again (after fixing a token, signing in, or a network blip).
 pub fn retry(app: &AppHandle, id: &str) -> Result<(), String> {
-    let servers = openclicky_mcp::load_config(&config_path(app));
+    let servers = pixie_mcp::load_config(&config_path(app));
     let cfg = servers.into_iter().find(|(n, _)| n == id).map(|(_, c)| c).ok_or("That connector is off or not added.")?;
     registry().lock().unwrap().remove(id);
     crate::watchdog::forgive(&format!("connector:{id}"));

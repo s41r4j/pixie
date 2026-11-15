@@ -2,7 +2,7 @@
 //! The UI references media by slot name only; this is the single place that touches paths.
 
 use crate::AppState;
-use openclicky_core::resources::{Manifest, ResourceKind, ResourceStore};
+use pixie_core::resources::{Manifest, ResourceKind, ResourceStore};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tauri::http::{Request, Response, StatusCode};
@@ -18,16 +18,16 @@ pub enum PackSource {
     Repo,
 }
 
-/// The per-user local pack: `~/Library/Application Support/com.openclicky.app/resources`.
+/// The per-user local pack: `~/Library/Application Support/pixie.s41r4j.in/resources`.
 /// Filled by `npm run assets:local`; never part of the repo or the bundle.
 pub fn local_pack_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("resources"))
 }
 
-/// Resolution order: `$OPENCLICKY_RESOURCES` → local pack → bundled
+/// Resolution order: `$PIXIE_RESOURCES` → local pack → bundled
 /// `Contents/Resources/resources` → the repo's `resources/` (dev builds).
 fn resources_root<R: Runtime>(app: &AppHandle<R>) -> (PathBuf, PackSource) {
-    if let Some(p) = std::env::var_os("OPENCLICKY_RESOURCES") {
+    if let Some(p) = std::env::var_os("PIXIE_RESOURCES") {
         return (PathBuf::from(p), PackSource::Env);
     }
     if let Some(local) = local_pack_dir(app) {

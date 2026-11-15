@@ -1,26 +1,26 @@
 # Pixie architecture (0.8)
 
-Pixie's code and binary are still called `openclicky` (identifier `com.openclicky.app`).
+Pixie's code and binary are still called `Pixie` (identifier `pixie.s41r4j.in`).
 
 ```
-                 ┌──────────────── openclicky.app (Tauri, Rust) ────────────────┐
+                 ┌──────────────── Pixie.app (Tauri, Rust) ────────────────┐
  hold ⌃⌥ ──────▶ │ hotkey poll (20 ms) ─▶ session (voice loop) ─▶ llm::Provider ─│──▶ Claude / OpenAI /
                  │        │                    │  tools::run (tool loop)          │     DeepSeek
                  │        ▼                    ▼                                  │
                  │  panel · overlay · shelf · guide (made at launch)             │
                  │  settings · note · canvas (made when opened, freed on close)  │
                  │        ▲                    │                                  │
-                 │   events (openclicky://event)     jobs (workspace, note.md)    │
+                 │   events (pixie://event)     jobs (workspace, note.md)    │
                  └─────────┬───────────────────────────┬──────────────┬─────────┘
                     JSON lines (stdio)          unix socket         stdio JSON-RPC
                            ▼                           ▼                ▼
-                 openclicky-helper (Swift)    native host ⇄ extension   MCP servers
+                 pixie-helper (Swift)    native host ⇄ extension   MCP servers
                  Speech · AVAudioEngine ·     (same binary, Chrome      (mcp.json)
                  ScreenCaptureKit+Vision ·     native messaging)
                  AVSpeechSynthesizer · AX ·
                  WebKit PDF · PDFKit text
 
- openclicky-voice (C, sherpa-onnx Kokoro): natural voice, loaded on demand, unloaded when quiet
+ pixie-voice (C, sherpa-onnx Kokoro): natural voice, loaded on demand, unloaded when quiet
  Windows / Linux: no Swift helper; src-tauri/src/native/ answers the same commands in-process
    (Windows: GDI capture, Windows OCR, UI Automation, SendInput, WinRT speech in and out;
     Linux: grim/scrot, tesseract, xdotool, espeak-ng)
@@ -48,7 +48,7 @@ Pixie's code and binary are still called `openclicky` (identifier `com.openclick
 4. Streamed answer → cut at sentence ends → spoken while still streaming, by Kokoro (when
    installed; it starts loading as soon as they start talking) or the system voice. For Kokoro,
    Pixie writes numbers and symbols out and turns words into phonemes itself
-   (`openclicky_voice::say`, with the model's lexicon plus fallbacks), and the sidecar levels the
+   (`pixie_voice::say`, with the model's lexicon plus fallbacks), and the sidecar levels the
    audio to speech loudness;
    `speak_word` events light up words in the notch.
 5. Tools during the turn: `highlight`, `draw` (overlay), `mac_step` (AX), `note`/`note_answer`
@@ -71,7 +71,7 @@ watcher that ends it with Pixie, stopped after 10 idle minutes), one session per
 with agent `pixie` (opencode's tools denied), Pixie's system prompt as the session's
 instructions entry, earlier turns and the screenshot in the prompt. Pixie's tools are served
 back over a localhost HTTP MCP endpoint with a bearer token; each call is routed by opencode's
-session id to that turn's `ToolCtx` and run by `openclicky_tools::execute`. Text streams from
+session id to that turn's `ToolCtx` and run by `pixie_tools::execute`. Text streams from
 `/api/event`; usage goes to usage.jsonl. `OpencodeProvider` answers plain text calls
 (summaries, memory) through `/api/experimental/generate/text`.
 
@@ -124,11 +124,43 @@ from the note window continue the same conversation.
   takes over by generation) and notch modes nothing drives any more (`stuck_after`). Helper
   errors that mean a permission is off go through `watchdog::helper_error`: toast, open the
   pane, poll for it to come back.
+- Exact clicks and asking first (0.8.1): the helper keeps each snapshot's AX elements by
+  generation (`gen`, last 8), marks controls whose middle is outside their scroll areas, window or
+  every screen as `hidden`, and answers `element` (live frame, hidden, covered), `scroll_to`,
+  `press_element`, `hit_test` and `activate`. `buddy::live_target` resolves an id to the live
+  control before a click or press; points are clicked as given. `safety.rs` decides what's risky
+  (labels, keys, typed commands) and asks in a system dialog before it happens.
+- Idle cost (0.8.1): the overlay's frame loop stops once the buddy has settled on a still pointer
+  and `wake` restarts it (any event, or a mode leaving "follow"). `emit` sends the fast events
+  only where they're drawn (`only_for`: `buddy.cursor` to the overlay, `mic.level` to the panel
+  and Settings, `speech.word` to the panel); `onEvent` listens as the current window so both the
+  broadcast and the targeted events arrive. The poll thread sleeps 40 ms instead of 20 after 3 s
+  with no modifier held and the pointer still (`hotkey::pace`). The helper's `capture` runs the
+  JPEG, OCR and AX snapshot in parallel and returns `took_ms`; `session` logs stage times.
+- Pixie's speech to text (0.8.1, `crates/stt` + `stt.rs`): `ffi.rs` loads sherpa-onnx's C API at
+  runtime (structs mirror the vendored v2.0.1 header; sizes are asserted in a test). The
+  recogniser runs as a child of the same program (`pixie --stt-engine <runtime> <model>`,
+  `engine.rs`): audio frames in on stdin, JSON lines out, so a bad library can't crash the app
+  and the model stays loaded for 10 minutes. `stt.rs` reads the microphone with cpal, resamples
+  to 16 kHz mono, pipes it, and sends each new text to `live_type_update` (Swift helper on the
+  Mac, `native::live` elsewhere), which types only the changed end (`text::keystrokes`).
+  `session.rs` picks it with `stt::wanted` and falls back to the helper's `listen_*`.
+- Canvas kit (0.8.1, `canvas_kit.rs`): `canvas` draw with `make` is laid out in Rust into plain
+  Excalidraw skeletons (pure, unit-tested), then drawn like any elements. `edit` is applied in
+  the window (`applyChanges` in `Canvas.tsx`); `[[canvas id]]` marks go through `narrate.rs` to
+  `canvas::focus`.
+- 3D (0.8.1, `Scene3D.tsx`, `scene3d.rs`): `sanitize` bounds everything the window draws. Each
+  object is a pivot group (parts nest by `parent`); copies are one InstancedMesh. Frames are
+  drawn on demand; shadows update only on frames where something moved.
+- App ID (`rename.rs`): up to 0.8.0 the ID was `com.openclicky.app`; since 0.8.1 it's `pixie.s41r4j.in`
+  and the program is `pixie`. `move_data` renames the old data folder to the new one before
+  anything opens it and leaves a symlink (a junction on Windows) at the old path; the browser
+  bridge removes the old host registration.
 - Rollback (`rollback.rs`, macOS): `keep_current` copies the bundle to `<app_data>/previous`
   before `update.install`; `launches.json` counts launches that end within a minute without
   Quit; the third in a row on the version an update brought swaps the copy back from a detached
   shell after Pixie exits, and `skip-version` keeps the updater from offering it again.
-- Agents' processes (`openclicky_tools::children`): `bash` and coding agents spawn in their own
+- Agents' processes (`pixie_tools::children`): `bash` and coding agents spawn in their own
   process group, listed in `<app_data>/agents.pids`; dropped guards end a stopped command's whole
   group, Quit ends all, and the helper ends the listed groups when its stdin closes.
 - Several screens (0.8.0): `panel::pinned_screen` / `home_screen` place the notch by the

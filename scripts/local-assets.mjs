@@ -5,11 +5,11 @@
 //   npm run assets:local -- --from DIR   # from any folder laid out like resources/
 //   npm run assets:local -- --clear      # remove the pack, back to bundled placeholders
 //
-// The pack lives in ~/Library/Application Support/com.openclicky.app/resources and is picked
+// The pack lives in ~/Library/Application Support/pixie.s41r4j.in/resources and is picked
 // up by the app before the bundled resources (see apps/desktop/src-tauri/src/resources.rs).
 // It is never written into the repo or the .app bundle, so nothing third-party is committed
 // or redistributed. Slots with no matching source file keep the original placeholder.
-// Icons and fonts always stay openclicky's own (brand + OFL); only sounds and videos are taken.
+// Icons and fonts always stay Pixie's own (brand + OFL); only sounds and videos are taken.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const shipped = path.join(repo, "resources");
-const dest = path.join(os.homedir(), "Library/Application Support/com.openclicky.app/resources");
+const dest = path.join(os.homedir(), "Library/Application Support/pixie.s41r4j.in/resources");
 
 const args = process.argv.slice(2);
 if (args.includes("--clear")) {
@@ -76,4 +76,4 @@ for (const f of fs.readdirSync(path.join(shipped, "fonts")).filter((f) => f.ends
 console.log(`local pack → ${dest}`);
 console.log(`  ${taken} file(s) from ${path.relative(repo, from) || from}, ${kept} placeholder/own file(s)`);
 if (keptSlots.length) console.log(`  no source for: ${[...new Set(keptSlots)].join(", ")}`);
-console.log("Restart openclicky to pick it up. Local use only: do not commit or redistribute this pack.");
+console.log("Restart Pixie to pick it up. Local use only: do not commit or redistribute this pack.");

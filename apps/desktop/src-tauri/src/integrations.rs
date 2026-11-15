@@ -4,7 +4,7 @@
 //! opens in Mail for the user to send.
 
 use crate::AppState;
-use openclicky_llm::ToolDef;
+use pixie_llm::ToolDef;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};

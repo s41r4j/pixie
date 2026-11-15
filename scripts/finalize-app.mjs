@@ -4,7 +4,7 @@
 // Why: an ad-hoc signature's designated requirement defaults to `cdhash H"…"`, which changes on
 // every build. macOS stores Screen Recording / Accessibility grants against that requirement, so
 // a rebuilt app shows as "Not allowed" even though its switch is on. We pin the requirement to
-// the bundle identifier instead (`identifier "com.openclicky.app"`), which every build satisfies.
+// the bundle identifier instead (`identifier "pixie.s41r4j.in"`), which every build satisfies.
 // With a real certificate (APPLE_SIGNING_IDENTITY) the default requirement is already stable.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -32,9 +32,9 @@ if (!fs.existsSync(app)) {
 // Inner executables first, then the bundle (which seals them). With a real Developer ID the
 // Tauri bundler has already signed (and notarized) the app; re-signing would undo that.
 if (identity === "-") {
-  sign(path.join(app, "Contents/MacOS/openclicky-helper"), "com.openclicky.helper");
-  sign(path.join(app, "Contents/MacOS/openclicky-voice"), "com.openclicky.voice");
-  sign(app, "com.openclicky.app");
+  sign(path.join(app, "Contents/MacOS/pixie-helper"), "pixie.s41r4j.in.helper");
+  sign(path.join(app, "Contents/MacOS/pixie-voice"), "pixie.s41r4j.in.voice");
+  sign(app, "pixie.s41r4j.in");
 }
 execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" });
 const req = execFileSync("codesign", ["-d", "-r-", app], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

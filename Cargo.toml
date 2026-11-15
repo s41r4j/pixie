@@ -8,24 +8,32 @@ members = [
   "crates/voice",
   "crates/mcp",
   "crates/native-host",
+  "crates/stt",
 ]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/s41r4j/pixie"
 rust-version = "1.88"
 
 [workspace.dependencies]
-openclicky-core = { path = "crates/core" }
-openclicky-voice = { path = "crates/voice" }
-openclicky-llm = { path = "crates/llm" }
-openclicky-tools = { path = "crates/tools" }
-openclicky-mcp = { path = "crates/mcp" }
-openclicky-native-host = { path = "crates/native-host" }
+pixie-core = { path = "crates/core" }
+pixie-voice = { path = "crates/voice" }
+pixie-llm = { path = "crates/llm" }
+pixie-tools = { path = "crates/tools" }
+pixie-mcp = { path = "crates/mcp" }
+pixie-native-host = { path = "crates/native-host" }
+pixie-stt = { path = "crates/stt" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 log = "0.4"
 rand = "0.8"
+
+# Release builds: optimise across crates (faster and a smaller download). Symbol names stay, so
+# the crash note Pixie keeps for a problem report is still readable.
+[profile.release]
+lto = true
+codegen-units = 1

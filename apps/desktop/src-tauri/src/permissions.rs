@@ -197,8 +197,8 @@ pub async fn permissions_status(app: tauri::AppHandle) -> Vec<PermissionInfo> {
         .collect()
 }
 
-/// Clear openclicky's own stale grant for Screen Recording or Accessibility (a switch that's
-/// on for an older build of the app) and ask again. Touches only com.openclicky.app.
+/// Clear Pixie's own stale grant for Screen Recording or Accessibility (a switch that's
+/// on for an older build of the app) and ask again. Touches only pixie.s41r4j.in.
 #[tauri::command]
 pub async fn permission_reset(id: String) -> Result<PermissionInfo, String> {
     let pid = PermId::parse(&id).ok_or_else(|| format!("unknown permission `{id}`"))?;
@@ -209,7 +209,7 @@ pub async fn permission_reset(id: String) -> Result<PermissionInfo, String> {
     };
     tauri::async_runtime::spawn_blocking(move || {
         let ok = std::process::Command::new("/usr/bin/tccutil")
-            .args(["reset", service, "com.openclicky.app"])
+            .args(["reset", service, "pixie.s41r4j.in"])
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
@@ -218,7 +218,7 @@ pub async fn permission_reset(id: String) -> Result<PermissionInfo, String> {
         }
         #[cfg(target_os = "macos")]
         {
-            // Ask fresh so openclicky reappears in the list, then show the pane.
+            // Ask fresh so Pixie reappears in the list, then show the pane.
             match pid {
                 PermId::Screen => unsafe { native::request_screen_now() },
                 _ => {
@@ -233,7 +233,7 @@ pub async fn permission_reset(id: String) -> Result<PermissionInfo, String> {
     .map_err(|e| e.to_string())
 }
 
-/// Quit and reopen openclicky (some grants only apply to a fresh process).
+/// Quit and reopen Pixie (some grants only apply to a fresh process).
 #[tauri::command]
 pub fn relaunch(app: tauri::AppHandle) {
     app.restart();
@@ -373,7 +373,7 @@ mod native {
         }
         autoreleasepool(|_| match id {
             PermId::Screen => {
-                // Ask macOS once so openclicky appears in the list; after that just open the
+                // Ask macOS once so Pixie appears in the list; after that just open the
                 // pane (repeating the request only repeats the dialog).
                 static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
                 if !ASKED.swap(true, std::sync::atomic::Ordering::SeqCst) {

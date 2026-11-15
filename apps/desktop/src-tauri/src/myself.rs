@@ -8,7 +8,7 @@
 //! Settings by the user.
 
 use crate::{commands, AppState};
-use openclicky_llm::ToolDef;
+use pixie_llm::ToolDef;
 use serde_json::{json, Map, Value};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -161,7 +161,7 @@ fn hour_of(v: &Value) -> Option<u32> {
 /// "New chat": the panel's button, the pixie tool and the spoken command.
 pub fn new_chat(app: &AppHandle) {
     app.state::<AppState>().session.chat_clear();
-    crate::emit(app, openclicky_core::Event::new("chat.updated", json!({ "log": [] })));
+    crate::emit(app, pixie_core::Event::new("chat.updated", json!({ "log": [] })));
 }
 
 pub fn persona_name(id: &str) -> &'static str {
@@ -313,7 +313,7 @@ pub async fn check_choices(app: &AppHandle, provider: &str) -> bool {
     let mut models = cur.models.clone();
     models.insert(provider.to_string(), fixed);
     if commands::settings_set(app.clone(), json!({ "models": models })).is_ok() {
-        crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
+        crate::emit(app, pixie_core::Event::new("settings.external", json!({})));
         let msg = format!("{}.", gone.join(". "));
         crate::heal::note("model", &msg, "Switched the model", "");
         log::warn!("models: {msg}");
@@ -686,7 +686,7 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
             }
             "coding_folder" => match as_str(v) {
                 Some(d) => {
-                    let mut c = patch.get("coding").and_then(|c| serde_json::from_value::<openclicky_tools::coders::Prefs>(c.clone()).ok()).unwrap_or_else(|| cur.coding.clone());
+                    let mut c = patch.get("coding").and_then(|c| serde_json::from_value::<pixie_tools::coders::Prefs>(c.clone()).ok()).unwrap_or_else(|| cur.coding.clone());
                     c.dir = d.clone();
                     patch.insert("coding".into(), serde_json::to_value(c).unwrap_or_default());
                     done.push(format!("coding folder {d}"));
@@ -823,7 +823,7 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
             }
         }
     }
-    crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
+    crate::emit(app, pixie_core::Event::new("settings.external", json!({})));
 
     let mut out = String::new();
     if !done.is_empty() {
@@ -899,7 +899,7 @@ async fn about(app: &AppHandle) -> String {
         format!("last 30 days ${:.2} over {} requests; all time ${:.2}", sum["cost"].as_f64().unwrap_or(0.0), sum["requests"].as_u64().unwrap_or(0), sum["all_time"]["cost"].as_f64().unwrap_or(0.0))
     };
     let jobs = st.jobs.list();
-    let running = jobs.iter().filter(|j| matches!(j.state, openclicky_core::model::JobState::Running | openclicky_core::model::JobState::WaitingOnUser)).count();
+    let running = jobs.iter().filter(|j| matches!(j.state, pixie_core::model::JobState::Running | pixie_core::model::JobState::WaitingOnUser)).count();
     let talk = &s.shortcut_talk;
     let dictate = &s.shortcut_dictate;
     let fallback = if s.fallback.is_empty() { "none".to_string() } else { s.fallback.clone() };
@@ -965,13 +965,13 @@ Change any of it with action=set; API keys, permissions and sign-ins are done by
 // ---- quit / stop ----
 
 fn running_jobs(app: &AppHandle) -> usize {
-    use openclicky_core::model::JobState;
+    use pixie_core::model::JobState;
     app.state::<AppState>().jobs.list().iter().filter(|j| matches!(j.state, JobState::Running | JobState::WaitingOnUser)).count()
 }
 
 /// Stop every running job and live agent; how many there were.
 fn stop_jobs(app: &AppHandle) -> usize {
-    use openclicky_core::model::JobState;
+    use pixie_core::model::JobState;
     let ids: Vec<String> = app
         .state::<AppState>()
         .jobs
@@ -1125,7 +1125,7 @@ pub fn persona_intent(text: &str) -> Option<&'static str> {
 /// Switch personality now (Settings, the notch face and every open window follow).
 pub fn set_persona(app: &AppHandle, p: &str) -> Result<(), String> {
     commands::settings_set(app.clone(), json!({ "persona": p }))?;
-    crate::emit(app, openclicky_core::Event::new("settings.external", json!({})));
+    crate::emit(app, pixie_core::Event::new("settings.external", json!({})));
     Ok(())
 }
 
@@ -1258,7 +1258,7 @@ mod tool_sizes {
     #[test]
     #[ignore]
     fn print_voice_tool_sizes() {
-        let mut tools = openclicky_tools::defs::for_mode(openclicky_core::prompt::Mode::Voice, true);
+        let mut tools = pixie_tools::defs::for_mode(pixie_core::prompt::Mode::Voice, true);
         tools.push(super::tool());
         tools.push(crate::memory::tool());
         tools.push(crate::canvas::tool());
@@ -1326,9 +1326,9 @@ pub async fn checkup(app: &AppHandle) -> Vec<crate::heal::Check> {
     match st.provider() {
         None => out.push(Check { name: "Model", ok: false, detail: "no model set up (Settings → Models)".into() }),
         Some(p) => {
-            let mut req = openclicky_llm::Request::new("Reply with the single word ok.", vec![openclicky_llm::Message::user_text("ok?")]);
+            let mut req = pixie_llm::Request::new("Reply with the single word ok.", vec![pixie_llm::Message::user_text("ok?")]);
             req.max_tokens = 5;
-            req.effort = openclicky_llm::Effort::Fast;
+            req.effort = pixie_llm::Effort::Fast;
             let started = std::time::Instant::now();
             let r = tokio::time::timeout(Duration::from_secs(25), p.complete(&req, &mut |_| {})).await;
             let label = p.label();

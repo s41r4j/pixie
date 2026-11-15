@@ -1,231 +1,182 @@
-# :) Pixie
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="resources/icons/brand/wordmark-white.svg">
+    <img src="resources/icons/brand/wordmark-black.svg" alt="Pixie" width="260">
+  </picture>
+</p>
 
-Pixie (formerly openclicky) is an open-source, macOS-first companion that lives in your notch
-(with Windows and Linux previews: see [CHECKLIST.md](CHECKLIST.md)). Hold **⌃ control + ⌥ option**
-and talk: it hears you, looks at your screen, answers out loud, points at things, draws on the
-screen with its own little pointer, clicks for you when you ask, and hands bigger work to
-background jobs (including coding through Codex CLI, Claude Code or opencode) that write a live
-note. It remembers you (one chat all day, plus long-term notes kept on your computer), you can
-set it up by asking ("talk slower", "switch to Eon", "quit"), draws explanations on an editable
-Excalidraw canvas, comes in four personalities (Pix, Inos, Xtrem, Eon), and updates itself from
-GitHub. Tauri 2 + Rust + React + a small Swift helper. Claude, OpenAI or DeepSeek as the brain.
+<p align="center"><b>A little companion that lives in your Mac's notch.</b><br>
+Hold <kbd>⌃ control</kbd> + <kbd>⌥ option</kbd> and talk: it hears you, sees your screen, answers out loud,<br>
+points at things, draws to explain, clicks for you, and hands bigger work to agents.</p>
 
-Website: https://pixie.s41r4j.in · Download: [latest release](https://github.com/s41r4j/pixie/releases/latest)
+<p align="center">
+  <a href="https://github.com/s41r4j/pixie/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/s41r4j/pixie?label=release&color=111"></a>
+  <a href="https://github.com/s41r4j/pixie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/s41r4j/pixie/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="macOS 14+, Windows and Linux previews" src="https://img.shields.io/badge/macOS%2014%2B-Windows%20%26%20Linux%20preview-111">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-111"></a>
+</p>
 
-## Run it
+<p align="center">
+  <a href="https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg"><b>Download for Mac</b></a> ·
+  <a href="https://pixie.s41r4j.in">Website</a> ·
+  <a href="https://pixie.s41r4j.in/docs.html">Docs</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="CHECKLIST.md">What works where</a>
+</p>
 
-Requirements: macOS 14+, Xcode command line tools (for `swiftc`), Rust stable, Node 20+.
+<p align="center"><img src="site/shots/ask.png" alt="Pixie answering out loud from the notch while its pointer sits on a chart in Keynote" width="860"></p>
 
-```bash
-cp .env.example .env          # put your key in: DEEPSEEK=sk-…  (or ANTHROPIC_API_KEY=…)
-npm install
-npm run app:build             # → target/release/bundle/macos/Pixie.app (+ .dmg)
-npm run app:install           # copy to /Applications and open
-```
+## What it does
 
-Development: `npm run dev` (Vite on :1420 + the app with hot reload).
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="site/shots/listening.png" alt="The notch listening, with a live waveform">
+<h3>Talk, don't type</h3>
+Hold the talk keys, ask, let go. Speech is recognised on your Mac and the answer is spoken back by a
+natural voice that runs offline. The notch widens into two little ears while it listens and talks,
+so nothing covers your work.
+</td>
+<td width="50%" valign="top">
+<img src="site/shots/buddy.png" alt="The round buddy drawing a circle, a box, an arrow and an underline">
+<h3>It points and draws</h3>
+A round <code>:)</code> buddy rides next to your pointer. It flies to the exact button it's talking
+about and circles, boxes, underlines or arrows it, each mark appearing as the sentence about it is
+spoken.
+</td>
+</tr>
+<tr>
+<td valign="top">
+<img src="site/shots/do.png" alt="Pixie typing a file name into the Export dialog">
+<h3>It does it for you</h3>
+Say "do it" and Pixie clicks, types, uses menus and drags, reading the screen again after every
+step. Before anything that deletes, sends or buys, it asks you in a dialog it can't answer itself,
+and there's a pointer-only mode.
+</td>
+<td valign="top">
+<img src="site/shots/agents.png" alt="Agents in the notch with their plans and progress">
+<h3>Agents for the long stuff</h3>
+Background agents research, write and build on their own and keep a live note; live agents do the
+task on your screen while explaining each step. Hover the notch to check on them.
+</td>
+</tr>
+<tr>
+<td valign="top">
+<img src="site/shots/peek.png" alt="Today's chat in the notch">
+<h3>One chat all day, and memory</h3>
+Today's conversation waits in the notch, typed or spoken. Pixie keeps short notes about you on your
+computer ("remember that my manager is Priya") that you can read, edit or delete.
+</td>
+<td valign="top">
+<img src="site/shots/coding.png" alt="Settings → Coding with Codex CLI, Claude Code and opencode">
+<h3>Your coding agents</h3>
+Code tasks go to the agent already on your Mac: Codex CLI, Claude Code or opencode, picking the one
+with usage left. Pixie runs it headless and reads you the result.
+</td>
+</tr>
+<tr>
+<td valign="top">
+<img src="site/shots/models.png" alt="Settings → Models with live model lists">
+<h3>Claude, OpenAI, DeepSeek, or free</h3>
+Bring a key and pick from each provider's live model list, or skip the key: with opencode
+installed, Pixie runs on its free models. Keys stay on your computer.
+</td>
+<td valign="top">
+<img src="site/shots/usage.png" alt="Settings → Usage with spend per model and per day">
+<h3>Know what it costs</h3>
+Every call is counted on your computer and priced from the public price list, cached tokens
+included. No telemetry: nothing leaves your Mac.
+</td>
+</tr>
+</table>
 
-On first launch a welcome window walks through permissions (Microphone, Speech Recognition,
-Screen Recording, Accessibility) and the model key. Screen Recording only applies to a fresh
-process: after switching it on, use **relaunch Pixie** in the window.
+**And more:**
+- **Explains with drawings** on a real [Excalidraw](https://excalidraw.com) canvas you can edit, keep and export: org charts, mind maps, timelines, architecture, charts from your numbers, tables and wireframes, laid out for you. And (Experimental) in 3D models that move, come apart and cut open.
+- **Four personalities**, each with its own face: Pix `:)`, Inos `8)`, Xtrem `XD` and Eon `;)`.
+- **Set it up by asking**: "talk slower", "use the Emma voice", "switch to Eon", "make dictation a toggle".
+- **Dictation anywhere, as you speak**: hold <kbd>fn</kbd> <kbd>⌃</kbd> and the words go into any field while you talk, with Pixie's own on-device speech to text (a one-time 73 MB download; English). Tidied when you stop.
+- **Several screens and desktops**: it knows which screen you mean and keeps the notch where you want it.
+- **Looks after itself**: restarts a part that hangs, keeps last-good copies of your settings, puts the last version back if an update won't start, and runs a checkup when you ask.
+- **Updates itself** from GitHub, checking the signature, when you're not using it.
+- **Apps and the browser**: Calendar, Reminders, Contacts, Mail drafts (it never sends), Gmail and Google Calendar, your Chrome tabs, and connectors (MCP) for GitHub, Linear, Slack and more.
 
-macOS ties permissions to the app's signature. Default builds are ad-hoc signed, which changes
-every build, so after a rebuild remove the old Pixie rows in System Settings → Privacy &
-Security (the − button) and allow the new one. To keep permissions across rebuilds, create a
-local signing identity once and build with it:
+## Get started
 
-```bash
-sh scripts/create-signing-identity.sh
-APPLE_SIGNING_IDENTITY="Pixie Local Signing" npm run app:build
-```
+1. **Download** [Pixie for Mac](https://github.com/s41r4j/pixie/releases/latest/download/Pixie-macOS-universal.dmg) (macOS 14+, Apple silicon and Intel), open the .dmg and drag Pixie to Applications. Windows and Linux previews are on the [releases page](https://github.com/s41r4j/pixie/releases/latest).
+2. **Open it.** If macOS says it can't be opened: right-click → Open, or System Settings → Privacy & Security → Open Anyway.
+3. **Follow the welcome window**: Microphone, Speech Recognition, Screen Recording and Accessibility, then a key for Claude, OpenAI or DeepSeek. No key? Install [opencode](https://opencode.ai) and pick Settings → Models → On this computer.
+4. **Hold ⌃⌥ and ask** "what can you do?".
 
-## The pointer
-
-Pixie has a round `:)` buddy that rides just off your cursor. When it talks about something it
-flies there and draws (circle, underline, arrow, a marching-ants selection). Ask it to *do*
-something and it clicks, double-clicks, right-clicks, types, drags or copies to the clipboard,
-one step at a time, checking the screen after each step. Settings → General → Buddy: **Always
-on**, **Idle mode** (only while Pixie is busy) or **Off**; **Let Pixie click and type for me**
-(off = pointer only).
-
-## Agents
-
-Bigger work runs as an agent, tracked in the notch's **Agents** tab (hover the notch):
-
-- **Background** agents work on their own (research, documents, files, code) and write a live
-  `note.md`.
-- **Live** agents do the task on your real screen while explaining each step out loud; esc
-  stops them.
-
-## Coding with local agents
-
-Background jobs can hand code to the coding agents already on your Mac: **Codex CLI**,
-**Claude Code** or **opencode** (whichever is installed; T3 Code users have these underneath).
-Ask for an app, a script or a fix and the job runs the agent in your repo or its output folder,
-streams its progress to the job card, and checks the result.
-
-## The notch
-
-On a Mac with a notch, Pixie rests invisibly over it. Voice turns stay in the notch's "ears":
-it widens while listening, thinking and speaking, and never shows the answer as text. **Hover
-the notch** for two tabs: **Chat** (today's conversation; type a follow-up or start a new chat) and
-**Agents** (plans, progress, questions to answer, stop). Hold ⌃⌥ any time to talk; it opens on
-whichever screen you're using, or on the one you pick in Settings → General → Notch on. Its content
-fades in once it has slid out of the camera housing, and out before it slides back.
-
-## Voice
-
-Answers are spoken by **Kokoro**, a natural neural voice that runs offline (sherpa-onnx). Get it
-from Settings → Voice → Download natural voice (~350 MB, from the k2-fsa/sherpa-onnx GitHub
-releases, stored in `~/Library/Application Support/com.openclicky.app/voices`). Pick from eight
-voices and set the speed and loudness (Quiet / Normal / Loud) there; the system voice is the
-fallback. Pixie turns text into Kokoro's sounds itself (`crates/voice/src/say.rs`): numbers, times
-and prices are written out, and words missing from Kokoro's word list are still spoken instead of
-skipped. The model loads when you start talking (about a second) and unloads after five quiet
-minutes, so idle Pixie stays near 215 MB.
-
-## Memory
-
-- **Today's chat** carries on after quiet gaps and restarts until **New chat** (or saying "new
-  chat") or the day's reset hour (midnight by default; Settings → Memory). The last 12 turns go to
-  the model in full, older ones as a running summary.
-- **Long-term notes** (`memory.json` in the support folder): "remember that…" / "forget…"; on
-  Automatic, Pixie also learns lasting facts from a chat once it has been quiet a few minutes, and
-  jobs add their `LEARNED` lines. The 15 most useful go into every prompt; the rest are found with
-  the `memory` tool. Passwords, keys and card numbers are refused. Settings → Memory lists, edits
-  and deletes them, and switches memory to Automatic, Only when I ask, or Off.
-
-## Using it
+## Things to try
 
 | Do this | What happens |
 |---|---|
-| Hold **⌃⌥** and talk, let go | The notch opens with a live waveform and your words; it answers out loud, the words light up as they're spoken |
-| "Where's the share button?" | The buddy flies to the button and circles it |
-| "Circle the total" | Hand-drawn marks on the screen that fade away |
-| "Click Export for me" | `mac_step` presses it through Accessibility |
-| "Open System Settings, go to General → About" | Several steps in one go: each action comes back with the fresh screen, and control ids stay the same for the request |
-| "Make me a one-page PDF about tea" | A background agent starts; hover the notch → Agents for its plan; the note fills live |
-| "Rename these slides for me" | A live agent does it on screen, explaining each step |
-| An agent asks something | The Agents tab shows the question with tap answers |
-| Tap **⌃⌥** (or click the menu-bar `:)`) | A text box to type instead of talk |
-| Hold **fn⌃** and talk | Dictation: cleaned-up text is typed into whatever field has focus (Experimental: as you speak, wherever the text cursor is). Settings → General can make it press to start, press to stop |
-| **esc** | Stops speech, the turn and closes the notch |
-| "What can you do?" / "What's my talk shortcut?" | Answers from its live setup (the `pixie` tool) |
-| "Check yourself" / "Report this" | A checkup that fixes what it can, or a filled-in GitHub issue for you to submit. Pixie also restarts parts that hang and rolls back an update that won't start |
-| "Talk slower and use the Emma voice" | Changes its own settings at once, no clicking through Settings |
+| Hold **⌃⌥**, talk, let go | The notch listens, thinks and answers out loud |
+| "Where's the share button?" | The buddy flies to it and circles it |
+| "Explain this toolbar" | A fuller explanation, pointing at each part as it's said |
+| "Open System Settings, go to General → About" | Several steps in one go, checking the screen after each |
+| "Draw how OAuth works" | An Excalidraw canvas with the diagram; edit it, keep it, export it |
+| "Chart these numbers" / "Make a mind map of the launch" | A bar, line or pie chart, or a mind map, laid out on the canvas |
+| "Show me how a heart pumps, in 3D" (Experimental) | A 3D model that turns to each part as Pixie names it |
+| "Make me a one-page PDF about tea" | A background agent; hover the notch → Agents to watch its plan |
 | "Remember that my manager is Priya" | A long-term note; "forget…" removes it |
-| "Quit" / "Stop working" / "Never mind" / "New chat" | Quits / stops every job / stops talking / starts a fresh chat, instantly |
-| "Draw how OAuth works" | An Excalidraw canvas comes up with the diagram; edit it, keep it, export it. Show Canvas in the menu brings it back |
-| "Explain this toolbar" | A fuller explanation, pointing and circling each part as it's said |
-| "Show me how a heart pumps, in 3D" (Experimental) | A 3D model you can spin; the view turns to each part as Pixie names it |
-| "Switch to Eon" / "Be Xtrem" | Changes the personality (Pix, Inos, Xtrem, Eon) and the face in the notch |
+| "Talk slower and use the Emma voice" | Changes its own settings at once |
+| "Switch to Eon" | A calmer personality, and a new face in the notch |
+| "Check yourself" / "Report this" | A checkup that fixes what it can, or a filled-in GitHub issue you submit |
+| Tap **⌃⌥** (or click the menu bar `:)`) | A box to type instead of talk |
+| Hold **fn⌃** and talk | Dictation into whatever field has focus |
+| **esc** | Stops speech and the turn |
+| "Quit" / "Stop working" / "New chat" | Quits / stops every job / starts a fresh chat, instantly |
 
-## Keys and models
+More in the [docs](https://pixie.s41r4j.in/docs.html).
 
-The app's internal identifier stays `com.openclicky.app` (so permissions and data carry over);
-everything you see says Pixie.
+## Privacy
 
-Keys are read from (first wins): Settings → Models, the process environment,
-`~/Library/Application Support/com.openclicky.app/.env`, then the repo `.env` in dev builds.
-`ANTHROPIC_API_KEY` → Claude (`claude-opus-5-5`, the default provider); `DEEPSEEK` /
-`DEEPSEEK_API_KEY` → DeepSeek's Anthropic-compatible endpoint (`deepseek-flash`, which also
-takes screenshots); `OPENAI_API_KEY` → OpenAI. Settings → Models lists each provider's models
-live (newest first, with context size and price) and lets you pick one for voice and one for
-agents. Settings → Usage prices every call from the public model price list (OpenRouter's
-catalogue, cached in `prices.json`, refreshed daily), with tokens read from the provider's prompt
-cache counted and priced separately. Prompts are built for caching: the system prompt holds only
-what stays the same, and the time, front app and screen lead the newest message. See
-`.env.example` for overrides.
+Speech recognition, screen reading (OCR) and the natural voice run on your computer. Screenshots
+and your words go only to the model provider you chose, with your own key. Chats, memory notes,
+canvases, usage and logs stay in Pixie's folder on your computer, and nothing is sent anywhere
+else: no accounts, no telemetry. Problem reports open as a GitHub issue for you to read and submit.
 
-No API key? Install [opencode](https://opencode.ai) and pick **Settings → Models → On this
-computer**: Pixie runs on opencode's free models (or any provider you signed in to there), with
-opencode's own tools off and Pixie's tools given to it.
+## Platforms
 
-Typed questions can get typed answers: Settings → General → **Typed questions get typed
-answers**, and **Show typed answers in the notch** to read them there.
+| | Mac | Windows | Linux |
+|---|---|---|---|
+| Status | Everything | Preview | Preview |
+| Download | universal .dmg | x64 installer | AppImage, .deb |
 
-## Releases
+Per feature: [CHECKLIST.md](CHECKLIST.md).
 
-`.github/workflows/build.yml` builds Pixie for **macOS** (universal `.dmg` + `.zip`),
-**Windows** (x64 NSIS `-setup.exe`) and **Linux** (x64 `.AppImage` + `.deb`) on every push to
-`main` that touches the app; the files are attached to the run as artifacts. Run it by hand from
-Actions → Build, or push a tag like `v0.5.1`, to also publish a GitHub release; the website's
-Download buttons point at `releases/latest/download/Pixie-macOS-universal.dmg`,
-`…/Pixie-Windows-x64-setup.exe` and `…/Pixie-Linux-x64.AppImage`.
-Windows and Linux are previews. On the Mac a Swift helper does the screen, voice and input work;
-on Windows and Linux `apps/desktop/src-tauri/src/native/` answers the same commands (Windows OCR,
-UI Automation, SendInput and speech recognition; Linux uses grim/scrot, tesseract, xdotool and
-espeak-ng). **[CHECKLIST.md](CHECKLIST.md)** ticks every feature and setting for each platform. Optional secrets for
-a signed, notarized Mac build: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
-`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+## Build from source
 
-**Auto update.** Installed copies check `releases/latest/download/latest.json` (written by the
-release job) and install signed updates themselves (`src-tauri/src/updates.rs`). The signing key
-pair is made once with `npx tauri signer generate`; the public key is in `tauri.conf.json`
-(`plugins.updater.pubkey`), and the private key and its password go in the repo secrets
-`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Without them, builds still
-work but carry no update packages. Keep the private key safe: losing it means installed copies
-can't verify new versions.
-
-The website lives in `site/`: Home (with the interactive demo), Features, Download, Docs and
-Changelog, sharing `site/assets/site.css` and `site/assets/site.js`. `npm run site` builds it into
-`_site/` with `scripts/build-site.sh` and serves it on http://localhost:8000; `pages.yml` deploys the
-same build (Settings → Pages → Source: GitHub Actions).
-
-## Browser and connectors
-
-- **Chrome/Brave/Edge/Arc**: the app registers its native messaging host on launch. Load the
-  extension once: `chrome://extensions` → Developer mode → Load unpacked →
-  `~/Library/Application Support/com.openclicky.app/extension`. Then "what tabs do I have open",
-  "fill this form with…", "compare these two pages" work. Details: `apps/extension/README.md`.
-- **Connectors (MCP)**: turn them on in Settings → Experimental → Connectors (off by default since
-  0.8.0 unless you'd already added one; off means no connector servers run). Then pick them in
-  Settings → Connectors, or add servers to
-  `~/Library/Application Support/com.openclicky.app/mcp.json` (Claude Desktop format, examples
-  inside). Their tools show up as `mcp__<server>__<tool>`.
-- **Playbooks**: `skills/<name>/SKILL.md`; add your own in the support folder's `skills/`.
-
-## Media
-
-Every sound, icon, video and font is loaded by slot name from `resources/manifest.json`
-(see `resources/README.md`). The shipped icons, sounds, mic/system glyphs and brand colours come
-from Pixie's Pixel Design System v1 (monochrome pixel style, IBM Plex Mono / VT323 /
-Press Start 2P under OFL; the source pack lives outside the repo). `npm run assets:local -- --from DIR` builds a private local pack
-in Application Support that overrides the bundled media on this Mac only; never commit
-third-party media.
-
-## Commands
+Requirements: macOS 14+, Xcode command line tools, Rust stable and Node 20+.
 
 ```bash
-npm run check          # cargo check --workspace && frontend build
-npm test               # cargo test --workspace
-npm run app:build      # .app + .dmg for this machine
-npm run app:build:universal   # needs: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-npm run placeholders   # regenerate missing placeholder media (never overwrites)
+git clone https://github.com/s41r4j/pixie && cd pixie
+cp .env.example .env    # optional: a key for development, e.g. DEEPSEEK=sk-…
+npm install
+npm run app:build       # target/release/bundle/macos/Pixie.app (+ .dmg)
+npm run app:install     # copy to /Applications and open
 ```
 
-UI preview without the app (mocked IPC): `npm run dev -w apps/desktop`, then open
-`http://localhost:1420/?preview=panel&mode=answer` (views: panel, overlay, shelf, note,
-settings; see `apps/desktop/src/preview.ts`).
+`npm run dev` runs it with hot reload. Signing, releases, keys, media, commands and the repo
+layout are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); how it works inside is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and what's next in [docs/ROADMAP.md](docs/ROADMAP.md).
+Built with Tauri 2, Rust, React and a small Swift helper.
 
-## Layout
+## Credits
 
-```
-apps/desktop/         Tauri app: src-tauri/ (Rust shell; native/ for Windows and Linux),
-                      src/ (React views), helper/ (Swift), voice/ (Kokoro sidecar)
-apps/extension/       MV3 browser extension
-crates/core/          data model, events, resource slots, note DSL, report contract, prompts
-crates/llm/           Provider trait + Anthropic Messages client (Claude, DeepSeek)
-crates/tools/         BUILD-SPEC §5 tools, path denylist, never-overwrite, the tool loop
-crates/voice/         sound bus (UI sounds)
-crates/mcp/           MCP stdio client
-crates/native-host/   Chrome native messaging host
-site/                 the website (pages, assets, screenshots; built by scripts/build-site.sh)
-resources/  skills/  docs/  scripts/
-```
+Pixie stands on open-source work. Thank you to:
 
-Architecture and decisions: `docs/ARCHITECTURE.md`. What's open: `docs/ROADMAP.md`.
+- [Excalidraw](https://github.com/excalidraw/excalidraw) (MIT) for the canvas, and its
+  [Mermaid](https://github.com/mermaid-js/mermaid) bridge for flowcharts
+- [three.js](https://github.com/mrdoob/three.js) (MIT) for the 3D explanations
+- [Tauri](https://github.com/tauri-apps/tauri) and [React](https://github.com/facebook/react) (MIT) for the app
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0), the [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voice (Apache-2.0) and the [streaming Zipformer](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26) speech model from k2-fsa's icefall (Apache-2.0), downloaded when you ask for the natural voice or Pixie's speech to text
+- IBM Plex Mono, VT323, Press Start 2P and Patrick Hand (SIL Open Font License)
+
+Every package Pixie ships with, and its licence: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+(also in the app: Settings → About → Open-source licences).
 
 ## Licence
 
-MIT. Bundled fonts are OFL (see `resources/fonts/OFL-*.txt`).
+[MIT](LICENSE). Bundled fonts are under the SIL Open Font License (`resources/fonts/OFL-*.txt`).

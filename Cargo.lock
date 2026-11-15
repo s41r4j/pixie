@@ -3046,123 +3046,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "openclicky-core"
-version = "0.8.0"
-dependencies = [
- "log",
- "rand 0.8.8",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "openclicky-desktop"
-version = "0.8.0"
-dependencies = [
- "arboard",
- "async-trait",
- "base64 0.22.1",
- "block2",
- "chrono",
- "cpal",
- "env_logger",
- "image",
- "log",
- "objc2",
- "objc2-foundation",
- "openclicky-core",
- "openclicky-llm",
- "openclicky-mcp",
- "openclicky-native-host",
- "openclicky-tools",
- "openclicky-voice",
- "rand 0.8.8",
- "reqwest 0.12.28",
- "rodio",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-drag",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tempfile",
- "tokio",
- "trash",
- "windows 0.62.2",
- "windows-future",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "openclicky-llm"
-version = "0.8.0"
-dependencies = [
- "async-trait",
- "futures-util",
- "log",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
-]
-
-[[package]]
-name = "openclicky-mcp"
-version = "0.8.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "openclicky-native-host"
-version = "0.8.0"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "openclicky-tools"
-version = "0.8.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "image",
- "libc",
- "log",
- "openclicky-core",
- "openclicky-llm",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "url",
-]
-
-[[package]]
-name = "openclicky-voice"
-version = "0.8.0"
-dependencies = [
- "log",
- "openclicky-core",
- "rodio",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3326,6 +3209,134 @@ dependencies = [
  "atomic-waker",
  "fastrand",
  "futures-io",
+]
+
+[[package]]
+name = "pixie-core"
+version = "0.8.1"
+dependencies = [
+ "log",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pixie-desktop"
+version = "0.8.1"
+dependencies = [
+ "arboard",
+ "async-trait",
+ "base64 0.22.1",
+ "block2",
+ "chrono",
+ "cpal",
+ "env_logger",
+ "image",
+ "log",
+ "objc2",
+ "objc2-foundation",
+ "pixie-core",
+ "pixie-llm",
+ "pixie-mcp",
+ "pixie-native-host",
+ "pixie-stt",
+ "pixie-tools",
+ "pixie-voice",
+ "rand 0.8.8",
+ "reqwest 0.12.28",
+ "rodio",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-drag",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tempfile",
+ "tokio",
+ "trash",
+ "windows 0.62.2",
+ "windows-future",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "pixie-llm"
+version = "0.8.1"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "log",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
+name = "pixie-mcp"
+version = "0.8.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "pixie-native-host"
+version = "0.8.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "pixie-stt"
+version = "0.8.1"
+dependencies = [
+ "libloading 0.8.9",
+ "log",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "pixie-tools"
+version = "0.8.1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "image",
+ "libc",
+ "log",
+ "pixie-core",
+ "pixie-llm",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "pixie-voice"
+version = "0.8.1"
+dependencies = [
+ "log",
+ "pixie-core",
+ "rodio",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -14,7 +14,7 @@ use tauri::AppHandle;
 
 /// Stand-in characters for marks: U+F0000.. (Supplementary Private Use Area-A), never typed.
 const BASE: u32 = 0xF0000;
-const KINDS: &[&str] = &["point", "circle", "box", "underline", "arrow", "check", "cross", "3d"];
+const KINDS: &[&str] = &["point", "circle", "box", "underline", "arrow", "check", "cross", "3d", "canvas"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mark {
@@ -271,6 +271,7 @@ fn run_one(app: &AppHandle, m: &Mark) -> Result<String, String> {
     let at = where_(&m.target);
     match m.kind.as_str() {
         "3d" => crate::scene3d::focus(app, &m.target, &m.label),
+        "canvas" => crate::canvas::focus(app, &m.target),
         "point" => {
             let mut input = at;
             input["label"] = json!(m.label);

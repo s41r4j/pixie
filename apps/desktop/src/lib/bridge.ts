@@ -1,8 +1,9 @@
 // Typed bridge to the Rust side. Media is addressed by slot name only (resources/manifest.json).
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-export const EVENT_CHANNEL = "openclicky://event";
+export const EVENT_CHANNEL = "pixie://event";
 
 export type PanelMode =
   | "hidden"
@@ -215,6 +216,10 @@ export interface Settings {
   voice_id: string;
   speech_rate: number;
   voice_engine: string;
+  /** "auto", "pixie" (Pixie's own speech to text) or "system". */
+  stt_engine: string;
+  /** With Pixie's engine: words go into the field as they're spoken. */
+  dictate_live: boolean;
   kokoro_voice: number;
   voice_speed: number;
   voice_loudness?: "quiet" | "normal" | "loud";
@@ -342,6 +347,7 @@ export const api = {
   screenList: () => invoke<string[]>("screen_list"),
   reportProblem: (what?: string) => invoke<string>("report_problem", { what }),
   showLog: () => invoke<void>("show_log"),
+  showNotices: () => invoke<void>("show_notices"),
   panelMode: () => invoke<PanelMode>("panel_mode"),
   panelScreen: () => invoke<ScreenInfo>("panel_screen"),
   hidePanel: () => invoke<void>("hide_panel"),
@@ -359,6 +365,9 @@ export const api = {
   talkStop: () => invoke<void>("talk_stop"),
   voiceStatus: () => invoke<{ supported?: boolean; installed: boolean; ready: boolean; installing: boolean; voices: { id: number; name: string; description: string }[]; done: number; total: number }>("voice_status"),
   voiceInstall: () => invoke<void>("voice_install"),
+  sttStatus: () => invoke<SttStatus>("stt_status"),
+  sttInstall: () => invoke<void>("stt_install"),
+  sttRemove: () => invoke<void>("stt_remove"),
   ask: (text: string) => invoke<void>("ask", { text }),
   sessionNote: () => invoke<NoteDoc | null>("session_note"),
   playSound: (slot: string) => invoke<void>("play_sound", { slot }),
@@ -424,9 +433,48 @@ export const api = {
 };
 
 export type CheckItem = { name: string; ok: boolean; detail: string };
-export type Scene3DObject = { name: string; shape: string; at: number[]; size: number[]; color: string; label: string };
-export type Scene3D = { title: string; objects: Scene3DObject[]; links: { from: string; to: string; label?: string }[] };
+export type Scene3DObject = {
+  name: string;
+  shape: string;
+  at: [number, number, number];
+  size: [number, number, number];
+  color: string;
+  label: string;
+  /** Degrees. */
+  rotate?: [number, number, number];
+  opacity?: number;
+  material?: "matte" | "metal" | "glass" | "glow";
+  /** The (lower-case) name of the object this one is part of. */
+  parent?: string;
+  path?: number[][];
+  closed?: boolean;
+  profile?: number[][];
+  outline?: number[][];
+  teeth?: number;
+  copies?: number[][];
+  motion?: {
+    spin?: number;
+    axis?: "x" | "y" | "z";
+    orbit?: { around: string | number[]; period: number };
+    pulse?: { amount: number; period: number };
+    bob?: { height: number; period: number };
+  };
+};
+export type Scene3D = { title: string; objects: Scene3DObject[]; links: { from: string; to: string; label?: string; flow?: boolean }[] };
 
+/** Pixie's own speech to text (Settings → Voice). */
+export interface SttStatus {
+  supported: boolean;
+  installed: boolean;
+  installing: boolean;
+  done: number;
+  total: number;
+  engine: string;
+  in_use: boolean;
+}
+
+/** Events for this window: everything sent to all windows, plus the fast ones (pointer, mic
+ *  level, spoken words) that Rust sends only to the windows that draw them. */
 export function onEvent(cb: (e: CoreEvent) => void): Promise<UnlistenFn> {
-  return listen<CoreEvent>(EVENT_CHANNEL, (e) => cb(e.payload));
+  return getCurrentWebviewWindow().listen<CoreEvent>(EVENT_CHANNEL, (e) => cb(e.payload));
 }

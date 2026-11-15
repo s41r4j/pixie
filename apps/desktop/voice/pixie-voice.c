@@ -1,7 +1,7 @@
-// openclicky-voice: a persistent local neural voice (Kokoro via sherpa-onnx's C API).
+// pixie-voice: a persistent local neural voice (Kokoro via sherpa-onnx's C API).
 //
 // The model loads once; each request then takes ~0.25× real time on Apple silicon.
-//   openclicky-voice <runtime-dir> <model-dir> [threads]
+//   pixie-voice <runtime-dir> <model-dir> [threads]
 // stdin, one request per line (tab-separated):
 //   id \t sid \t speed \t out.wav \t loudness \t text [\t phonemes]
 // `phonemes` (Kokoro's IPA symbols, from Pixie's own lexicon lookup) is spoken when present, so
@@ -96,7 +96,7 @@ static char *join(const char *a, const char *b) {
 
 int main(int argc, char **argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: openclicky-voice <runtime-dir> <model-dir> [threads]\n");
+    fprintf(stderr, "usage: pixie-voice <runtime-dir> <model-dir> [threads]\n");
     return 2;
   }
   setvbuf(stdout, NULL, _IOLBF, 0);

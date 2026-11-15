@@ -1,7 +1,7 @@
 //! Playbook loader: `skills/<name>/SKILL.md` (or `skills/<name>.md`) with a front-matter
 //! `name` and `description`, from the bundled `skills/` and `<app_data>/skills/`.
 
-use openclicky_core::prompt::Skill;
+use pixie_core::prompt::Skill;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 

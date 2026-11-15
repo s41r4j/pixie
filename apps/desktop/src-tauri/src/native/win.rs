@@ -392,6 +392,36 @@ fn vk(name: &str) -> Option<u16> {
     })
 }
 
+/// Type text as characters (not key codes), whatever the keyboard layout. For type as you
+/// speak: only sent while no modifier key is held.
+pub fn type_text(text: &str) -> Result<(), String> {
+    let mut seq: Vec<km::INPUT> = Vec::new();
+    for unit in text.encode_utf16() {
+        for up in [false, true] {
+            let mut i: km::INPUT = unsafe { std::mem::zeroed() };
+            i.r#type = km::INPUT_KEYBOARD;
+            i.Anonymous.ki = km::KEYBDINPUT { wVk: 0, wScan: unit, dwFlags: km::KEYEVENTF_UNICODE | if up { km::KEYEVENTF_KEYUP } else { 0 }, time: 0, dwExtraInfo: 0 };
+            seq.push(i);
+        }
+    }
+    // In small batches so slow apps keep the order.
+    for chunk in seq.chunks(40) {
+        send(chunk);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    Ok(())
+}
+
+/// Delete `n` characters before the cursor.
+pub fn backspace(n: usize) -> Result<(), String> {
+    let seq: Vec<km::INPUT> = (0..n).flat_map(|_| [key(0x08, false), key(0x08, true)]).collect();
+    for chunk in seq.chunks(40) {
+        send(chunk);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    Ok(())
+}
+
 /// "cmd+shift+t": ⌘ means Ctrl here, ⌥ Alt; "win" is the Windows key.
 pub fn press_keys(combo: &str) -> Result<(), String> {
     let mut mods = vec![];

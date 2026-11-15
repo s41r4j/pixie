@@ -1,10 +1,10 @@
-//! Events streamed from Rust to the UI (one Tauri event channel, `openclicky://event`).
+//! Events streamed from Rust to the UI (one Tauri event channel, `pixie://event`).
 
 use crate::model::JobId;
 use serde::{Deserialize, Serialize};
 
 /// Name of the Tauri event every [`Event`] is emitted on.
-pub const EVENT_CHANNEL: &str = "openclicky://event";
+pub const EVENT_CHANNEL: &str = "pixie://event";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Event {

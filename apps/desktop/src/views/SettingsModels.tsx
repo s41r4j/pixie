@@ -382,7 +382,7 @@ export function UsagePanel({ view }: { view: SettingsView | null; onSaved: (v: S
   const load = () => api.usageSummary(days, provider, kind).then(setU).catch(() => {});
   useEffect(() => {
     load();
-    const t = setInterval(load, 15000);
+    const t = setInterval(() => document.visibilityState === "visible" && load(), 15000);
     return () => clearInterval(t);
   }, [days, provider, kind]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!u || !view) return null;

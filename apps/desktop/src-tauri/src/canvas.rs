@@ -6,8 +6,8 @@
 //! Downloads and never overwrite.
 
 use crate::AppState;
-use openclicky_core::Event;
-use openclicky_llm::ToolDef;
+use pixie_core::Event;
+use pixie_llm::ToolDef;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -58,18 +58,33 @@ fn new_id() -> String {
 pub fn tool() -> ToolDef {
     ToolDef {
         name: "canvas".into(),
-        description: "An Excalidraw canvas window with real shapes they can move, edit and save. For any diagram, flow, sketch, layout or picture that explains. It hides when they click outside; open brings it back.\n\
+        description: "An Excalidraw canvas window with real shapes they can move, edit and save. For any diagram, chart, plan, sketch, layout or picture that explains. It hides when they click outside; open brings it back.\n\
 open: the canvas in use (or the last), canvas=<id> or title=<words> from list, or new=true.\n\
-draw: add to the canvas in use and show it (title names it, new=true starts fresh), with either mermaid (flowchart, sequence or class diagram, laid out for you; best for processes) or elements: Excalidraw skeletons in px, origin top-left, about 1200×800. rectangle/ellipse/diamond {x,y,width,height,label:{text}}, text {x,y,text,fontSize}, arrow/line {x,y,width,height} (the vector) or {start:{id},end:{id},label:{text}}, frame {x,y,width,height,name,children:[ids]}. Give shapes an id to connect them. Optional strokeColor, backgroundColor (#a5d8ff #b2f2bb #ffec99 #ffc9c9 #d0bfff), fillStyle (solid|hachure), strokeStyle (dashed), roundness {type:3}.\n\
+draw: add to the canvas in use and show it (title names it, new=true starts fresh). Prefer make: Pixie lays it out, you only give the content. make is one of these or a list of up to 6 (stacked top to bottom):\n\
+  {kind:tree, direction?:right, nodes:[{id,label,parent}]} org charts, hierarchies, decision trees\n\
+  {kind:mindmap, center, branches:[{label, children:[label | {label,children}]}]}\n\
+  {kind:timeline, events:[{when,label}]}   {kind:cycle, title?, items:[label]}\n\
+  {kind:layers, layers:[{name, items:[label]}]} architecture, top layer first\n\
+  {kind:compare, columns:[{title, points:[text]}]} pros and cons, options side by side\n\
+  {kind:quadrant, x_axis, y_axis, quadrants?:[top-left,top-right,bottom-left,bottom-right], items:[{label, x:0..1, y:0..1}]}\n\
+  {kind:chart, type:bar|line|pie|scatter, title?, labels:[…], values:[numbers] | series:[{name,values}], x_label?, y_label?; scatter: points:[{x,y,label}]} real numbers only\n\
+  {kind:table, title?, columns:[…], rows:[[…]]}   {kind:notes, items:[text]} sticky notes\n\
+  {kind:code, title?, text}   {kind:wireframe, device:browser|phone, title, parts:[{kind:nav|heading|text|button|input|image|list|card, label}]}\n\
+  Any part may carry id and color (blue green yellow red purple orange grey). Ids let you point at a part later.\n\
+Or mermaid (flowchart, sequence or class diagram, laid out for you; best for processes with branches). Or elements for free drawing: Excalidraw skeletons in px, origin top-left, about 1200×800. rectangle/ellipse/diamond {x,y,width,height,label:{text}}, text {x,y,text,fontSize}, arrow/line {x,y,width,height} (the vector) or {start:{id},end:{id},label:{text}}, frame {x,y,width,height,name,children:[ids]}. Give shapes an id to connect them. Optional strokeColor, backgroundColor (#a5d8ff #b2f2bb #ffec99 #ffc9c9 #d0bfff), fillStyle (solid|hachure), strokeStyle (dashed), roundness {type:3}.\n\
+edit: change what's there instead of drawing again: changes:[{id, label?, color?, x?, y?, width?, height?, remove?:true}] (ids from draw or read).\n\
+While you talk about a drawing, put [[canvas id]] in a sentence: the canvas glides to that part and lights it as the sentence is spoken.\n\
 read: what's on it now, their edits included. clear: empty it. list: saved canvases (id, title, date, shapes). delete: the one in use, canvas=<id> or all=true, to the Trash; only when they ask (clearing isn't deleting).".into(),
         input_schema: json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["open", "draw", "read", "clear", "list", "delete"] },
+                "action": { "type": "string", "enum": ["open", "draw", "edit", "read", "clear", "list", "delete"] },
                 "canvas": { "type": "string", "description": "a canvas id from list" },
                 "title": { "type": "string" },
                 "new": { "type": "boolean" },
                 "all": { "type": "boolean", "description": "delete: every canvas" },
+                "make": { "description": "one {kind, …} or a list of them: tree, mindmap, timeline, layers, cycle, compare, quadrant, chart, table, notes, code, wireframe" },
+                "changes": { "type": "array", "items": { "type": "object" }, "description": "edit: [{id, label?, color?, x?, y?, width?, height?, remove?}]" },
                 "mermaid": { "type": "string" },
                 "elements": { "type": "array", "items": { "type": "object" } }
             },
@@ -172,10 +187,42 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
                 .unwrap_or_else(|| format!("{id} · a new, blank canvas"));
             return Ok(format!("The canvas is open in front of them: {what}."));
         }
-        "draw" | "read" | "clear" => {}
+        "draw" | "edit" | "read" | "clear" => {}
         other => return Err(format!("Unknown canvas action \"{other}\".")),
     }
     let id = pick(app, input, &action)?;
+    // `make`: Pixie lays the thing out here; the window gets plain shapes.
+    let mut input = input.clone();
+    let mut parts: Vec<(String, String)> = vec![];
+    if action == "draw" && input.get("make").is_some_and(|m| !m.is_null()) {
+        let made = crate::canvas_kit::make(&input["make"], &saved_ids(app, &id), NEXT.load(Ordering::SeqCst))?;
+        parts = made.parts;
+        let mut elements = made.elements;
+        if let Some(extra) = input.get("elements").and_then(Value::as_array) {
+            elements.extend(extra.iter().cloned());
+        }
+        input["elements"] = Value::Array(elements);
+        input["place_below"] = json!(true);
+        if let Some(o) = input.as_object_mut() {
+            o.remove("make");
+            o.remove("mermaid");
+        }
+    }
+    if action == "edit" {
+        let changes = input.get("changes").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+        if changes == 0 {
+            return Err("edit needs changes: [{id, label?, color?, x?, y?, width?, height?, remove?}].".into());
+        }
+        // Colour names become the canvas's own fills.
+        if let Some(list) = input.get_mut("changes").and_then(Value::as_array_mut) {
+            for c in list {
+                if let Some(name) = c.get("color").cloned().filter(|v| v.is_string()) {
+                    c["color"] = json!(crate::canvas_kit::colour(&name));
+                }
+            }
+        }
+    }
+    let input = &input;
     open(app, &id);
     let req = NEXT.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = oneshot::channel();
@@ -196,7 +243,34 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
     if let Ok(mut bus) = app.state::<AppState>().audio.lock() {
         bus.stop_bed();
     }
-    r
+    // The parts worth pointing at while explaining, by id.
+    r.map(|text| {
+        if parts.is_empty() {
+            return text;
+        }
+        let named: Vec<String> = parts.iter().take(30).map(|(id, label)| format!("{id} ({})", label.chars().take(28).collect::<String>())).collect();
+        format!("{text} Parts you can light up as you explain, with [[canvas id]] in a sentence: {}.", named.join(", "))
+    })
+}
+
+/// Ids in the saved copy of a canvas (new parts mustn't reuse them).
+fn saved_ids(app: &AppHandle, id: &str) -> std::collections::HashSet<String> {
+    file(app, id)
+        .ok()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v["elements"].as_array().map(|a| a.iter().filter_map(|e| e["id"].as_str().map(str::to_string)).collect()))
+        .unwrap_or_default()
+}
+
+/// `[[canvas id]]` in a spoken sentence: glide to that part and light it.
+pub fn focus(app: &AppHandle, target: &str) -> Result<String, String> {
+    let Some(id) = current(app) else { return Err("No canvas is open.".into()) };
+    if !crate::windows::canvas_visible(app) {
+        open(app, &id);
+    }
+    crate::emit(app, Event::new("canvas.focus", json!({ "canvas": id, "target": target })));
+    Ok(format!("Showed {target} on the canvas."))
 }
 
 /// Move a file to the Trash (so a deleted canvas can still be fished back).
@@ -344,9 +418,9 @@ pub fn canvas_export(name: String, ext: String, data: String) -> Result<String, 
     let bytes = if ext == "png" { base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| e.to_string())? } else { data.into_bytes() };
     let clean: String = name.chars().map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '-' }).collect::<String>().trim().chars().take(80).collect();
     let stem = if clean.is_empty() { "Pixie drawing".to_string() } else { clean };
-    let downloads = openclicky_tools::guard::home().join("Downloads");
+    let downloads = pixie_tools::guard::home().join("Downloads");
     std::fs::create_dir_all(&downloads).map_err(|e| e.to_string())?;
-    let dest = openclicky_tools::guard::unique_destination(&downloads.join(format!("{stem}.{ext}")));
+    let dest = pixie_tools::guard::unique_destination(&downloads.join(format!("{stem}.{ext}")));
     std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
     // Not revealed here: Finder taking focus would close the canvas. The window offers "Show".
     Ok(dest.display().to_string())

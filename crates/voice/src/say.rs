@@ -790,7 +790,7 @@ mod tests {
 
 #[cfg(test)]
 mod real {
-    /// `LEXICON=…/lexicon-us-en.txt cargo test -p openclicky-voice real -- --ignored --nocapture`
+    /// `LEXICON=…/lexicon-us-en.txt cargo test -p pixie-voice real -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn real_lexicon_samples() {

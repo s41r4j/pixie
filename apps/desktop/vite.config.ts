@@ -10,7 +10,7 @@ function slots(): Plugin {
   const kinds: Record<string, string> = { icon: "icons", sound: "sounds", video: "videos", font: "fonts" };
   const types: Record<string, string> = { ".png": "image/png", ".svg": "image/svg+xml", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".ttf": "font/ttf", ".mp4": "video/mp4" };
   return {
-    name: "openclicky-slots",
+    name: "pixie-slots",
     configureServer(server) {
       server.middlewares.use("/__slot", (req, res) => {
         const [kind, slot] = (req.url ?? "").replace(/^\//, "").split("/");

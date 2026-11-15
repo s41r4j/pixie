@@ -1,6 +1,6 @@
 //! Which provider to use, from environment / settings.
 //!
-//! Order: explicit `OPENCLICKY_PROVIDER` → Claude when `ANTHROPIC_API_KEY` is set (the default
+//! Order: explicit `PIXIE_PROVIDER` → Claude when `ANTHROPIC_API_KEY` is set (the default
 //! provider) → DeepSeek when `DEEPSEEK` / `DEEPSEEK_API_KEY` is set.
 
 use crate::{AnthropicProvider, Effort, Provider};
@@ -87,7 +87,7 @@ impl ProviderConfig {
         let deepseek = get("DEEPSEEK").or_else(|| get("DEEPSEEK_API_KEY"));
         let claude = get("ANTHROPIC_API_KEY");
         let openai = get("OPENAI_API_KEY");
-        let wanted = get("OPENCLICKY_PROVIDER").map(|s| s.to_lowercase());
+        let wanted = get("PIXIE_PROVIDER").map(|s| s.to_lowercase());
         let mut cfg = match (wanted.as_deref(), claude, openai, deepseek) {
             (Some("deepseek"), _, _, Some(k)) => Self::deepseek(k),
             (Some("openai"), _, Some(k), _) => Self::openai(k),
@@ -156,7 +156,7 @@ mod tests {
         let c = ProviderConfig::from_vars(&vars(&[
             ("DEEPSEEK", "a"),
             ("ANTHROPIC_API_KEY", "b"),
-            ("OPENCLICKY_PROVIDER", "deepseek"),
+            ("PIXIE_PROVIDER", "deepseek"),
         ]))
         .unwrap();
         assert_eq!(c.kind, ProviderKind::DeepSeek);
@@ -167,7 +167,7 @@ mod tests {
         let c = ProviderConfig::from_vars(&vars(&[("OPENAI_API_KEY", "o"), ("OPENAI_FAST_MODEL", "gpt-x")])).unwrap();
         assert_eq!(c.kind, ProviderKind::OpenAi);
         assert_eq!(c.fast_model, "gpt-x");
-        let c = ProviderConfig::from_vars(&vars(&[("OPENAI_API_KEY", "o"), ("DEEPSEEK", "d"), ("OPENCLICKY_PROVIDER", "deepseek")])).unwrap();
+        let c = ProviderConfig::from_vars(&vars(&[("OPENAI_API_KEY", "o"), ("DEEPSEEK", "d"), ("PIXIE_PROVIDER", "deepseek")])).unwrap();
         assert_eq!(c.kind, ProviderKind::DeepSeek);
     }
 

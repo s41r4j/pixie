@@ -14,8 +14,8 @@
 //! tray menu does it at once, and quitting installs a waiting Windows update.
 
 use crate::{emit, panel, AppState};
-use openclicky_core::model::JobState;
-use openclicky_core::Event;
+use pixie_core::model::JobState;
+use pixie_core::Event;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Mutex;

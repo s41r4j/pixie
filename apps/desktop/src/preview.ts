@@ -104,7 +104,7 @@ export function installPreview() {
         case "job_get": return JOBS[0];
         case "job_note": return NOTE;
         case "session_note": return null;
-        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/com.openclicky.app/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz", auto_update: true, experimental: { connectors: params.get("exp") === "on" }, voice_loudness: "normal", memory: "auto", chat_reset_hour: 0, persona: (params.get("persona") ?? "pix"), spicy: false, canvas_use: "helps" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } }, vision: params.get("novision") ? { talk: false, agents: true } : { talk: true, agents: true } };
+        case "settings_get": return { settings: { deepseek_key: "sk-1••••abcd", anthropic_key: "sk-a••••wxyz", provider: "claude", voice_id: "", speech_rate: 0.52, voice_engine: "kokoro", kokoro_voice: 3, voice_speed: 1, openai_key: "", models: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" } }, prices: {}, coding: { agent: "codex", models: { codex: "" }, codex_sandbox: "workspace-write", claude_permission: "acceptEdits", dir: "" }, buddy: true, buddy_mode: "idle", can_click: true, fallback: "deepseek:deepseek-flash", shortcut_talk: "ctrl+option", shortcut_dictate: "fn+ctrl", sounds: { "agent-done": { volume: 0.6, muted: false, custom: "/Users/me/Library/Application Support/pixie.s41r4j.in/custom-sounds/agent-done.wav" }, "whoosh": { volume: 1, muted: true, custom: "" } }, speak_answers: true, share_screen: true, master_volume: 1, muted: false, onboarded: params.get("tab") !== "welcome", user_name: "", locale: "", apps: { calendar: true, reminders: true }, google_client_id: "1234-abc.apps.googleusercontent.com", google_client_secret: "GOCS••••xyz", auto_update: true, experimental: { connectors: params.get("exp") === "on" }, voice_loudness: "normal", memory: "auto", chat_reset_hour: 0, persona: (params.get("persona") ?? "pix"), spicy: false, canvas_use: "helps" }, provider: "Claude · claude-haiku-5-5", key_hint: "sk-a••••wxyz", active: "claude", effective: { claude: { fast: "claude-haiku-5-5", deep: "claude-opus-5-5" }, openai: { fast: "gpt-5-mini", deep: "gpt-5" }, deepseek: { fast: "deepseek-flash", deep: "deepseek-flash" } }, vision: params.get("novision") ? { talk: false, agents: true } : { talk: true, agents: true } };
         case "permissions_status": if (previewView === "guide") return []; return [
           { id: "microphone", label: "Microphone", why: "Hear you while you hold ⌃⌥.", required: true, state: "granted", restart_hint: false },
           { id: "screen", label: "Screen Recording", why: "See what you're looking at when you ask about it.", required: true, state: "not_granted", restart_hint: true },
@@ -113,7 +113,7 @@ export function installPreview() {
           { id: "files", label: "Desktop, Documents & Downloads", why: "Find and save files where you keep them.", required: false, state: "unchecked", restart_hint: false },
         ];
         case "voices": return { voices: [{ id: "ava", name: "Ava", language: "en-US", quality: "premium" }, { id: "sam", name: "Samantha", language: "en-US", quality: "default" }], default: "ava" };
-        case "status": return { helper: true, provider: "DeepSeek · deepseek-flash", browser: false, connectors: [], data_dir: "/Users/me/Library/Application Support/com.openclicky.app", version: "0.2.0" };
+        case "status": return { helper: true, provider: "DeepSeek · deepseek-flash", browser: false, connectors: [], data_dir: "/Users/me/Library/Application Support/pixie.s41r4j.in", version: "0.2.0" };
         case "models_available": return { prices_at: now - 3_600_000, models: [
           { id: "claude-opus-5-5", name: "Claude Opus 5.5", vision: true, created: now - 9e8, price: { input: 4, output: 20 }, context: 1000000 },
           { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vision: true, created: now - 9.5e8, price: { input: 2, output: 10 }, context: 1000000 },
@@ -137,6 +137,9 @@ export function installPreview() {
           { id: "codex", label: "Codex CLI", installed: true, path: "/opt/homebrew/bin/codex", version: "codex-cli 0.166.0" },
           { id: "claude", label: "Claude Code", installed: true, path: "/opt/homebrew/bin/claude", version: "2.1.318 (Claude Code)" },
           { id: "opencode", label: "opencode", installed: true, path: "/opt/homebrew/bin/opencode", version: "v2.2.5" } ], t3code: true };
+        case "stt_status": return { supported: true, installed: params.get("stt") !== "dl", installing: false, done: 0, total: 0, engine: "auto", in_use: true };
+        case "stt_install":
+        case "stt_remove": return null;
         case "voice_status": return { installed: params.get("voice") !== "dl", ready: true, installing: params.get("voice") === "dl", done: 128_000_000, total: 372_000_000, voices: [{ id: 3, name: "Heart", description: "warm, American (default)" }, { id: 2, name: "Bella", description: "bright, American" }, { id: 16, name: "Michael", description: "relaxed, American" }, { id: 21, name: "Emma", description: "clear, British" }] };
         case "memory_list": return [
           { id: "m1", text: "Prefers short answers without small talk", kind: "preference", source: "said", created: Date.now() - 864e5 * 3, updated: Date.now() - 864e5 * 3, uses: 4, last_used: Date.now() },
@@ -152,18 +155,35 @@ export function installPreview() {
         case "checkup": return [{ name: "Screen and speech helper", ok: true, detail: "answering" }, { name: "Permissions", ok: false, detail: "Accessibility not allowed (Settings → Permissions)" }, { name: "Model", ok: true, detail: "DeepSeek · deepseek-flash answered in 0.9 s" }, { name: "Voice", ok: true, detail: "natural voice installed" }, { name: "Disk space", ok: true, detail: "112.4 GB free" }, { name: "Problems today", ok: true, detail: "none" }];
         case "report_problem": return "Google Chrome";
         case "show_log": return null;
-        case "scene3d_get": return { title: "The inner planets", objects: [
-          { name: "sun", shape: "sphere", at: [0, 0, 0], size: [2.2], color: "yellow", label: "Sun" },
-          { name: "mercury", shape: "sphere", at: [2.4, 0, 0], size: [0.35], color: "grey", label: "Mercury" },
-          { name: "venus", shape: "sphere", at: [3.6, 0, 0.8], size: [0.6], color: "orange", label: "Venus" },
-          { name: "earth", shape: "sphere", at: [5, 0, -0.6], size: [0.65], color: "blue", label: "Earth" },
-          { name: "mars", shape: "sphere", at: [6.6, 0, 0.4], size: [0.45], color: "red", label: "Mars" },
-          { name: "orbit", shape: "ring", at: [0, 0, 0], size: [10], color: "grey", label: "" } ],
-          links: [{ from: "earth", to: "mars", label: "farther out" }] };
+        case "show_notices": return null;
+        case "scene3d_get": {
+          const ring = (n: number, r: number, y: number) => Array.from({ length: n }, (_, i) => [Math.cos((i / n) * 6.283) * r, y, Math.sin((i / n) * 6.283) * r]);
+          const helix = (turns: number, r: number, phase: number) => Array.from({ length: 30 }, (_, i) => [Math.cos((i / 29) * turns * 6.283 + phase) * r, (i / 29) * 5 - 2.5, Math.sin((i / 29) * turns * 6.283 + phase) * r]);
+          if (params.get("scene") === "machine")
+            return { title: "How a gearbox turns", objects: [
+              { name: "housing", shape: "box", at: [0, 0, 0], size: [5.2, 2.6, 2.2], color: "grey", label: "Housing", opacity: 0.25, material: "glass", rotate: [0, 0, 0], parent: "", motion: {} },
+              { name: "drive gear", shape: "gear", at: [-1.2, 0, 0], size: [2, 0.4, 2], teeth: 14, color: "orange", label: "Drive gear", material: "metal", rotate: [90, 0, 0], opacity: 1, parent: "", motion: { spin: 60, axis: "y" } },
+              { name: "driven gear", shape: "gear", at: [1.05, 0, 0], size: [2.6, 0.4, 2.6], teeth: 18, color: "blue", label: "Driven gear", material: "metal", rotate: [90, 10, 0], opacity: 1, parent: "", motion: { spin: -46.7, axis: "y" } },
+              { name: "input shaft", shape: "cylinder", at: [-1.2, 0, 1.6], size: [0.3, 2.4, 0.3], color: "white", label: "Input shaft", material: "metal", rotate: [90, 0, 0], opacity: 1, parent: "", motion: {} },
+              { name: "output shaft", shape: "cylinder", at: [1.05, 0, -1.6], size: [0.3, 2.4, 0.3], color: "white", label: "Output shaft", material: "metal", rotate: [90, 0, 0], opacity: 1, parent: "", motion: {} },
+              { name: "bolts", shape: "cylinder", at: [-2.4, 1.35, 0.9], size: [0.18, 0.12, 0.18], color: "black", label: "", material: "metal", rotate: [0, 0, 0], opacity: 1, parent: "", motion: {}, copies: [[4.8, 0, 0], [0, 0, -1.8], [4.8, 0, -1.8]] } ],
+              links: [{ from: "input shaft", to: "drive gear", label: "power in", flow: true }, { from: "driven gear", to: "output shaft", label: "slower, stronger", flow: true }] };
+          return { title: "Inside a cell (simplified)", objects: [
+            { name: "membrane", shape: "sphere", at: [0, 0, 0], size: [7, 7, 7], color: "teal", label: "Cell membrane", opacity: 0.18, material: "glass", rotate: [0, 0, 0], parent: "", motion: {} },
+            { name: "nucleus", shape: "sphere", at: [0, 0, 0], size: [2.4, 2.4, 2.4], color: "purple", label: "Nucleus", opacity: 1, material: "matte", rotate: [0, 0, 0], parent: "", motion: { pulse: { amount: 0.05, period: 2.4 } } },
+            { name: "dna", shape: "tube", at: [0, 0, 0], size: [0.12, 0.12, 0.12], color: "yellow", label: "DNA", path: helix(3, 0.45, 0).map((p) => [p[0], p[1] * 0.34, p[2]]), opacity: 1, material: "glow", rotate: [0, 0, 0], parent: "nucleus", motion: { spin: 40, axis: "y" } },
+            { name: "mitochondria", shape: "capsule", at: [2.2, 0.6, 0.8], size: [0.6, 1.4, 0.6], color: "orange", label: "Mitochondria", opacity: 1, material: "matte", rotate: [0, 0, 60], parent: "", motion: { bob: { height: 0.15, period: 4 } }, copies: [[-4.4, -1, 0.2], [-1.4, 1.6, -2.6]] },
+            { name: "ribosomes", shape: "sphere", at: [0, 0, 0], size: [0.16, 0.16, 0.16], color: "pink", label: "Ribosomes", opacity: 1, material: "matte", rotate: [0, 0, 0], parent: "", motion: {}, copies: [...ring(40, 2.3, 0.4), ...ring(36, 2.7, -0.9), ...ring(30, 2.0, 1.6)] },
+            { name: "golgi", shape: "torus", at: [-2, -0.6, 1.2], size: [1.3, 1.3, 1.3], color: "green", label: "Golgi", opacity: 1, material: "matte", rotate: [70, 0, 20], parent: "", motion: {} },
+            { name: "vesicle", shape: "sphere", at: [-0.2, -0.6, 2.6], size: [0.4, 0.4, 0.4], color: "blue", label: "Vesicle", opacity: 1, material: "matte", rotate: [0, 0, 0], parent: "", motion: { orbit: { around: [0, -0.6, 0], period: 14 } } } ],
+            links: [{ from: "nucleus", to: "golgi", label: "proteins", flow: true }] };
+        }
         case "canvas_take_ops": {
           if ((window as unknown as { __tookOps?: boolean }).__tookOps) return [];
           (window as unknown as { __tookOps?: boolean }).__tookOps = true;
           const kind = params.get("draw") ?? "elements";
+          // ?draw=/some.json: a draw input from a file (what `make` produced, for a look at it).
+          if (kind.startsWith("/")) return fetch(kind).then((r) => r.json()).then((v) => (Array.isArray(v) ? v : [v]).map((input, i) => ({ req: i + 1, canvas: "demo", action: input.action ?? "draw", input })));
           const input =
             kind === "mermaid"
               ? { action: "draw", title: "Signup flow", mermaid: "flowchart LR\n  A[Visit site] --> B{Has account?}\n  B -- yes --> C[Sign in]\n  B -- no --> D[Sign up]\n  D --> E[Verify email]\n  E --> C\n  C --> F((Dashboard))" }
@@ -186,7 +206,7 @@ export function installPreview() {
         case "update_check":
           return { current: "0.7.0", phase: params.get("update") ?? "up_to_date", version: "0.7.1", notes: "Fixes.", error: null, done: 9_400_000, total: 22_800_000, checked_at: Math.floor(Date.now() / 1000) - 600, auto: true, supported: true };
         case "apps_status": return { supported: true, on: { calendar: true, reminders: true, contacts: false, mail: false }, calendar: "granted", reminders: "granted", contacts: "not_determined", mail: "ask", google: { configured: true, signed_in: params.get("google") === "on", email: "you@gmail.com" } };
-        case "connectors_gallery": return { node: true, path: "/Users/me/Library/Application Support/com.openclicky.app/mcp.json",
+        case "connectors_gallery": return { node: true, path: "/Users/me/Library/Application Support/pixie.s41r4j.in/mcp.json",
           custom: [{ id: "my-db", name: "my-db", command: "uvx", args: ["mcp-server-sqlite", "--db-path", "~/data.db"], group: "custom", auth: "custom", added: true, on: true, tools: 6, error: null, env: {}, tool_list: [] }],
           presets: [
           { id: "github", name: "GitHub", group: "work", auth: "token", blurb: "Issues, pull requests, code search and files in your repos, through GitHub's own server.", help: "Create a fine-grained token.", help_url: "https://github.com", fields: [{ key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "Personal access token", placeholder: "github_pat_…" }], folder: false, added: true, on: true, tools: 41, error: null, env: { GITHUB_PERSONAL_ACCESS_TOKEN: "gith••••a1b" }, args: [], tool_list: [{ name: "search_issues", description: "Search issues" }, { name: "create_pull_request", description: "Open a PR" }, { name: "get_file_contents", description: "Read a file" }, { name: "list_commits", description: "" }] },
@@ -208,13 +228,13 @@ export function installPreview() {
 
   // Script a scene per view.
   const ev = (kind: string, payload: unknown, delay: number, job_id: string | null = null) =>
-    setTimeout(() => emit("openclicky://event", { kind, job_id, payload }), delay);
+    setTimeout(() => emit("pixie://event", { kind, job_id, payload }), delay);
   if (previewView === "panel") {
     if (mode === "listening" || mode === "dictating") {
       ev("mic.partial", { text: "where's the share button in this" }, 200);
       let t = 0;
       const tick = () => {
-        emit("openclicky://event", { kind: "mic.level", job_id: null, payload: { level: 0.3 + 0.6 * Math.abs(Math.sin(t++ / 3)) } });
+        emit("pixie://event", { kind: "mic.level", job_id: null, payload: { level: 0.3 + 0.6 * Math.abs(Math.sin(t++ / 3)) } });
       };
       setInterval(tick, 60);
     }

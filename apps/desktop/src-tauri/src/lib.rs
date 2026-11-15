@@ -1,4 +1,4 @@
-//! openclicky desktop shell: tray agent, notch panel, hold-to-talk voice loop, screen
+//! Pixie desktop shell: tray agent, notch panel, hold-to-talk voice loop, screen
 //! pointing/drawing, background jobs with notes, settings and onboarding.
 
 mod browser;
@@ -9,6 +9,8 @@ mod config;
 mod connectors;
 mod google;
 mod heal;
+mod rename;
+mod safety;
 mod rollback;
 mod watchdog;
 mod helper;
@@ -18,6 +20,7 @@ mod hotkey;
 #[cfg(not(target_os = "macos"))]
 mod native;
 mod canvas;
+mod canvas_kit;
 mod myself;
 mod memory;
 mod integrations;
@@ -41,14 +44,15 @@ mod session;
 mod shelf;
 mod skills;
 mod speech;
+mod stt;
 mod tray;
 mod usage;
 mod windows;
 
-use openclicky_core::prompt::Skill;
-use openclicky_core::{Event, ResourceStore};
-use openclicky_llm::Provider;
-use openclicky_voice::{AudioBus, RodioOutput};
+use pixie_core::prompt::Skill;
+use pixie_core::{Event, ResourceStore};
+use pixie_llm::Provider;
+use pixie_voice::{AudioBus, RodioOutput};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -118,7 +122,7 @@ impl AppState {
         let primary = config::provider_config(&self.data_dir, &s);
         let backup = config::fallback_config(&self.data_dir, &s).filter(|b| primary.as_ref().map(|p| p.kind != b.kind || p.fast_model != b.fast_model).unwrap_or(true));
         let p = match (primary, backup) {
-            (Some(p), Some(b)) => Some(Arc::new(openclicky_llm::Fallback { primary: usage::Recorded::wrap(p, &self.data_dir), backup: usage::Recorded::wrap(b, &self.data_dir) }) as Arc<dyn Provider>),
+            (Some(p), Some(b)) => Some(Arc::new(pixie_llm::Fallback { primary: usage::Recorded::wrap(p, &self.data_dir), backup: usage::Recorded::wrap(b, &self.data_dir) }) as Arc<dyn Provider>),
             (Some(p), None) => Some(usage::Recorded::wrap(p, &self.data_dir)),
             (None, Some(b)) => Some(usage::Recorded::wrap(b, &self.data_dir)),
             (None, None) => None,
@@ -136,12 +140,29 @@ impl AppState {
 }
 
 /// Emit a core [`Event`] to every window.
+/// The fast events, and the only windows that draw them. Everything else goes to every window.
+fn only_for(kind: &str) -> Option<&'static [&'static str]> {
+    match kind {
+        // ~40 a second while the pointer moves.
+        "buddy.cursor" => Some(&[OVERLAY]),
+        // ~30 a second while the microphone is on.
+        "mic.level" => Some(&[PANEL, SETTINGS]),
+        "speech.word" | "turn.delta" => Some(&[PANEL]),
+        _ => None,
+    }
+}
+
 pub fn emit(app: &tauri::AppHandle, event: Event) {
-    if !matches!(event.kind.as_str(), "mic.level" | "speech.word" | "turn.delta") {
+    let only = only_for(&event.kind);
+    if only.is_none() && log::log_enabled!(log::Level::Debug) {
         let p = event.payload.to_string();
         log::debug!("event {} {}", event.kind, p.chars().take(240).collect::<String>());
     }
-    if let Err(e) = app.emit(openclicky_core::event::EVENT_CHANNEL, &event) {
+    let sent = match only {
+        Some(labels) => labels.iter().try_for_each(|l| app.emit_to(*l, pixie_core::event::EVENT_CHANNEL, &event)),
+        None => app.emit(pixie_core::event::EVENT_CHANNEL, &event),
+    };
+    if let Err(e) = sent {
         log::warn!("emit {} failed: {e}", event.kind);
     }
 }
@@ -163,7 +184,7 @@ pub fn run() {
         .init();
 
     let app = tauri::Builder::default()
-        // One openclicky at a time: a second launch just opens Settings in the first one.
+        // One Pixie at a time: a second launch just opens Settings in the first one.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             windows::open_settings(app, "");
         }))
@@ -222,6 +243,9 @@ pub fn run() {
             commands::guide_hide,
             commands::voice_status,
             commands::voice_install,
+            commands::stt_status,
+            commands::stt_install,
+            commands::stt_remove,
             commands::apps_status,
             commands::app_set,
             commands::google_sign_in,
@@ -253,6 +277,7 @@ pub fn run() {
             commands::screen_list,
             commands::report_problem,
             commands::show_log,
+            commands::show_notices,
             permissions::permissions_status,
             permissions::permission_request,
             permissions::permission_open_settings,
@@ -267,15 +292,31 @@ pub fn run() {
             let data_dir = app
                 .path()
                 .app_data_dir()
-                .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".openclicky"));
+                .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".pixie"));
+            // Up to 0.8.0 the app ID was com.openclicky.app: bring that folder over first.
+            let moved = rename::move_data(&data_dir);
             let _ = std::fs::create_dir_all(&data_dir);
             heal::init(&data_dir, &app.package_info().version.to_string());
+            match &moved {
+                rename::Moved::Nothing => {}
+                rename::Moved::Done => {
+                    log::info!("rename: moved {} to {}", rename::OLD_ID, data_dir.display());
+                    if cfg!(target_os = "macos") {
+                        heal::notice("Pixie has a new app ID (pixie.s41r4j.in), so macOS asks for its permissions once more: Settings → Permissions. Your settings, keys, memory and chats came along.");
+                    }
+                }
+                rename::Moved::BothThere(old) => log::warn!("rename: both {} and {} have data; kept the new one", old.display(), data_dir.display()),
+                rename::Moved::Failed(e) => {
+                    log::error!("rename: couldn't move {}: {e}", rename::OLD_ID);
+                    heal::note("rename", "The old data folder couldn't be moved to the new app ID", "Started with a fresh folder", e);
+                }
+            }
             // A version an update brought that keeps closing at once: the previous one goes back.
             if rollback::on_launch(&data_dir, &app.package_info().version.to_string()) {
                 std::process::exit(0);
             }
             // Agents' processes end with Pixie (the helper reads this if Pixie dies first).
-            openclicky_tools::children::set_file(data_dir.join("agents.pids"));
+            pixie_tools::children::set_file(data_dir.join("agents.pids"));
             let settings = config::Settings::load(&data_dir);
 
             let (store, pack) = resources::load_store(app.handle());
@@ -334,6 +375,7 @@ pub fn run() {
             connectors::start(app.handle().clone());
             browser::start(app.handle().clone());
             kokoro::start(app.handle().clone());
+            stt::start(app.handle().clone());
             watchdog::start(app.handle().clone());
             {
                 // The speech recognizer, made before the first press so the mic comes on at once.
@@ -387,17 +429,32 @@ pub fn run() {
             }
             if let Some(steps) = std::env::args().skip_while(|a| a != "--live-type-test").nth(1) {
                 // Type as you speak without a mic: "first|first words|First words." into the
-                // focused field after 3 s (OPENCLICKY_HOLD_CTRL=1 holds control meanwhile).
+                // focused field after 3 s (PIXIE_HOLD_CTRL=1 holds control meanwhile).
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                    let args = serde_json::json!({ "steps": steps.split('|').collect::<Vec<_>>(), "hold_ctrl": std::env::var("OPENCLICKY_HOLD_CTRL").is_ok(), "tap": std::env::var("OPENCLICKY_TAP").unwrap_or_default(), "force_keys": std::env::var("OPENCLICKY_FORCE_KEYS").is_ok() });
+                    let args = serde_json::json!({ "steps": steps.split('|').collect::<Vec<_>>(), "hold_ctrl": std::env::var("PIXIE_HOLD_CTRL").is_ok(), "tap": std::env::var("PIXIE_TAP").unwrap_or_default(), "force_keys": std::env::var("PIXIE_FORCE_KEYS").is_ok() });
                     let r = h.state::<AppState>().helper.call("live_type_test", args, std::time::Duration::from_secs(30)).await;
                     log::info!("live type test: {r:?}");
                 });
             }
+            if std::env::args().any(|a| a == "--stt-mic-test") {
+                // Pixie's speech engine with the real microphone for 5 s, without the shortcut:
+                // the log says whether the mic opened, how much it heard and what was recognised.
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let t0 = std::time::Instant::now();
+                    let began = stt::begin(&h, false).await;
+                    log::info!("stt mic test: began {began:?} in {} ms", t0.elapsed().as_millis());
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let t1 = std::time::Instant::now();
+                    let out = stt::finish(&h).await;
+                    log::info!("stt mic test: finished in {} ms: {out:?}", t1.elapsed().as_millis());
+                });
+            }
             if let Some(q) = std::env::args().skip_while(|a| a != "--ask").nth(1) {
-                let delay = std::env::var("OPENCLICKY_ASK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+                let delay = std::env::var("PIXIE_ASK_DELAY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
@@ -437,7 +494,8 @@ pub fn run() {
         // Closing the last window must not quit a menu-bar app; only Quit (exit code) does.
         RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
         RunEvent::Exit => {
-            openclicky_tools::children::kill_all();
+            helper::QUITTING.store(true, std::sync::atomic::Ordering::SeqCst);
+            pixie_tools::children::kill_all();
             if let Some(st) = _app.try_state::<AppState>() {
                 rollback::on_quit(&st.data_dir, &_app.package_info().version.to_string());
             }

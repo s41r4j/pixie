@@ -6,7 +6,7 @@
 
 use crate::macos::{self, Rect};
 use crate::{emit, hit, AppState, PANEL};
-use openclicky_core::Event;
+use pixie_core::Event;
 use serde::Serialize;
 use serde_json::json;
 use std::time::Duration;

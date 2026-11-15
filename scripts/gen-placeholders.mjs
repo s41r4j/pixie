@@ -283,7 +283,7 @@ async function makeFile(rel, slot) {
     const samples = soundFor(slot, variantOf(rel));
     if (rel.endsWith(".wav")) return write(rel, wav(samples));
     if (rel.endsWith(".mp3")) {
-      const tmp = join(tmpdir(), `openclicky-${process.pid}.wav`);
+      const tmp = join(tmpdir(), `pixie-${process.pid}.wav`);
       writeFileSync(tmp, wav(samples));
       try {
         if (have("ffmpeg")) execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", tmp, "-b:a", "128k", join(ROOT, rel)]);

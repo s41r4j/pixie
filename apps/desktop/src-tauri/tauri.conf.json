@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Pixie",
-  "version": "0.8.0",
-  "identifier": "com.openclicky.app",
+  "version": "0.8.1",
+  "identifier": "pixie.s41r4j.in",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -103,7 +103,9 @@
     "resources": {
       "../../../resources/": "resources/",
       "../../extension/": "extension/",
-      "../../../skills/": "skills/"
+      "../../../skills/": "skills/",
+      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../../../LICENSE": "LICENSE"
     },
     "macOS": {
       "minimumSystemVersion": "14.0",
@@ -112,8 +114,8 @@
       "signingIdentity": "-"
     },
     "externalBin": [
-      "binaries/openclicky-helper",
-      "binaries/openclicky-voice"
+      "binaries/pixie-helper",
+      "binaries/pixie-voice"
     ],
     "windows": {
       "nsis": {

@@ -31,5 +31,5 @@ them as CSS custom properties (`colors.ink` → `--ink`, `draw.sky` → `--draw-
 ## Local pack
 
 `npm run assets:local` copies media you have locally into
-`~/Library/Application Support/com.openclicky.app/resources`, which the app loads before
+`~/Library/Application Support/pixie.s41r4j.in/resources`, which the app loads before
 these files. Use it for private testing; it never touches this folder.
