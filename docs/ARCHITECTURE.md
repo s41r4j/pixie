@@ -99,7 +99,10 @@ from the note window continue the same conversation.
 
 - `updates.rs`: tauri-plugin-updater against `releases/latest/download/latest.json` (minisign
   public key in `tauri.conf.json`; CI signs with the repo secrets). Checks 25 s after launch and
-  every 6 h; installs (macOS/Linux) or stages (Windows) the download, restarts only when idle.
+  every 6 h; keeps the verified download in memory and, at a quiet moment (or at once after Check
+  now), opens the `update` window (`views/Update.tsx`): Install and Relaunch, Install on Quit
+  (also what closing it means), Skip This Version (`rollback::skip`). Notes are `latest.json`'s,
+  i.e. the version's CHANGELOG section. A waiting download installs at quit.
 - `settings.experimental` holds per-feature switches: `connectors`, and `3d` (`scene3d.rs`: the
   `scene3d` tool, a `scene` window running `views/Scene3D.tsx` with Three.js, lazy-loaded, drawing
   only while something moves). The Excalidraw canvas in `canvas.rs`, files in
@@ -124,6 +127,13 @@ from the note window continue the same conversation.
   takes over by generation) and notch modes nothing drives any more (`stuck_after`). Helper
   errors that mean a permission is off go through `watchdog::helper_error`: toast, open the
   pane, poll for it to come back.
+- Pointing (0.8.2, `overlay.rs`, `screen.rs`, `narrate.rs`): numbers from the model are tried as
+  screen points and, when it saw the screenshot, as image pixels; whichever snaps to a real control
+  or text line wins (`snap_scored`). Names go through `screen::norm` (case, punctuation, OCR's I/l/1
+  and 0/O) and match by most of their words. Marks carry the number of words before them
+  (`narrate::placed`) and fire on the voice's `speak_word` events two words early, so the pointer
+  arrives as the thing is named. The helper sets `AXManualAccessibility` on the front app once so
+  Chromium and Electron build their page's Accessibility tree.
 - Exact clicks and asking first (0.8.1): the helper keeps each snapshot's AX elements by
   generation (`gen`, last 8), marks controls whose middle is outside their scroll areas, window or
   every screen as `hidden`, and answers `element` (live frame, hidden, covered), `scroll_to`,
@@ -151,7 +161,12 @@ from the note window continue the same conversation.
   `canvas::focus`.
 - 3D (0.8.1, `Scene3D.tsx`, `scene3d.rs`): `sanitize` bounds everything the window draws. Each
   object is a pivot group (parts nest by `parent`); copies are one InstancedMesh. Frames are
-  drawn on demand; shadows update only on frames where something moved.
+  drawn on demand (at most 60 a second); shadows update only on frames where something moved.
+  Since 0.8.2 the window is destroyed on close (not hidden), drops quality after 30 slow frames
+  (past the first 10, which compile shaders), pauses motion after 60 s untouched, and rebuilds
+  from `scene3d_get` after `webglcontextrestored`.
+- Locks (0.8.2, `pixie_core::sync::LockOk`): `lock_ok()` instead of `.lock().unwrap()`, so a
+  panic while a lock is held doesn't make every later lock panic too.
 - App ID (`rename.rs`): up to 0.8.0 the ID was `com.openclicky.app`; since 0.8.1 it's `pixie.s41r4j.in`
   and the program is `pixie`. `move_data` renames the old data folder to the new one before
   anything opens it and leaves a symlink (a junction on Windows) at the old path; the browser

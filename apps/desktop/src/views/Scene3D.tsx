@@ -7,9 +7,11 @@
 // exploded view and a cut through the middle.
 //
 // What it costs: nothing while nothing changes. A frame is drawn only when the camera, the
-// objects or the size changed; ambient motion runs at 30 frames a second, stops when the
-// window is hidden, and the picture drops to a lower resolution (then loses its shadows) if
-// this computer can't keep up while they drag.
+// objects or the size changed, never more than 60 a second (ProMotion screens would ask for
+// 120); ambient motion runs at 30, stops when the window is hidden and pauses after a minute
+// nobody touched it. The picture drops to a lower resolution (then loses its shadows) when
+// frames cost too much or come late, and if the graphics card resets the scene is rebuilt
+// instead of the window freezing.
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -31,6 +33,9 @@ const COLORS: Record<string, number> = {
   brown: 0x9a6b45,
   black: 0x2a2a2a,
 };
+
+/** Ambient motion stops after this long without anyone touching the view. */
+const IDLE_STOP = 60_000;
 
 const colour = (c: string) => (c.startsWith("#") ? parseInt(c.slice(1), 16) : (COLORS[c] ?? COLORS.white));
 
@@ -146,13 +151,16 @@ export function Scene3D() {
   const [cut, setCut] = useState(false);
   const [moving, setMoving] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const [lostView, setLostView] = useState(false);
   const act = useRef({ explode: (_on: boolean) => {}, cut: (_on: boolean) => {}, play: (_on: boolean) => {}, reset: () => {} });
 
   useEffect(() => {
     const el = host.current!;
     // Retina is sharp enough at 1.5x; half the pixels of 2x. It drops further if frames run late.
     let dpr = Math.min(window.devicePixelRatio, 1.5);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    // "default", not "high-performance": on Macs with two graphics chips that would switch the
+    // whole screen to the power-hungry one, which stutters everything while it switches.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "default" });
     renderer.setPixelRatio(dpr);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
@@ -221,6 +229,13 @@ export function Scene3D() {
     let cutOn = false;
     // Frames that came late while they were dragging: the sign to lower the quality.
     let late = 0, quality = 0;
+    // Frames that cost too much to draw, and frames not to judge (the first ones after a build
+    // or a change of look compile shaders and are always slow). And when someone last did anything.
+    let slow = 0, warm = 10;
+    let touched = performance.now();
+    // The graphics card reset (driver hiccup, too much at once): draw nothing until it's back.
+    let lost = false;
+    let built = "";
     let meter = new URLSearchParams(location.search).get("fps") ? { ms: 0, n: 0, since: performance.now() } : null;
 
     const size = () => {
@@ -285,13 +300,34 @@ export function Scene3D() {
       }
     };
 
+    const lower = () => {
+      late = slow = 0;
+      warm = 10;
+      quality += 1;
+      if (quality === 1) {
+        dpr = 1;
+        renderer.setPixelRatio(dpr);
+        size();
+      } else {
+        renderer.shadowMap.enabled = false;
+        floor.visible = false;
+        for (const p of parts.values()) p.mat.needsUpdate = true;
+      }
+    };
+
     const tick = () => {
       frame = 0;
+      if (lost) return;
       const now = performance.now();
+      // Nobody has touched it for a minute: the motion stops (Play starts it again).
+      if (play && hasMotion && now - touched > IDLE_STOP) {
+        play = false;
+        setPlaying(false);
+      }
       const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
       const busy = now < activeUntil || !!aim || growing || explode !== explodeTo || cutAt !== cutTo;
       // Ambient motion (nobody touching it) doesn't need more than 30 frames a second.
-      if (!busy && now - lastDraw < 31) {
+      if (now - lastDraw < (busy ? 15 : 31)) {
         frame = requestAnimationFrame(tick);
         return;
       }
@@ -332,9 +368,16 @@ export function Scene3D() {
       }
       if (lit && now > lit.until) light(null);
       controls.update();
-      const t0 = meter ? performance.now() : 0;
+      const t0 = performance.now();
       renderer.render(scene, camera);
       labels.render(scene, camera);
+      // A backed-up graphics card shows up here too: the next frame waits for the last one.
+      const ms = performance.now() - t0;
+      if (warm > 0) warm -= 1;
+      else {
+        slow = ms > 14 ? slow + 1 : Math.max(0, slow - 1);
+        if (slow > 30 && quality < 2) lower();
+      }
       if (meter) {
         // ?fps=1 (development): what a frame costs here, every two seconds.
         renderer.getContext().finish();
@@ -349,32 +392,39 @@ export function Scene3D() {
       // Too slow while they drag: fewer pixels first, then no shadows.
       if (now < activeUntil && lastDraw) {
         late = now - lastDraw > 26 ? late + 1 : Math.max(0, late - 1);
-        if (late > 24 && quality < 2) {
-          late = 0;
-          quality += 1;
-          if (quality === 1) {
-            dpr = 1;
-            renderer.setPixelRatio(dpr);
-            size();
-          } else {
-            renderer.shadowMap.enabled = false;
-            floor.visible = false;
-            for (const p of parts.values()) p.mat.needsUpdate = true;
-          }
-        }
+        if (late > 24 && quality < 2) lower();
       }
       lastDraw = now;
       if (!document.hidden && (busy || animating || controls.autoRotate)) frame = requestAnimationFrame(tick);
     };
     const wake = (ms: number) => {
       activeUntil = Math.max(activeUntil, performance.now() + ms);
-      if (!frame && !document.hidden) frame = requestAnimationFrame(tick);
+      if (!frame && !document.hidden && !lost) frame = requestAnimationFrame(tick);
     };
     controls.addEventListener("start", () => {
       controls.autoRotate = false; // they took over
       aim = null;
+      touched = performance.now();
       wake(1500);
     });
+    const canvas = renderer.domElement;
+    const contextLost = (e: Event) => {
+      e.preventDefault(); // lets the browser give the context back
+      lost = true;
+      cancelAnimationFrame(frame);
+      frame = 0;
+      setLostView(true);
+    };
+    const contextBack = () => {
+      lost = false;
+      setLostView(false);
+      // Everything on the card is gone: build again from the scene Pixie keeps, more cheaply.
+      if (quality < 1) lower();
+      built = "";
+      api.scene3dGet().then((s) => s && build(s));
+    };
+    canvas.addEventListener("webglcontextlost", contextLost);
+    canvas.addEventListener("webglcontextrestored", contextBack);
     controls.addEventListener("change", () => wake(400));
     // Hidden (another Space, minimised, covered by a full-screen app): draw nothing.
     const visibility = () => {
@@ -429,6 +479,12 @@ export function Scene3D() {
     };
 
     const build = (data: SceneData) => {
+      // The window asks for the scene as it starts and is sent it too: build it once.
+      const key = JSON.stringify(data);
+      if (key === built) return;
+      built = key;
+      touched = performance.now();
+      warm = 10;
       setTitle(data.title);
       setEmpty(!data.objects.length);
       clear();
@@ -458,7 +514,8 @@ export function Scene3D() {
         } else {
           mesh = new THREE.Mesh(geo, mat);
         }
-        mesh.castShadow = (o.opacity ?? 1) > 0.5;
+        // Hundreds of copies would double their cost again in the shadow pass.
+        mesh.castShadow = (o.opacity ?? 1) > 0.5 && copies.length <= 100;
         mesh.receiveShadow = true;
         const pivot = new THREE.Group();
         pivot.position.set(o.at[0], o.at[1], o.at[2]);
@@ -565,6 +622,7 @@ export function Scene3D() {
     const focus = (name: string) => {
       const p = parts.get(name.toLowerCase());
       if (!p) return;
+      touched = performance.now();
       controls.autoRotate = false;
       const target = p.pivot.getWorldPosition(new THREE.Vector3());
       const away = camera.position.clone().sub(controls.target).normalize();
@@ -575,6 +633,7 @@ export function Scene3D() {
 
     act.current = {
       explode: (on) => {
+        touched = performance.now();
         explodeTo = on ? 1 : 0;
         setExploded(on);
         wake(900);
@@ -582,6 +641,8 @@ export function Scene3D() {
       cut: (on) => {
         cutOn = on;
         cutTo = on ? 1 : 0;
+        touched = performance.now();
+        warm = 10;
         // Sliced-open things show their insides.
         if (on) for (const p of parts.values()) Object.assign(p.mat, { clippingPlanes: [slice], side: THREE.DoubleSide, needsUpdate: true });
         setCut(on);
@@ -589,11 +650,13 @@ export function Scene3D() {
       },
       play: (on) => {
         play = on;
+        touched = performance.now();
         lastTick = 0;
         setPlaying(on);
         wake(200);
       },
       reset: () => {
+        touched = performance.now();
         aim = { target: home.target.clone(), pos: home.pos.clone() };
         light(null);
         wake(900);
@@ -615,6 +678,8 @@ export function Scene3D() {
       un.then((f) => f());
       window.removeEventListener("resize", size);
       document.removeEventListener("visibilitychange", visibility);
+      canvas.removeEventListener("webglcontextlost", contextLost);
+      canvas.removeEventListener("webglcontextrestored", contextBack);
       cancelAnimationFrame(frame);
       clearTimeout(spinTimer);
       clear();
@@ -651,6 +716,7 @@ export function Scene3D() {
           </button>
         </div>
       )}
+      {lostView && <div className="scene3d__lost">The graphics card reset. Drawing it again…</div>}
       <div className="scene3d__hint">{empty ? "Ask Pixie to show something in 3D." : "Drag to spin · scroll to zoom · right-drag to move"}</div>
     </div>
   );

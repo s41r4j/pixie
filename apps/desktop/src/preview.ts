@@ -204,7 +204,16 @@ export function installPreview() {
         case "canvas_done": console.log("canvas_done", JSON.stringify(args)); return null;
         case "update_status":
         case "update_check":
-          return { current: "0.7.0", phase: params.get("update") ?? "up_to_date", version: "0.7.1", notes: "Fixes.", error: null, done: 9_400_000, total: 22_800_000, checked_at: Math.floor(Date.now() / 1000) - 600, auto: true, supported: true };
+          // The update window shows the real notes of the version in package.json (a separate
+          // chunk, loaded only here).
+          if (previewView === "update")
+            return import("../../../CHANGELOG.md?raw").then(({ default: md }) => {
+              const v = params.get("v") ?? "0.8.2";
+              const section = md.split(/^## /m).find((p) => p.startsWith(`${v} `)) ?? "";
+              const notes = section.split("\n").slice(1).join("\n").trim();
+              return { current: "0.8.1", phase: "ready", version: v, notes, error: null, done: 1, total: 1, checked_at: now / 1000, auto: params.get("auto") !== "0", on_quit: false, supported: true };
+            });
+          return { current: "0.7.0", phase: params.get("update") ?? "up_to_date", version: "0.7.1", notes: "Fixes.", error: null, done: 9_400_000, total: params.get("unknown") ? 0 : 22_800_000, checked_at: Math.floor(Date.now() / 1000) - 600, auto: true, on_quit: false, supported: true };
         case "apps_status": return { supported: true, on: { calendar: true, reminders: true, contacts: false, mail: false }, calendar: "granted", reminders: "granted", contacts: "not_determined", mail: "ask", google: { configured: true, signed_in: params.get("google") === "on", email: "you@gmail.com" } };
         case "connectors_gallery": return { node: true, path: "/Users/me/Library/Application Support/pixie.s41r4j.in/mcp.json",
           custom: [{ id: "my-db", name: "my-db", command: "uvx", args: ["mcp-server-sqlite", "--db-path", "~/data.db"], group: "custom", auth: "custom", added: true, on: true, tools: 6, error: null, env: {}, tool_list: [] }],
@@ -229,6 +238,8 @@ export function installPreview() {
   // Script a scene per view.
   const ev = (kind: string, payload: unknown, delay: number, job_id: string | null = null) =>
     setTimeout(() => emit("pixie://event", { kind, job_id, payload }), delay);
+  // scripts/shots: events sent in by the screenshot script instead of the demo below.
+  (window as unknown as { __previewEmit: typeof ev }).__previewEmit = ev;
   if (previewView === "panel") {
     if (mode === "listening" || mode === "dictating") {
       ev("mic.partial", { text: "where's the share button in this" }, 200);
@@ -251,7 +262,9 @@ export function installPreview() {
     }
     if (mode === "toast") ev("toast", { text: "Desk Pick is ready", kind: "done", job: "a" }, 100);
   }
-  if (previewView === "overlay") {
+  if (previewView === "overlay" && params.get("scripted")) {
+    ev("overlay.screen", { screen: { frame: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, top_inset: 34, notch_width: 185, scale: 2 }, window: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, origin: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight } }, 0);
+  } else if (previewView === "overlay") {
     ev("overlay.screen", { screen: { frame: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, top_inset: 34, notch_width: 185, scale: 2 }, window: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, origin: { x: 0, y: 0, w: window.innerWidth, h: 900 } }, 50);
     ev("buddy.cursor", { x: 300, y: 200 }, 100);
     ev("speech.start", { id: "b1" }, 200);

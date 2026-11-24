@@ -2,6 +2,7 @@
 //! draws (window-local points); the poll loop turns mouse events on only while the pointer
 //! is over one of them.
 
+use pixie_core::sync::LockOk;
 use crate::macos::{self, Rect};
 use crate::AppState;
 use std::collections::HashMap;
@@ -24,7 +25,7 @@ pub struct Hits {
 
 fn with<F: FnOnce(&mut Entry)>(app: &AppHandle, label: &str, f: F) {
     let st = app.state::<AppState>();
-    let mut m = st.hits.map.lock().unwrap();
+    let mut m = st.hits.map.lock_ok();
     let e = m.entry(label.to_string()).or_insert_with(|| Entry { ignoring: true, ..Default::default() });
     f(e);
 }
@@ -61,7 +62,7 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
     let st = app.state::<AppState>();
     let mode = panel::mode(app);
     let (frame, rects) = {
-        let m = st.hits.map.lock().unwrap();
+        let m = st.hits.map.lock_ok();
         match m.get(crate::PANEL) {
             Some(e) if e.visible => (e.frame, e.rects.clone()),
             _ => return,
@@ -82,12 +83,12 @@ fn notch_hover(app: &AppHandle, cx: f64, cy: f64) {
         let w = (screen.notch_width.unwrap_or(0.0) + 300.0).max(500.0);
         let zone = Rect { x: (frame.w - w) / 2.0, y: 0.0, w, h: screen.top_inset + 190.0 };
         // A voice answer hovered open grows the same way.
-        let growing = mode == PanelMode::Peek || (matches!(mode, PanelMode::Thinking | PanelMode::Answer) && hover_state().lock().unwrap().was_inside);
+        let growing = mode == PanelMode::Peek || (matches!(mode, PanelMode::Thinking | PanelMode::Answer) && hover_state().lock_ok().was_inside);
         let in_zone = growing && zone.contains(cx - frame.x, cy - frame.y);
         in_zone || rects.iter().any(|r| r.contains(cx - frame.x, cy - frame.y))
     };
     let now = Instant::now();
-    let mut h = hover_state().lock().unwrap();
+    let mut h = hover_state().lock_ok();
     if inside {
         h.outside_since = None;
         h.inside_since.get_or_insert(now);
@@ -118,7 +119,7 @@ pub fn tick(app: &AppHandle) -> (f64, f64) {
     crate::buddy::tick(app, cx, cy);
     let changes: Vec<(String, bool)> = {
         let st = app.state::<AppState>();
-        let mut m = st.hits.map.lock().unwrap();
+        let mut m = st.hits.map.lock_ok();
         m.iter_mut()
             .filter_map(|(label, e)| {
                 let inside = e.visible && e.rects.iter().any(|r| r.contains(cx - e.frame.x, cy - e.frame.y));

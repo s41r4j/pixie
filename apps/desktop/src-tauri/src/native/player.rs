@@ -1,6 +1,7 @@
 //! Speech playback: Kokoro WAVs (`play`) and system-voice sentences (`speak`), one after
 //! another, with `speak_start` / `speak_word` / `speak_end` events like the Mac helper.
 
+use pixie_core::sync::LockOk;
 use super::emit;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -129,12 +130,12 @@ fn timings(text: &str, dur: f64) -> Vec<(f64, usize, usize)> {
 
 fn push(item: Item) {
     if let Some(q) = QUEUE.get() {
-        let _ = q.lock().unwrap().send((GEN.load(Ordering::SeqCst), item));
+        let _ = q.lock_ok().send((GEN.load(Ordering::SeqCst), item));
     }
 }
 
 pub fn speak(args: &Value) -> Value {
-    let mut v = VOICE.lock().unwrap();
+    let mut v = VOICE.lock_ok();
     if let Some(id) = args.get("voice").and_then(Value::as_str) {
         v.0 = id.to_string();
     }

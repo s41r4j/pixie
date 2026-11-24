@@ -49,6 +49,7 @@ mod tray;
 mod usage;
 mod windows;
 
+use pixie_core::sync::LockOk;
 use pixie_core::prompt::Skill;
 use pixie_core::{Event, ResourceStore};
 use pixie_llm::Provider;
@@ -65,6 +66,7 @@ pub const SETTINGS: &str = "settings";
 pub const NOTE: &str = "note";
 pub const CANVAS: &str = "canvas";
 pub const GUIDE: &str = "guide";
+pub const UPDATE: &str = "update";
 
 pub struct AppState {
     pub store: Arc<ResourceStore>,
@@ -97,7 +99,7 @@ impl AppState {
 
     /// Same, but at most once every 1.5 s (pen sounds while a note fills).
     pub fn play_quiet(&self, slot: &str) {
-        let mut last = self.quiet.lock().unwrap();
+        let mut last = self.quiet.lock_ok();
         if last.map(|t| t.elapsed().as_millis() < 1500).unwrap_or(false) {
             return;
         }
@@ -107,16 +109,16 @@ impl AppState {
     }
 
     pub fn provider(&self) -> Option<Arc<dyn Provider>> {
-        self.provider.lock().unwrap().clone()
+        self.provider.lock_ok().clone()
     }
 
     pub fn reload_provider(&self) {
-        let s = self.settings.lock().unwrap().clone();
+        let s = self.settings.lock_ok().clone();
         // opencode on this computer as the model (no API key needed).
         if s.provider == "opencode" && opencode::binary().is_some() {
             let p: Arc<dyn Provider> = Arc::new(opencode::OpencodeProvider);
             log::info!("model: {}", p.label());
-            *self.provider.lock().unwrap() = Some(p);
+            *self.provider.lock_ok() = Some(p);
             return;
         }
         let primary = config::provider_config(&self.data_dir, &s);
@@ -131,7 +133,7 @@ impl AppState {
             Some(p) => log::info!("model: {}", p.label()),
             None => log::warn!("model: no key configured (DEEPSEEK / ANTHROPIC_API_KEY)"),
         }
-        *self.provider.lock().unwrap() = p;
+        *self.provider.lock_ok() = p;
     }
 
     pub fn connected_apps(&self) -> Vec<String> {
@@ -259,6 +261,9 @@ pub fn run() {
             commands::update_status,
             commands::update_check,
             commands::update_restart,
+            commands::update_later,
+            commands::update_skip,
+            commands::update_show,
             memory::memory_list,
             memory::memory_add,
             memory::memory_update,
@@ -394,7 +399,7 @@ pub fn run() {
             {
                 // Live model prices for Settings → Usage (cached; refreshed once a day).
                 let data = app.state::<AppState>().data_dir.clone();
-                let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+                let settings = app.state::<AppState>().settings.lock_ok().clone();
                 tauri::async_runtime::spawn(async move { usage::warm(&data, &settings).await });
             }
 
@@ -468,16 +473,28 @@ pub fn run() {
                 if window.label() == CANVAS {
                     windows::canvas_blurred(window.app_handle());
                 }
+                if window.label() == scene3d::WINDOW {
+                    scene3d::blurred(window.app_handle());
+                }
             }
             // Windows hide instead of closing; the app lives in the menu bar.
             if let WindowEvent::Destroyed = event {
-                if [NOTE, CANVAS, SETTINGS].contains(&window.label()) {
+                if [NOTE, CANVAS, SETTINGS, UPDATE].contains(&window.label()) {
                     windows::dock_sync(window.app_handle(), window.label());
+                }
+                // Closing the update window without choosing means Install on Quit.
+                if window.label() == UPDATE {
+                    updates::closed(window.app_handle());
+                }
+                if window.label() == scene3d::WINDOW {
+                    scene3d::closed();
                 }
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if [NOTE, CANVAS, SETTINGS].contains(&window.label()) {
-                    return; // created on demand; let it close (and free its memory)
+                // Created on demand: let it close and free its memory (for the 3D view, its GPU
+                // memory and drawing too; hiding it kept both).
+                if [NOTE, CANVAS, SETTINGS, UPDATE, scene3d::WINDOW].contains(&window.label()) {
+                    return;
                 }
                 api.prevent_close();
                 if window.label() == PANEL {
@@ -500,7 +517,7 @@ pub fn run() {
                 rollback::on_quit(&st.data_dir, &_app.package_info().version.to_string());
             }
             opencode::on_quit();
-            updates::on_quit();
+            updates::on_quit(_app);
         }
         // Clicking Pixie in the Dock, Launchpad or Finder while it runs brings Settings back.
         #[cfg(target_os = "macos")]

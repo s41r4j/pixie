@@ -1,5 +1,6 @@
 //! Screen context for a turn: screenshot + OCR + the frontmost app's controls, from the helper.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use base64::Engine;
 use serde::Deserialize;
@@ -317,7 +318,7 @@ fn near(a: &Frame, b: &Frame) -> bool {
 
 /// Give a fresh snapshot's controls Pixie's ids (rewriting `id`); returns the ids that went away.
 pub fn stabilize(elements: &mut [Element], gen: Option<i64>) -> Vec<String> {
-    let mut g = ids().lock().unwrap();
+    let mut g = ids().lock_ok();
     let turn = TURN.load(Ordering::SeqCst);
     if g.turn != turn {
         *g = Ids { turn, ..Default::default() };
@@ -369,7 +370,7 @@ pub fn element(id: &str) -> Option<Result<Target, String>> {
     if !is_id {
         return None;
     }
-    let g = ids().lock().unwrap();
+    let g = ids().lock_ok();
     Some(match g.last.iter().find(|k| k.id == id) {
         Some(k) => Ok(Target { frame: k.frame.clone(), label: k.label.clone(), raw: k.raw.clone(), gen: k.gen, hidden: k.hidden }),
         None => Err(format!("{id} isn't on screen any more (the window changed). Use an id from the latest controls list, or call look.")),
@@ -405,7 +406,10 @@ pub async fn capture_on(app: &AppHandle, n: u64, max_width: u32, at: Option<(f64
     match r {
         Ok(v) => {
             // How long each part took in the helper (image, text, controls, all), in ms.
-            let took = v.get("took_ms").map(|t| t.to_string()).unwrap_or_default();
+            let mut took = v.get("took_ms").map(|t| t.to_string()).unwrap_or_default();
+            if v.get("partial").and_then(Value::as_bool) == Some(true) {
+                took.push_str(" (partial: a part ran past 5 s)");
+            }
             let mut c: Capture = serde_json::from_value(v).unwrap_or_default();
             if c.path.as_ref().map(|p| !p.exists()).unwrap_or(false) {
                 c.path = None;
@@ -414,7 +418,7 @@ pub async fn capture_on(app: &AppHandle, n: u64, max_width: u32, at: Option<(f64
             let icons: Vec<&str> = c.elements.iter().filter(|e| e.role == "menubaritem" && e.frame.x > c.display.x + c.display.w / 2.0).map(|e| e.label.as_str()).collect();
             log::info!("capture: {} ({}), {} controls (accessibility {:?}), {} text lines, menu bar icons: {}; {} ms in all, parts {took}", c.app, c.window, c.elements.len(), c.ax_trusted, c.text.len(), icons.join(", "), started.elapsed().as_millis());
             // Pointing and clicking snap against the newest screen only.
-            *state.last_capture.lock().unwrap() = Some(c.clone());
+            *state.last_capture.lock_ok() = Some(c.clone());
             c
         }
         Err(e) => Capture { error: Some(e), ..Default::default() },
@@ -602,11 +606,11 @@ pub async fn after_action(app: &AppHandle, at: Option<(f64, f64)>, settle: Durat
         Ok(v) => serde_json::from_value(v).unwrap_or_default(),
         Err(e) => {
             // Don't snap the next click to a screen that's gone.
-            *st.last_capture.lock().unwrap() = None;
+            *st.last_capture.lock_ok() = None;
             return format!("(Couldn't read the screen after that: {e}. Call look before the next step.)");
         }
     };
-    let prev = st.last_capture.lock().unwrap().clone();
+    let prev = st.last_capture.lock_ok().clone();
     let mut now = Capture {
         app: raw.app,
         window: raw.window,
@@ -621,7 +625,7 @@ pub async fn after_action(app: &AppHandle, at: Option<(f64, f64)>, settle: Durat
     };
     now.gone = stabilize(&mut now.elements, raw.gen);
     let text = describe_after(prev.as_ref(), &now, raw.focused.as_ref(), at, raw.trusted == Some(false));
-    *st.last_capture.lock().unwrap() = Some(now);
+    *st.last_capture.lock_ok() = Some(now);
     text
 }
 
@@ -694,10 +698,74 @@ pub fn describe_after(prev: Option<&Capture>, now: &Capture, focused: Option<&Va
     s
 }
 
-/// The best on-screen item (control or text line) for a rectangle the model gave:
-/// highest overlap, else the nearest centre within 40 pt; a matching label wins ties.
-/// Find an item by element id ("e12") or by its text/label: exact match first, then the
-/// shortest line that contains it. Ties go to the one nearest `near` (if given).
+/// Text as OCR and labels are compared: lower case, letters OCR mixes up made the same
+/// (I, l, 1 and | → l; 0 → o), punctuation as spaces, single spaces.
+pub fn norm(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut space = true;
+    for c in s.chars().flat_map(char::to_lowercase) {
+        let c = match c {
+            'i' | '1' | '|' | '!' => 'l',
+            '0' => 'o',
+            '’' | '\'' => continue,
+            c => c,
+        };
+        if c.is_alphanumeric() {
+            out.push(c);
+            space = false;
+        } else if !space {
+            out.push(' ');
+            space = true;
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// One edit apart (a letter OCR misread, dropped or added), for words of 5+ letters.
+fn close(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    if a.len().min(b.len()) < 5 || a.len().abs_diff(b.len()) > 1 {
+        return false;
+    }
+    let (mut i, mut j, mut edits) = (0, 0, 0);
+    while i < a.len() && j < b.len() {
+        if a[i] == b[j] {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        edits += 1;
+        if edits > 1 {
+            return false;
+        }
+        match a.len().cmp(&b.len()) {
+            std::cmp::Ordering::Greater => i += 1,
+            std::cmp::Ordering::Less => j += 1,
+            std::cmp::Ordering::Equal => {
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    edits + (a.len() - i) + (b.len() - j) <= 1
+}
+
+/// How much of `want` (normalised words) is in `have`: 0 to 1.
+fn coverage(want: &[&str], have: &str) -> f64 {
+    if want.is_empty() {
+        return 0.0;
+    }
+    let have: Vec<&str> = have.split(' ').collect();
+    want.iter().filter(|w| have.iter().any(|h| close(w, h))).count() as f64 / want.len() as f64
+}
+
+/// Find an item by element id ("e12") or by its text/label. In order: the same text, then the
+/// shortest line containing it, then the line with most of its words (OCR misreads and a sentence
+/// cut over two lines still find it). All of this ignores case, punctuation and the letters OCR
+/// mixes up. Ties go to the one nearest `near` (if given).
 pub fn find(c: &Capture, target: &str, near: Option<(f64, f64)>) -> Option<Frame> {
     let t = target.trim();
     if t.is_empty() {
@@ -706,41 +774,57 @@ pub fn find(c: &Capture, target: &str, near: Option<(f64, f64)>) -> Option<Frame
     if let Some(e) = c.elements.iter().find(|e| e.id.eq_ignore_ascii_case(t)) {
         return Some(e.frame.clone());
     }
-    let tl = t.to_lowercase();
-    // A control out of view can't be clicked where it's listed.
-    let cands: Vec<(Frame, String)> = c
+    if let Some(Ok(k)) = element(t) {
+        return Some(k.frame);
+    }
+    let tl = norm(t);
+    if tl.is_empty() {
+        return None;
+    }
+    // A control out of view can't be clicked where it's listed. Controls come before text, so
+    // a button wins over the same words in a paragraph.
+    let cands: Vec<(Frame, String, bool)> = c
         .elements
         .iter()
         .filter(|e| !e.hidden)
-        .map(|e| (e.frame.clone(), e.label.to_lowercase()))
-        .chain(c.text.iter().map(|x| (x.frame.clone(), x.text.to_lowercase())))
-        .filter(|(f, s)| f.w > 0.0 && f.h > 0.0 && !s.trim().is_empty())
+        .map(|e| (e.frame.clone(), norm(&e.label), true))
+        .chain(c.text.iter().map(|x| (x.frame.clone(), norm(&x.text), false)))
+        .filter(|(f, s, _)| f.w > 0.0 && f.h > 0.0 && !s.is_empty())
         .collect();
     let dist = |f: &Frame| near.map(|(x, y)| ((f.x + f.w / 2.0 - x).powi(2) + (f.y + f.h / 2.0 - y).powi(2)).sqrt()).unwrap_or(0.0);
-    let pick = |v: Vec<&(Frame, String)>| v.into_iter().min_by(|a, b| dist(&a.0).total_cmp(&dist(&b.0)).then(a.1.len().cmp(&b.1.len()))).map(|x| x.0.clone());
-    let exact: Vec<_> = cands.iter().filter(|(_, s)| s.trim() == tl).collect();
+    let pick = |v: Vec<&(Frame, String, bool)>| {
+        v.into_iter().min_by(|a, b| dist(&a.0).total_cmp(&dist(&b.0)).then(b.2.cmp(&a.2)).then(a.1.len().cmp(&b.1.len()))).map(|x| x.0.clone())
+    };
+    let exact: Vec<_> = cands.iter().filter(|(_, s, _)| *s == tl).collect();
     if !exact.is_empty() {
         return pick(exact);
     }
-    let contains: Vec<_> = cands.iter().filter(|(_, s)| s.contains(&tl)).collect();
+    let contains: Vec<_> = cands.iter().filter(|(_, s, _)| s.contains(&tl)).collect();
     if !contains.is_empty() {
         // Prefer the tightest match: shortest text containing it, then nearest.
-        let min_len = contains.iter().map(|(_, s)| s.len()).min().unwrap_or(0);
-        return pick(contains.into_iter().filter(|(_, s)| s.len() <= min_len + 12).collect());
+        let min_len = contains.iter().map(|(_, s, _)| s.len()).min().unwrap_or(0);
+        return pick(contains.into_iter().filter(|(_, s, _)| s.len() <= min_len + 12).collect());
+    }
+    // Most of its words: one long word read with a slip, or a sentence over two lines.
+    let want: Vec<&str> = tl.split(' ').collect();
+    let need = if want.len() == 1 { 1.0 } else { 0.6 };
+    let scored: Vec<(f64, &(Frame, String, bool))> = cands.iter().map(|c| (coverage(&want, &c.1), c)).filter(|(k, _)| *k >= need).collect();
+    let best = scored.iter().map(|(k, _)| *k).fold(0.0, f64::max);
+    if best > 0.0 {
+        return pick(scored.into_iter().filter(|(k, _)| *k >= best - 0.01).map(|(_, c)| c).collect());
     }
     None
 }
 
-pub fn snap(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<Frame> {
-    let label = label.trim().to_lowercase();
+/// The best on-screen item (control or text line) for a rectangle the model gave, with how
+/// sure the match is: highest overlap, else the nearest centre within 40 pt; a matching label
+/// adds to it.
+pub fn snap_scored(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<(f64, Frame)> {
+    let label = norm(label);
     let cx = x + w / 2.0;
     let cy = y + h / 2.0;
     let mut best: Option<(f64, Frame)> = None;
-    let cands = c
-        .elements
-        .iter()
-        .map(|e| (e.frame.clone(), e.label.to_lowercase()))
-        .chain(c.text.iter().map(|t| (t.frame.clone(), t.text.to_lowercase())));
+    let cands = c.elements.iter().map(|e| (e.frame.clone(), norm(&e.label))).chain(c.text.iter().map(|t| (t.frame.clone(), norm(&t.text))));
     for (f, text) in cands {
         if f.w <= 0.0 || f.h <= 0.0 || f.w > 900.0 {
             continue;
@@ -752,14 +836,19 @@ pub fn snap(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<
         let iou = if union > 0.0 { inter / union } else { 0.0 };
         let dist = ((f.x + f.w / 2.0 - cx).powi(2) + (f.y + f.h / 2.0 - cy).powi(2)).sqrt();
         let mut score = if iou > 0.05 { iou } else if dist < 40.0 { 0.05 * (1.0 - dist / 40.0) } else { continue };
-        if !label.is_empty() && (text.contains(&label) || label.contains(text.as_str())) && !text.is_empty() {
+        if !label.is_empty() && !text.is_empty() && (text.contains(&label) || label.contains(text.as_str())) {
             score += 0.5;
         }
         if best.as_ref().map(|(b, _)| score > *b).unwrap_or(true) {
             best = Some((score, f));
         }
     }
-    best.map(|(_, f)| f)
+    best
+}
+
+#[cfg(test)]
+fn snap(c: &Capture, x: f64, y: f64, w: f64, h: f64, label: &str) -> Option<Frame> {
+    snap_scored(c, x, y, w, h, label).map(|(_, f)| f)
 }
 
 #[cfg(test)]
@@ -789,6 +878,27 @@ mod tests {
         assert_eq!(find(&cap(), "share", None).unwrap().x, 1500.0);
         assert_eq!(find(&cap(), "Total", None).unwrap().y, 600.0);
         assert!(find(&cap(), "nowhere", None).is_none());
+    }
+
+    #[test]
+    fn finds_text_that_ocr_misread_or_cut() {
+        let c = Capture {
+            elements: vec![Element { id: "e1".into(), role: "link".into(), label: "Download".into(), frame: Frame { x: 900.0, y: 20.0, w: 70.0, h: 16.0 }, hidden: false }],
+            text: vec![
+                TextLine { text: "IocalGPT".into(), frame: Frame { x: 507.0, y: 635.0, w: 42.0, h: 12.0 } },
+                TextLine { text: "Local question answering".into(), frame: Frame { x: 507.0, y: 655.0, w: 160.0, h: 12.0 } },
+                TextLine { text: "over documents.".into(), frame: Frame { x: 507.0, y: 669.0, w: 90.0, h: 12.0 } },
+                TextLine { text: "Download Pixie".into(), frame: Frame { x: 600.0, y: 500.0, w: 120.0, h: 20.0 } },
+            ],
+            ..Default::default()
+        };
+        assert_eq!(find(&c, "localGPT", None).unwrap().y, 635.0);
+        assert_eq!(find(&c, "Local question answering over documents.", None).unwrap().y, 655.0);
+        // A control with the exact words wins over a longer line of text.
+        assert_eq!(find(&c, "download", None).unwrap().x, 900.0);
+        assert_eq!(find(&c, "Download Pixie ↗", None).unwrap().y, 500.0);
+        assert!(find(&c, "Upload", None).is_none());
+        assert_eq!(norm("Save As…"), "save as");
     }
 
     fn two() -> Vec<Display> {
@@ -891,23 +1001,23 @@ mod multi_step {
 
     impl FakeApp {
         fn hit(&self, x: f64, y: f64) -> Option<String> {
-            let stage = *self.stage.lock().unwrap();
+            let stage = *self.stage.lock_ok();
             screen(stage).into_iter().find(|e| x >= e.frame.x && x <= e.frame.x + e.frame.w && y >= e.frame.y && y <= e.frame.y + e.frame.h).map(|e| e.label)
         }
 
         /// The helper's screen_state after an action, through Pixie's ids and description.
         fn after(&self, at: (f64, f64)) -> String {
-            let stage = *self.stage.lock().unwrap();
+            let stage = *self.stage.lock_ok();
             let mut now = Capture { app: "Notes".into(), window: "Notes".into(), elements: screen(stage), ax_text: true, ..Default::default() };
             if stage == 3 {
                 now.text.push(TextLine { text: "Groceries".into(), frame: Frame { x: 40.0, y: 120.0, w: 90.0, h: 18.0 } });
             }
             now.gone = stabilize(&mut now.elements, None);
-            self.search_ids.lock().unwrap().extend(now.elements.iter().filter(|e| e.label == "Search").map(|e| e.id.clone()));
-            let focused = json!({ "role": "AXTextField", "label": self.focused.lock().unwrap().clone() });
-            let prev = self.prev.lock().unwrap().take();
+            self.search_ids.lock_ok().extend(now.elements.iter().filter(|e| e.label == "Search").map(|e| e.id.clone()));
+            let focused = json!({ "role": "AXTextField", "label": self.focused.lock_ok().clone() });
+            let prev = self.prev.lock_ok().take();
             let text = describe_after(prev.as_ref(), &now, Some(&focused), Some(at), false);
-            *self.prev.lock().unwrap() = Some(now);
+            *self.prev.lock_ok() = Some(now);
             text
         }
     }
@@ -930,11 +1040,11 @@ mod multi_step {
             };
             let Some(label) = self.hit(x, y) else { return Some(ToolOutput::err(format!("nothing at ({x}, {y})"))) };
             if action == "type" {
-                *self.focused.lock().unwrap() = label.clone();
-                self.typed.lock().unwrap().push((label, input["target"].as_str().unwrap_or("").into()));
+                *self.focused.lock_ok() = label.clone();
+                self.typed.lock_ok().push((label, input["target"].as_str().unwrap_or("").into()));
             } else {
-                self.pressed.lock().unwrap().push(label.clone());
-                let mut stage = self.stage.lock().unwrap();
+                self.pressed.lock_ok().push(label.clone());
+                let mut stage = self.stage.lock_ok();
                 *stage = match (label.as_str(), *stage) {
                     ("File", 0) => 1,
                     ("New Note", 1) => 2,
@@ -984,7 +1094,7 @@ mod multi_step {
         }
         async fn complete(&self, req: &Request, _: OnEvent<'_>) -> Result<Response, LlmError> {
             let text = latest_text(req);
-            let Some((action, label)) = self.goals.lock().unwrap().pop_front() else {
+            let Some((action, label)) = self.goals.lock_ok().pop_front() else {
                 return Ok(pixie_llm::ScriptedProvider::reply(vec![Content::text("Done: the note is saved.")]));
             };
             let (id, x, y) = find_line(&text, label).unwrap_or_else(|| panic!("the model can't see {label} in:\n{text}"));
@@ -1002,7 +1112,7 @@ mod multi_step {
         let mut first = Capture { app: "Notes".into(), elements: screen(0), ..Default::default() };
         first.gone = stabilize(&mut first.elements, None);
         let start = first.describe();
-        *host.prev.lock().unwrap() = Some(first);
+        *host.prev.lock_ok() = Some(first);
 
         let model = FollowModel { goals: Mutex::new(vec![("press", "File"), ("press", "New Note"), ("type", "Title"), ("press", "Save")].into()) };
         let dir = tempfile::tempdir().unwrap();
@@ -1020,11 +1130,11 @@ mod multi_step {
         let out = pixie_tools::run(&model, "test", vec![Message::user_text(format!("{start}\nMake a note called Groceries."))], tools, &ctx, &AgentOptions { max_steps: 12, ..Default::default() }, &mut |_| {})
             .await
             .unwrap();
-        assert_eq!(*host.pressed.lock().unwrap(), vec!["File", "New Note", "Save"]);
-        assert_eq!(*host.typed.lock().unwrap(), vec![("Title".to_string(), "Groceries".to_string())]);
+        assert_eq!(*host.pressed.lock_ok(), vec!["File", "New Note", "Save"]);
+        assert_eq!(*host.typed.lock_ok(), vec![("Title".to_string(), "Groceries".to_string())]);
         assert!(out.final_text.contains("saved"));
         // The search field kept its id while it moved and the numbering shifted around it.
-        let ids = host.search_ids.lock().unwrap().clone();
+        let ids = host.search_ids.lock_ok().clone();
         assert!(ids.len() >= 4 && ids.iter().all(|i| *i == ids[0]), "{ids:?}");
     }
 

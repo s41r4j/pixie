@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="resources/icons/brand/wordmark-white.svg">
-    <img src="resources/icons/brand/wordmark-black.svg" alt="Pixie" width="260">
-  </picture>
+  <img src="docs/assets/pixie-logo-landscape.gif" alt="Pixie: a pixel cat on a rock watching mountains under the moon, with the Pixie logo" width="640">
 </p>
 
 <p align="center"><b>A little companion that lives in your Mac's notch.</b><br>
@@ -38,11 +35,11 @@ natural voice that runs offline. The notch widens into two little ears while it 
 so nothing covers your work.
 </td>
 <td width="50%" valign="top">
-<img src="site/shots/buddy.png" alt="The round buddy drawing a circle, a box, an arrow and an underline">
+<img src="site/shots/buddy.png" alt="Asked where the download button is, the buddy selects Download for Mac, circles Apple silicon, underlines the macOS requirement and boxes the release notes">
 <h3>It points and draws</h3>
 A round <code>:)</code> buddy rides next to your pointer. It flies to the exact button it's talking
-about and circles, boxes, underlines or arrows it, each mark appearing as the sentence about it is
-spoken.
+about and circles, boxes, underlines or arrows it, each mark appearing just as its words are
+spoken. It works in browsers too: the buttons and links of the page you're on.
 </td>
 </tr>
 <tr>
@@ -97,7 +94,7 @@ included. No telemetry: nothing leaves your Mac.
 - **Dictation anywhere, as you speak**: hold <kbd>fn</kbd> <kbd>⌃</kbd> and the words go into any field while you talk, with Pixie's own on-device speech to text (a one-time 73 MB download; English). Tidied when you stop.
 - **Several screens and desktops**: it knows which screen you mean and keeps the notch where you want it.
 - **Looks after itself**: restarts a part that hangs, keeps last-good copies of your settings, puts the last version back if an update won't start, and runs a checkup when you ask.
-- **Updates itself** from GitHub, checking the signature, when you're not using it.
+- **Updates itself** from GitHub: it downloads and checks the signature in the background, then shows what's new and asks before installing (now, when you quit, or skip that version).
 - **Apps and the browser**: Calendar, Reminders, Contacts, Mail drafts (it never sends), Gmail and Google Calendar, your Chrome tabs, and connectors (MCP) for GitHub, Linear, Slack and more.
 
 ## Get started

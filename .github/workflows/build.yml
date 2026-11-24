@@ -78,7 +78,37 @@ jobs:
               { echo "$v<<__EOF__"; echo "${!v}"; echo "__EOF__"; } >> "$GITHUB_ENV"
             fi
           done
-          [ -n "$APPLE_SIGNING_IDENTITY" ] && echo "Developer ID signing on" || echo "Ad-hoc signing"
+          [ -n "$APPLE_SIGNING_IDENTITY" ] && echo "Developer ID signing on" || echo "No Developer ID"
+
+      # Without a Developer ID: sign with Pixie's own self-signed certificate (repo secrets
+      # PIXIE_CODESIGN_P12, base64 of the .p12, and PIXIE_CODESIGN_PASSWORD). Every release then
+      # carries the same identity, so macOS keeps Screen Recording, Accessibility and the
+      # microphone on across updates; ad-hoc builds lose them on each one. Tauri only imports
+      # Apple-issued certificates itself, so this step puts ours in a keychain of its own and
+      # hands Tauri the name.
+      - name: Self-signed signing
+        env:
+          PIXIE_CODESIGN_P12: ${{ secrets.PIXIE_CODESIGN_P12 }}
+          PIXIE_CODESIGN_PASSWORD: ${{ secrets.PIXIE_CODESIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ] || [ -z "$PIXIE_CODESIGN_P12" ]; then
+            [ -n "${APPLE_SIGNING_IDENTITY:-}" ] || echo "Ad-hoc signing (no PIXIE_CODESIGN_P12)"
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/pixie-sign.keychain-db"
+          KP=$(openssl rand -hex 16)
+          echo "$PIXIE_CODESIGN_P12" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -t 3600 -u "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          security import "$RUNNER_TEMP/id.p12" -k "$KC" -P "$PIXIE_CODESIGN_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$KC" | grep -q '"Pixie Self-Signed"'
+          echo "APPLE_SIGNING_IDENTITY=Pixie Self-Signed" >> "$GITHUB_ENV"
+          echo "Self-signed signing on"
 
       - name: Build universal app + dmg
         run: npm run app:build:universal
@@ -88,6 +118,11 @@ jobs:
           set -euo pipefail
           BUNDLE=target/universal-apple-darwin/release/bundle
           mkdir -p out
+          # Which identity the app carries; a release that should be signed and isn't stops here.
+          codesign -dvv "$BUNDLE/macos/Pixie.app" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)=' || true
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            codesign -dr - "$BUNDLE/macos/Pixie.app" 2>&1 | grep -q 'certificate leaf'
+          fi
           cp "$BUNDLE"/dmg/*.dmg out/Pixie-macOS-universal.dmg
           ditto -c -k --keepParent "$BUNDLE/macos/Pixie.app" out/Pixie-macOS-universal.zip
           if [ -f "$BUNDLE/macos/Pixie.app.tar.gz" ]; then

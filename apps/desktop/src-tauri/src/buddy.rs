@@ -1,6 +1,7 @@
 //! The buddy: Pixie's own pointer that rides next to your cursor (on the overlay window),
 //! flies to things it points at, and, when allowed, clicks for you.
 
+use pixie_core::sync::LockOk;
 use crate::macos::{self, Rect};
 use crate::{emit, AppState, OVERLAY};
 use pixie_core::Event;
@@ -40,7 +41,7 @@ pub fn enabled(app: &AppHandle) -> bool {
         0 => false,
         1 => {
             let busy = st.session.active() || crate::overlay::is_shown() || crate::jobs::live_running(app) || TIP.load(Ordering::SeqCst);
-            let mut l = last_busy().lock().unwrap();
+            let mut l = last_busy().lock_ok();
             if busy {
                 *l = Some(Instant::now());
             }
@@ -73,7 +74,7 @@ pub fn tip(app: &AppHandle, text: &str) {
 
 /// Mark the buddy busy now (it's about to point, draw or click).
 pub fn touch() {
-    *last_busy().lock().unwrap() = Some(Instant::now());
+    *last_busy().lock_ok() = Some(Instant::now());
 }
 
 /// Keep the overlay on the cursor's screen and stream the cursor to it (~40 Hz, on change).
@@ -84,7 +85,7 @@ pub fn tick(app: &AppHandle, cx: f64, cy: f64) {
         }
         return;
     }
-    let mut f = follow().lock().unwrap();
+    let mut f = follow().lock_ok();
     let moved = (f.last.0 - cx).abs() + (f.last.1 - cy).abs() > 0.5;
     if !moved && ON_SCREEN.load(Ordering::SeqCst) {
         return;
@@ -110,7 +111,7 @@ pub fn tick(app: &AppHandle, cx: f64, cy: f64) {
         });
         drop(f);
         if let Ok((s, actual)) = rx.recv_timeout(Duration::from_millis(300)) {
-            follow().lock().unwrap().screen = s.frame;
+            follow().lock_ok().screen = s.frame;
             ON_SCREEN.store(true, Ordering::SeqCst);
             let notch = crate::panel::screen(app);
             emit(app, Event::new("overlay.screen", json!({ "screen": s, "window": actual, "origin": notch.frame })));
@@ -167,7 +168,7 @@ async fn resolve(app: &AppHandle, input: &Value) -> Result<Aim, String> {
         return Err("Say where to click: an element id like e12 (best), a label, or x and y.".into());
     }
     let st = app.state::<AppState>();
-    let seen = st.last_capture.lock().unwrap().clone();
+    let seen = st.last_capture.lock_ok().clone();
     if let Some(f) = seen.as_ref().and_then(|c| crate::screen::find(c, &target, None)) {
         return Ok(Aim { x: f.x + f.w / 2.0, y: f.y + f.h / 2.0, label: target, pid: None });
     }
@@ -279,7 +280,7 @@ pub async fn act(app: &AppHandle, action: &str, input: &Value) -> Result<String,
     let aim = resolve(app, input).await?;
     let (x, y) = (aim.x, aim.y);
     // What a click there really lands on, and whether it needs their OK.
-    let st_app = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+    let st_app = st.last_capture.lock_ok().as_ref().map(|c| c.app.clone()).unwrap_or_default();
     let hit = under(app, x, y).await;
     let labels: Vec<String> = match &hit {
         Some(h) if !h.labels.is_empty() => h.labels.clone(),

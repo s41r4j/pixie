@@ -69,10 +69,13 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         }
         "open" => open(app, input.get("page").and_then(Value::as_str).unwrap_or("general")),
         "check_updates" => {
-            let s = crate::updates::check(app).await?;
+            let s = crate::updates::check(app, true).await?;
             Ok(describe_update(&s))
         }
-        "restart_to_update" => crate::updates::restart_now(app).map(|_| "Restarting into the new version.".into()),
+        "restart_to_update" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || crate::updates::restart_now(&app)).await.map_err(|e| e.to_string())?.map(|_| "Restarting into the new version.".into())
+        }
         "quit" => {
             let n = running_jobs(app);
             quit_soon(app, None);
@@ -845,7 +848,7 @@ async fn set(app: &AppHandle, changes: &Map<String, Value>) -> Result<String, St
 fn describe_update(s: &Value) -> String {
     let cur = s["current"].as_str().unwrap_or("");
     match s["phase"].as_str().unwrap_or("") {
-        "ready" => format!("Pixie {} is downloaded and waiting; it switches over at the next restart (or restart_to_update).", s["version"].as_str().unwrap_or("")),
+        "ready" => format!("Pixie {} is downloaded and verified; the update window shows what's new. It installs when they pick Install and Relaunch (or restart_to_update), or when Pixie quits.", s["version"].as_str().unwrap_or("")),
         "downloading" => format!("Downloading Pixie {}.", s["version"].as_str().unwrap_or("")),
         "checking" => "Checking GitHub now.".into(),
         "up_to_date" => format!("Pixie {cur} is the newest version."),

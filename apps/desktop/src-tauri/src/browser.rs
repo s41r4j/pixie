@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(unix), allow(unused))]
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -99,7 +100,7 @@ pub fn start(app: AppHandle) {
             log::info!("browser: native host connected");
             let (rd, mut wr) = stream.into_split();
             let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-            *bridge().tx.lock().unwrap() = Some(tx);
+            *bridge().tx.lock_ok() = Some(tx);
             tauri::async_runtime::spawn(async move {
                 while let Some(line) = rx.recv().await {
                     if wr.write_all(line.as_bytes()).await.is_err() || wr.write_all(b"\n").await.is_err() {
@@ -120,7 +121,7 @@ pub fn start(app: AppHandle) {
                         }
                         "result" => {
                             if let Some(id) = v["id"].as_u64() {
-                                if let Some(tx) = bridge().pending.lock().unwrap().remove(&id) {
+                                if let Some(tx) = bridge().pending.lock_ok().remove(&id) {
                                     let r = match v.get("error").and_then(Value::as_str) {
                                         Some(e) => Err(e.to_string()),
                                         None => Ok(v.get("result").cloned().unwrap_or(Value::Null)),
@@ -133,8 +134,8 @@ pub fn start(app: AppHandle) {
                     }
                 }
                 bridge().hello.store(false, Ordering::SeqCst);
-                *bridge().tx.lock().unwrap() = None;
-                for (_, tx) in bridge().pending.lock().unwrap().drain() {
+                *bridge().tx.lock_ok() = None;
+                for (_, tx) in bridge().pending.lock_ok().drain() {
                     let _ = tx.send(Err("The browser disconnected.".into()));
                 }
                 log::info!("browser: disconnected");
@@ -146,7 +147,7 @@ pub fn start(app: AppHandle) {
 
 /// The `browser` tool.
 pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
-    let tx = bridge().tx.lock().unwrap().clone();
+    let tx = bridge().tx.lock_ok().clone();
     let Some(tx) = tx.filter(|_| connected(app)) else {
         return Err("Their browser isn't connected. They can install the Pixie extension from Settings → Connectors.".into());
     };
@@ -154,14 +155,14 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
     let mut req = input.clone();
     req["id"] = json!(id);
     let (otx, orx) = oneshot::channel();
-    bridge().pending.lock().unwrap().insert(id, otx);
+    bridge().pending.lock_ok().insert(id, otx);
     tx.send(req.to_string()).map_err(|_| "The browser disconnected.".to_string())?;
     let limit = if input["operation"] == "batch" { 35 } else { 25 };
     let result = match tokio::time::timeout(Duration::from_secs(limit), orx).await {
         Ok(Ok(r)) => r?,
         Ok(Err(_)) => return Err("The browser went away.".into()),
         Err(_) => {
-            bridge().pending.lock().unwrap().remove(&id);
+            bridge().pending.lock_ok().remove(&id);
             return Err("The browser didn't answer in time.".into());
         }
     };

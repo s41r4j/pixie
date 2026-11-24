@@ -7,6 +7,7 @@ pub mod note;
 pub mod prompt;
 pub mod report;
 pub mod resources;
+pub mod sync;
 
 pub use event::Event;
 pub use resources::{ResourceError, ResourceKind, ResourceStore, SlotEntry};

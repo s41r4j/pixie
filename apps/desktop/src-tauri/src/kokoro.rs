@@ -9,6 +9,7 @@
 //! Files: `<app_data>/voices/runtime` (sherpa-onnx v2.0.1 osx-arm64, shared) and
 //! `<app_data>/voices/kokoro` (kokoro-multi-lang-v1_0). Settings → Voice can download them.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use serde::Serialize;
 use serde_json::json;
@@ -106,7 +107,7 @@ fn available(app: &AppHandle) -> bool {
 }
 
 fn touch() {
-    *engine().last_used.lock().unwrap() = Some(Instant::now());
+    *engine().last_used.lock_ok() = Some(Instant::now());
 }
 
 #[derive(Serialize)]
@@ -159,11 +160,11 @@ pub fn start(_app: AppHandle) {
         .spawn(|| loop {
             std::thread::sleep(Duration::from_secs(30));
             let e = engine();
-            let quiet = e.last_used.lock().unwrap().map(|t| t.elapsed() > IDLE_UNLOAD).unwrap_or(true);
-            if e.ready.load(Ordering::SeqCst) && quiet && e.pending.lock().unwrap().is_empty() {
+            let quiet = e.last_used.lock_ok().map(|t| t.elapsed() > IDLE_UNLOAD).unwrap_or(true);
+            if e.ready.load(Ordering::SeqCst) && quiet && e.pending.lock_ok().is_empty() {
                 log::info!("voice: quiet for a while, unloading Kokoro");
                 // Closing stdin ends the server; the reader thread tidies up.
-                *e.stdin.lock().unwrap() = None;
+                *e.stdin.lock_ok() = None;
             }
         })
         .expect("voice idle thread");
@@ -193,9 +194,9 @@ fn launch(app: AppHandle) {
         .name("pixie-voice".into())
         .spawn(move || {
             let v = voices_dir(&data);
-            if engine().lexicon.lock().unwrap().is_none() {
+            if engine().lexicon.lock_ok().is_none() {
                 match pixie_voice::say::Lexicon::load(&v.join("kokoro/lexicon-us-en.txt")) {
-                    Ok(l) => *engine().lexicon.lock().unwrap() = Some(std::sync::Arc::new(l)),
+                    Ok(l) => *engine().lexicon.lock_ok() = Some(std::sync::Arc::new(l)),
                     Err(e) => log::warn!("voice: lexicon: {e}"),
                 }
             }
@@ -215,20 +216,20 @@ fn launch(app: AppHandle) {
                     return;
                 }
             };
-            *engine().stdin.lock().unwrap() = child.stdin.take();
+            *engine().stdin.lock_ok() = child.stdin.take();
             engine().pid.store(child.id(), Ordering::SeqCst);
-            *engine().progress.lock().unwrap() = Some(Instant::now());
+            *engine().progress.lock_ok() = Some(Instant::now());
             let out = child.stdout.take().expect("stdout");
             for line in BufReader::new(out).lines() {
                 let Ok(line) = line else { break };
-                *engine().progress.lock().unwrap() = Some(Instant::now());
+                *engine().progress.lock_ok() = Some(Instant::now());
                 let f: Vec<&str> = line.splitn(4, '\t').collect();
                 match f.as_slice() {
                     ["ready", n, ..] => {
                         // Under the queue lock, so nothing is queued after the flush.
-                        let mut q = engine().queue.lock().unwrap();
+                        let mut q = engine().queue.lock_ok();
                         engine().ready.store(true, Ordering::SeqCst);
-                        let mut stdin = engine().stdin.lock().unwrap();
+                        let mut stdin = engine().stdin.lock_ok();
                         if let Some(w) = stdin.as_mut() {
                             for l in q.drain(..) {
                                 let l = with_phonemes(l);
@@ -256,14 +257,14 @@ fn launch(app: AppHandle) {
 /// The server is gone (unloaded, or it failed): anything still waiting falls through.
 fn stopped(app: &AppHandle) {
     let waiting: Vec<String> = {
-        let mut q = engine().queue.lock().unwrap();
+        let mut q = engine().queue.lock_ok();
         engine().ready.store(false, Ordering::SeqCst);
-        *engine().stdin.lock().unwrap() = None;
+        *engine().stdin.lock_ok() = None;
         engine().running.store(false, Ordering::SeqCst);
-        *engine().lexicon.lock().unwrap() = None;
+        *engine().lexicon.lock_ok() = None;
         q.drain(..).filter_map(|l| l.split('\t').next().map(str::to_string)).collect()
     };
-    let left: Vec<String> = engine().pending.lock().unwrap().keys().cloned().collect();
+    let left: Vec<String> = engine().pending.lock_ok().keys().cloned().collect();
     for id in waiting.into_iter().chain(left) {
         delivered(app, &id, false);
     }
@@ -277,7 +278,7 @@ fn wav_path(app: &AppHandle, id: &str) -> PathBuf {
 }
 
 fn delivered(app: &AppHandle, id: &str, ok: bool) {
-    let Some((gen, text)) = engine().pending.lock().unwrap().remove(id) else { return };
+    let Some((gen, text)) = engine().pending.lock_ok().remove(id) else { return };
     let path = wav_path(app, id);
     let st = app.state::<AppState>();
     if ok && gen == engine().gen.load(Ordering::SeqCst) {
@@ -298,11 +299,11 @@ pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64, loudne
     let clean: String = text.chars().map(|c| if c == '\t' || c == '\n' { ' ' } else { c }).collect();
     let line = request_line(id, &wav_path(app, id), sid, speed, loudness, &clean);
     let gen = engine().gen.load(Ordering::SeqCst);
-    let mut q = engine().queue.lock().unwrap();
+    let mut q = engine().queue.lock_ok();
     {
-        let mut p = engine().pending.lock().unwrap();
+        let mut p = engine().pending.lock_ok();
         if p.is_empty() {
-            *engine().progress.lock().unwrap() = Some(Instant::now());
+            *engine().progress.lock_ok() = Some(Instant::now());
         }
         p.insert(id.to_string(), (gen, clean));
     }
@@ -312,10 +313,10 @@ pub fn speak(app: &AppHandle, id: &str, text: &str, sid: i32, speed: f64, loudne
         launch(app.clone());
         return true;
     }
-    let mut guard = engine().stdin.lock().unwrap();
+    let mut guard = engine().stdin.lock_ok();
     let ok = guard.as_mut().map(|w| w.write_all(line.as_bytes()).and_then(|_| w.flush()).is_ok()).unwrap_or(false);
     if !ok {
-        engine().pending.lock().unwrap().remove(id);
+        engine().pending.lock_ok().remove(id);
     }
     ok
 }
@@ -334,7 +335,7 @@ fn loudness_db(l: &str) -> f32 {
 /// model, so it's normally there; until then the server reads the text itself.
 fn request_line(id: &str, wav: &Path, sid: i32, speed: f64, loudness: &str, text: &str) -> String {
     let said = pixie_voice::say::normalize(text);
-    let lex = engine().lexicon.lock().unwrap().clone();
+    let lex = engine().lexicon.lock_ok().clone();
     let phonemes = lex.map(|l| l.phonemes(&said)).unwrap_or_default().replace(['\t', '\n'], " ");
     format!("{id}\t{sid}\t{speed:.2}\t{}\t{:.1}\t{said}\t{phonemes}\n", wav.display(), loudness_db(loudness))
 }
@@ -345,7 +346,7 @@ fn with_phonemes(line: String) -> String {
     if f.len() != 7 || !f[6].is_empty() {
         return line;
     }
-    let Some(lex) = engine().lexicon.lock().unwrap().clone() else { return line };
+    let Some(lex) = engine().lexicon.lock_ok().clone() else { return line };
     let ph = lex.phonemes(f[5]).replace(['\t', '\n'], " ");
     format!("{}\t{ph}\n", f[..6].join("\t"))
 }
@@ -355,8 +356,8 @@ fn with_phonemes(line: String) -> String {
 pub fn hung() -> bool {
     let e = engine();
     e.running.load(Ordering::SeqCst)
-        && !e.pending.lock().unwrap().is_empty()
-        && e.progress.lock().unwrap().map(|t| t.elapsed() > Duration::from_secs(40)).unwrap_or(false)
+        && !e.pending.lock_ok().is_empty()
+        && e.progress.lock_ok().map(|t| t.elapsed() > Duration::from_secs(40)).unwrap_or(false)
 }
 
 /// End a hung server; what was waiting falls through to the system voice, and the next answer
@@ -394,7 +395,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         let r = (|| -> Result<(), String> {
             let files = [(RUNTIME_URL, "runtime"), (MODEL_URL, "kokoro")];
             let total: u64 = files.iter().filter(|(_, d)| !v.join(d).exists()).map(|(u, _)| remote_size(u)).sum();
-            *progress().lock().unwrap() = (0, total);
+            *progress().lock_ok() = (0, total);
             let mut before = 0u64;
             for (url, dest, inner) in [
                 (RUNTIME_URL, "runtime", "sherpa-onnx-v2.0.1-osx-universal2-shared"),
@@ -415,7 +416,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
                         break st;
                     }
                     let now_bytes = before + std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
-                    progress().lock().unwrap().0 = now_bytes;
+                    progress().lock_ok().0 = now_bytes;
                     if last_emit.elapsed() > std::time::Duration::from_millis(400) {
                         last_emit = std::time::Instant::now();
                         crate::emit(&app, pixie_core::Event::new("voice.install", json!({ "step": dest, "done": now_bytes, "total": total })));

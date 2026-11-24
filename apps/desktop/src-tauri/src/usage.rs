@@ -4,6 +4,7 @@
 //! Anthropic, OpenAI and DeepSeek prices; cached in `<app_data>/prices.json` and refreshed daily),
 //! then a few built-in defaults.
 
+use pixie_core::sync::LockOk;
 use crate::config::{Price, Settings};
 use pixie_llm::{Effort, LlmError, OnEvent, Provider, ProviderConfig, Request, Response};
 use serde::{Deserialize, Serialize};
@@ -153,7 +154,7 @@ pub fn catalog() -> &'static std::sync::Mutex<Catalog> {
 /// Load the cached list from disk.
 pub fn load_catalog(data: &Path) {
     if let Some(c) = std::fs::read_to_string(data.join("prices.json")).ok().and_then(|s| serde_json::from_str::<Catalog>(&s).ok()) {
-        *catalog().lock().unwrap() = c;
+        *catalog().lock_ok() = c;
     }
 }
 
@@ -173,7 +174,7 @@ pub async fn refresh_catalog(data: &Path) -> Result<usize, String> {
     let mut c = c;
     c.aliases = catalog().lock().map(|o| o.aliases.clone()).unwrap_or_default();
     save_catalog(data, &c);
-    *catalog().lock().unwrap() = c;
+    *catalog().lock_ok() = c;
     Ok(n)
 }
 
@@ -183,7 +184,7 @@ fn save_catalog(data: &Path, c: &Catalog) {
 
 /// Remember official names for alias ids (from a provider's model list).
 pub fn learn_aliases(data: &Path, pairs: &[(String, String)]) {
-    let mut c = catalog().lock().unwrap();
+    let mut c = catalog().lock_ok();
     let mut changed = false;
     for (id, name) in pairs {
         if !name.is_empty() && normalize(id) != normalize(name) && c.aliases.get(id) != Some(name) {

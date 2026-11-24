@@ -158,6 +158,7 @@ fn handle(cmd: &str, args: &Value) -> Result<Value, String> {
 /// held (ctrl+letter would be a shortcut): held keys make it wait.
 mod live {
     use super::os;
+    use pixie_core::sync::LockOk;
     use serde_json::{json, Value};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -198,7 +199,7 @@ mod live {
     }
 
     pub fn begin(app: &str) -> Value {
-        let mut l = LIVE.lock().unwrap();
+        let mut l = LIVE.lock_ok();
         *l = Live { active: !app.eq_ignore_ascii_case("pixie"), typed: String::new(), reason: String::new(), app: app.to_string() };
         if !l.active {
             l.reason = "no text cursor (Pixie is in front)".into();
@@ -207,7 +208,7 @@ mod live {
     }
 
     pub fn update(text: &str) -> Value {
-        let mut l = LIVE.lock().unwrap();
+        let mut l = LIVE.lock_ok();
         if !modifier_held() {
             apply(&mut l, text);
         }
@@ -215,7 +216,7 @@ mod live {
     }
 
     pub fn end() -> Value {
-        let l = LIVE.lock().unwrap();
+        let l = LIVE.lock_ok();
         json!({ "live": { "active": l.active, "typed": l.typed, "reason": l.reason }, "no_surface": false })
     }
 
@@ -229,14 +230,14 @@ mod live {
 
     pub fn now(text: &str) -> Value {
         settle();
-        let mut l = LIVE.lock().unwrap();
+        let mut l = LIVE.lock_ok();
         let ok = !modifier_held() && apply(&mut l, text);
         json!({ "applied": ok, "reason": l.reason, "how": "keys" })
     }
 
     pub fn finish(text: &str) -> Value {
         settle();
-        let mut l = LIVE.lock().unwrap();
+        let mut l = LIVE.lock_ok();
         let ok = !modifier_held() && apply(&mut l, text);
         let out = json!({ "applied": ok, "reason": if ok || !l.reason.is_empty() { l.reason.clone() } else { "keys were held".into() }, "typed": l.typed.chars().count(), "how": "keys", "app": l.app });
         *l = Live::default();
@@ -244,7 +245,7 @@ mod live {
     }
 
     pub fn cancel() {
-        *LIVE.lock().unwrap() = Live::default();
+        *LIVE.lock_ok() = Live::default();
     }
 }
 
@@ -297,7 +298,10 @@ impl Bgra {
         }
         let k = max as f64 / self.w.max(self.h) as f64;
         let (w, h) = ((self.w as f64 * k) as u32, (self.h as f64 * k) as u32);
-        let img = image::RgbaImage::from_raw(self.w, self.h, self.px.clone()).expect("size");
+        // A buffer that doesn't match its size (a driver's odd row padding) is read unscaled.
+        let Some(img) = image::RgbaImage::from_raw(self.w, self.h, self.px.clone()) else {
+            return (std::borrow::Cow::Borrowed(self), 1.0);
+        };
         let small = image::imageops::resize(&img, w, h, image::imageops::FilterType::Triangle);
         (std::borrow::Cow::Owned(Bgra { w, h, px: small.into_raw() }), k)
     }

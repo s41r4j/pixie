@@ -5,6 +5,7 @@
 //! as GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET. Tokens stay in `<app_data>/google.json` (owner-only).
 //! Pixie reads mail, writes *drafts* (never sends) and reads/adds calendar events.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -59,7 +60,7 @@ fn save(dir: &Path, t: &Tokens) {
 
 fn client(app: &AppHandle) -> Option<(String, String)> {
     let st = app.state::<AppState>();
-    let s = st.settings.lock().unwrap().clone();
+    let s = st.settings.lock_ok().clone();
     let vars = crate::config::vars(&st.data_dir, &s);
     let id = Some(s.google_client_id.trim().to_string()).filter(|x| !x.is_empty()).or_else(|| vars.get("GOOGLE_CLIENT_ID").cloned())?;
     let secret = Some(s.google_client_secret.trim().to_string()).filter(|x| !x.is_empty()).or_else(|| vars.get("GOOGLE_CLIENT_SECRET").cloned()).unwrap_or_default();

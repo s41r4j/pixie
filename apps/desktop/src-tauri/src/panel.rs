@@ -4,6 +4,7 @@
 //! except in `Typing` mode where the user asked to type. On a Mac with a notch the window rests
 //! there invisibly; hovering the notch opens `Peek` (quick actions, last answer, jobs).
 
+use pixie_core::sync::LockOk;
 use crate::macos::{self, Rect};
 use crate::{emit, hit, AppState, PANEL};
 use pixie_core::Event;
@@ -72,7 +73,7 @@ fn same_screen(a: &macos::ScreenInfo, b: &macos::ScreenInfo) -> bool {
 fn place(handle: &AppHandle, win: &WebviewWindow, s: macos::ScreenInfo) {
     let frame = Rect { x: s.frame.x + (s.frame.w - WIDTH) / 2.0, y: s.frame.y, w: WIDTH, h: HEIGHT };
     macos::set_frame(win, frame);
-    handle.state::<AppState>().panel.lock().unwrap().screen = s;
+    handle.state::<AppState>().panel.lock_ok().screen = s;
     hit::set_frame(handle, PANEL, frame);
     emit(handle, Event::new("panel.screen", json!({ "screen": s })));
 }
@@ -142,7 +143,7 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
     let _ = app.run_on_main_thread(move || {
         let Some(win) = window(&handle) else { return };
         let st = handle.state::<AppState>();
-        let current = st.panel.lock().unwrap().screen;
+        let current = st.panel.lock_ok().screen;
         if next == PanelMode::Hidden {
             st.session.set_hovered(false);
             if !quiet(prev) {
@@ -160,7 +161,7 @@ pub fn set_mode(app: &AppHandle, next: PanelMode) {
                     let Some(w) = window(&h3) else { return };
                     match home_screen(&h3) {
                         Some(ns) => {
-                            let cur = h3.state::<AppState>().panel.lock().unwrap().screen;
+                            let cur = h3.state::<AppState>().panel.lock_ok().screen;
                             if !same_screen(&cur, &ns) {
                                 place(&h3, &w, ns);
                             }

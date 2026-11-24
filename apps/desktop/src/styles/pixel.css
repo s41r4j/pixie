@@ -191,6 +191,10 @@ html[data-view="settings"] body, html[data-view="note"] body { background: var(-
 .banner { border-radius: 0; background: var(--oc-surface); border: 1px solid var(--oc-charcoal); box-shadow: none; font-size: 12.5px; }
 .banner--ok { border-color: var(--oc-white); background: var(--oc-surface); box-shadow: none; }
 .banner--warn { border: 1px dashed var(--oc-white); background: var(--oc-surface); box-shadow: none; }
+.banner--fill { --fill: #2a2a2a; color: var(--oc-white); }
+.banner--fill .banner__fill { transition-timing-function: steps(8, end); border-right: 2px solid var(--oc-white); }
+.banner--fill .banner__fill::after { background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(255,255,255,.08) 4px 8px); background-size: 8px 8px; animation-timing-function: steps(2, end); }
+.banner--fill.is-unknown .banner__fill { border-left: 2px solid var(--oc-white); }
 .seg-control { border-radius: 0; background: var(--oc-black); border: 2px solid var(--oc-white); padding: 0; gap: 0; }
 .seg-control button { border-radius: 0; font-family: var(--font-ui); font-size: 17px; padding: 3px 12px; color: var(--oc-mid); }
 .seg-control button.is-on { background: var(--oc-white); color: var(--oc-black); box-shadow: none; }
@@ -698,6 +702,7 @@ html[data-view="canvas"], html[data-view="canvas"] body, html[data-view="canvas"
 .scene3d__tools button { font: 11px var(--oc-mono, ui-monospace, monospace); letter-spacing: 0.04em; color: #cfcfcf; background: rgba(13, 13, 13, 0.78); border: 1px solid #3a3a3a; padding: 5px 10px; cursor: pointer; text-align: left; }
 .scene3d__tools button:hover { color: #fff; border-color: #8a8a8a; }
 .scene3d__tools button.is-on { color: #0d0d0d; background: #f2f2f2; border-color: #f2f2f2; }
+.scene3d__lost { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 12px var(--oc-mono, ui-monospace, monospace); color: #bdbdbd; background: #0d0d0d; pointer-events: none; }
 .scene3d__hint { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font: 11px var(--oc-mono, ui-monospace, monospace); color: #6f6f6f; pointer-events: none; }
 /* No transitions here: Three.js moves the labels every frame, and a transition on them makes them trail and stutter. */
 .scene3d__label { font: 12px var(--oc-mono, ui-monospace, monospace); color: #f2f2f2; background: rgba(13, 13, 13, 0.78); border: 1px solid #3a3a3a; padding: 2px 6px; white-space: nowrap; pointer-events: none; will-change: transform; }

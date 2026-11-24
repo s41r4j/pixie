@@ -1,6 +1,7 @@
 //! Windows: GDI capture, Windows OCR, UI Automation, SendInput, WinRT speech.
 //! Every COM call runs on the native worker thread (COM initialised there once).
 
+use pixie_core::sync::LockOk;
 use super::{emit, rect, Bgra, Shot};
 use crate::macos::{to_logical, to_physical};
 use serde_json::{json, Value};
@@ -570,7 +571,7 @@ pub fn listen_start(locale: &str) -> Result<Value, String> {
         rec.HypothesisGenerated(&TypedEventHandler::new(move |_, args: windows::core::Ref<SpeechRecognitionHypothesisGeneratedEventArgs>| {
             if let Ok(a) = args.ok() {
                 let h = a.Hypothesis()?.Text()?.to_string();
-                let mut g = t.lock().unwrap();
+                let mut g = t.lock_ok();
                 g.1 = h;
                 emit("partial", json!({ "text": join(&g.0, &g.1) }));
             }
@@ -582,7 +583,7 @@ pub fn listen_start(locale: &str) -> Result<Value, String> {
             if let Ok(a) = args.ok() {
                 let r = a.Result()?;
                 if r.Status()? == SpeechRecognitionResultStatus::Success {
-                    let mut g = t.lock().unwrap();
+                    let mut g = t.lock_ok();
                     let said = r.Text()?.to_string();
                     g.0 = join(&g.0, &said);
                     g.1.clear();
@@ -604,7 +605,7 @@ pub fn listen_start(locale: &str) -> Result<Value, String> {
         }
     })?;
     let meter = super::meter::start();
-    *LISTEN.lock().unwrap() = Some(Listening { rec, text, meter });
+    *LISTEN.lock_ok() = Some(Listening { rec, text, meter });
     Ok(json!({ "on_device": false }))
 }
 
@@ -617,7 +618,7 @@ fn join(a: &str, b: &str) -> String {
 }
 
 pub fn listen_stop() -> Value {
-    let Some(l) = LISTEN.lock().unwrap().take() else { return json!({ "text": "" }) };
+    let Some(l) = LISTEN.lock_ok().take() else { return json!({ "text": "" }) };
     drop(l.meter);
     if let Ok(s) = l.rec.ContinuousRecognitionSession() {
         // StopAsync waits for the last phrase to be finalised.
@@ -625,12 +626,12 @@ pub fn listen_stop() -> Value {
             let _ = op.join();
         }
     }
-    let g = l.text.lock().unwrap();
+    let g = l.text.lock_ok();
     json!({ "text": join(&g.0, &g.1) })
 }
 
 pub fn listen_cancel() {
-    if let Some(l) = LISTEN.lock().unwrap().take() {
+    if let Some(l) = LISTEN.lock_ok().take() {
         if let Ok(s) = l.rec.ContinuousRecognitionSession() {
             if let Ok(op) = s.CancelAsync() {
                 let _ = op.join();

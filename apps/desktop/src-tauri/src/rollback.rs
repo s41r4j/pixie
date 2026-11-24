@@ -57,6 +57,11 @@ pub fn skipped(data: &Path) -> Option<String> {
     std::fs::read_to_string(data.join("skip-version")).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Skip This Version in the update window: that version isn't offered again.
+pub fn skip(data: &Path, version: &str) {
+    let _ = std::fs::write(data.join("skip-version"), version);
+}
+
 /// Before an update replaces the app: keep the running version.
 pub fn keep_current(data: &Path, current: &str, to: &str) {
     if !cfg!(target_os = "macos") {

@@ -3,6 +3,7 @@
 //! also asks macOS for the permission. Nothing here sends mail: `mail` only drafts, and the draft
 //! opens in Mail for the user to send.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use pixie_llm::ToolDef;
 use serde_json::{json, Value};
@@ -139,7 +140,7 @@ pub async fn set(app: &AppHandle, kind: &str, on: bool) -> Result<String, String
         }
     }
     {
-        let mut s = st.settings.lock().unwrap();
+        let mut s = st.settings.lock_ok();
         s.apps.insert(kind.to_string(), on);
         s.save(&st.data_dir);
     }

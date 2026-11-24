@@ -5,6 +5,7 @@
 //! canvas window takes it, draws it element by element, saves, and reports back. Exports go to
 //! Downloads and never overwrite.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use pixie_core::Event;
 use pixie_llm::ToolDef;
@@ -95,7 +96,7 @@ read: what's on it now, their edits included. clear: empty it. list: saved canva
 
 /// Open (or bring up) a canvas and make it current.
 pub fn open(app: &AppHandle, id: &str) {
-    *CURRENT.lock().unwrap() = Some(id.to_string());
+    *CURRENT.lock_ok() = Some(id.to_string());
     crate::windows::open_canvas(app, id);
 }
 
@@ -105,14 +106,14 @@ fn exists(app: &AppHandle, id: &str) -> bool {
 
 /// The canvas in use, if it's still there.
 fn current(app: &AppHandle) -> Option<String> {
-    let id = CURRENT.lock().unwrap().clone()?;
+    let id = CURRENT.lock_ok().clone()?;
     (exists(app, &id) || crate::windows::canvas_visible(app)).then_some(id)
 }
 
 /// Which canvas an action means: canvas=<id>, a title, new=true, or the one in use.
 fn pick(app: &AppHandle, input: &Value, action: &str) -> Result<String, String> {
     if let Some(id) = input.get("canvas").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        if valid(id) && (exists(app, id) || CURRENT.lock().unwrap().as_deref() == Some(id)) {
+        if valid(id) && (exists(app, id) || CURRENT.lock_ok().as_deref() == Some(id)) {
             return Ok(id.to_string());
         }
         return Err(format!("There's no canvas \"{id}\"; action=list shows them."));
@@ -226,8 +227,8 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
     open(app, &id);
     let req = NEXT.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = oneshot::channel();
-    WAITING.lock().unwrap().get_or_insert_with(HashMap::new).insert(req, tx);
-    OPS.lock().unwrap().push(Op { req, canvas: id.clone(), action: action.clone(), input: input.clone() });
+    WAITING.lock_ok().get_or_insert_with(HashMap::new).insert(req, tx);
+    OPS.lock_ok().push(Op { req, canvas: id.clone(), action: action.clone(), input: input.clone() });
     crate::emit(app, Event::new("canvas.ops", json!({ "canvas": id })));
     if action != "read" {
         app.state::<AppState>().play("pencil-paper-bed");
@@ -236,7 +237,7 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         Ok(Ok(r)) => r,
         Ok(Err(_)) => Err("The canvas closed.".into()),
         Err(_) => {
-            WAITING.lock().unwrap().get_or_insert_with(HashMap::new).remove(&req);
+            WAITING.lock_ok().get_or_insert_with(HashMap::new).remove(&req);
             Err("The canvas didn't answer in time.".into())
         }
     };
@@ -292,12 +293,12 @@ fn to_trash(f: &Path) -> Result<(), String> {
 /// Delete a canvas: its file goes to the Trash, and the window closes if it was showing it.
 fn remove(app: &AppHandle, id: &str) -> Result<(), String> {
     let f = file(app, id)?;
-    DELETED.lock().unwrap().push(id.to_string());
+    DELETED.lock_ok().push(id.to_string());
     to_trash(&f)?;
     let _ = std::fs::remove_file(f.with_extension("excalidraw.tmp"));
-    OPS.lock().unwrap().retain(|o| o.canvas != id);
+    OPS.lock_ok().retain(|o| o.canvas != id);
     let was_current = {
-        let mut cur = CURRENT.lock().unwrap();
+        let mut cur = CURRENT.lock_ok();
         let hit = cur.as_deref() == Some(id);
         if hit {
             *cur = None;
@@ -362,7 +363,7 @@ pub fn canvas_load(app: AppHandle, id: String) -> Result<Option<String>, String>
 #[tauri::command]
 pub fn canvas_save(app: AppHandle, id: String, scene: String) -> Result<(), String> {
     let f = file(&app, &id)?;
-    if DELETED.lock().unwrap().contains(&id) {
+    if DELETED.lock_ok().contains(&id) {
         return Ok(()); // deleted; a late autosave doesn't bring it back
     }
     std::fs::create_dir_all(dir(&app)).map_err(|e| e.to_string())?;
@@ -392,8 +393,8 @@ pub fn canvas_open(app: AppHandle, id: Option<String>, fresh: Option<bool>) -> S
 /// Operations waiting for this canvas (the window takes them on load and on `canvas.ops`).
 #[tauri::command]
 pub fn canvas_take_ops(id: String) -> Vec<Op> {
-    *CURRENT.lock().unwrap() = Some(id.clone());
-    let mut ops = OPS.lock().unwrap();
+    *CURRENT.lock_ok() = Some(id.clone());
+    let mut ops = OPS.lock_ok();
     let (mine, rest): (Vec<Op>, Vec<Op>) = ops.drain(..).partition(|o| o.canvas == id);
     *ops = rest;
     mine
@@ -402,7 +403,7 @@ pub fn canvas_take_ops(id: String) -> Vec<Op> {
 /// The window finished an operation.
 #[tauri::command]
 pub fn canvas_done(req: u64, ok: bool, text: String) {
-    if let Some(tx) = WAITING.lock().unwrap().get_or_insert_with(HashMap::new).remove(&req) {
+    if let Some(tx) = WAITING.lock_ok().get_or_insert_with(HashMap::new).remove(&req) {
         let _ = tx.send(if ok { Ok(text) } else { Err(text) });
     }
 }

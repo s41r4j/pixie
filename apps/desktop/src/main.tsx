@@ -10,6 +10,7 @@ import { Overlay } from "./views/Overlay";
 import { Shelf } from "./views/Shelf";
 import { NoteWindow } from "./views/NoteWindow";
 import { Guide } from "./views/Guide";
+import { Update } from "./views/Update";
 import "./styles/base.css";
 import "./styles/panel.css";
 import "./styles/overlay.css";
@@ -62,6 +63,7 @@ const VIEWS: Record<string, () => React.JSX.Element> = {
   guide: Guide,
   canvas: CanvasView,
   scene: SceneView,
+  update: Update,
 };
 const View = VIEWS[label] ?? Settings;
 

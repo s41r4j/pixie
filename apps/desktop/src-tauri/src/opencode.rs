@@ -15,6 +15,7 @@
 //!   session's instructions, earlier conversation and the screenshot in the prompt. Text deltas
 //!   stream back as `AgentEvent::Text`, so speech starts on the first sentence.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use pixie_llm::{Content, Effort, LlmError, Message, OnEvent, Provider, Request, Response, Role, StopReason, StreamEvent, ToolDef};
 use pixie_tools::{AgentEvent, AgentOptions, AgentOutcome, ToolCtx};
@@ -104,8 +105,8 @@ pub fn init(app: &AppHandle) {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
             let s = shared();
-            let quiet = s.last_used.lock().unwrap().map(|t| t.elapsed() > IDLE).unwrap_or(true);
-            if quiet && s.turns.lock().unwrap().is_empty() {
+            let quiet = s.last_used.lock_ok().map(|t| t.elapsed() > IDLE).unwrap_or(true);
+            if quiet && s.turns.lock_ok().is_empty() {
                 if let Some(mut srv) = s.server.lock().await.take() {
                     log::info!("opencode: quiet for a while, stopping the server");
                     // The server under the watcher first, then the watcher.
@@ -148,7 +149,7 @@ fn split_model(m: &str) -> (String, String) {
 }
 
 fn touch() {
-    *shared().last_used.lock().unwrap() = Some(Instant::now());
+    *shared().last_used.lock_ok() = Some(Instant::now());
 }
 
 /// Load the server now if opencode is the model (they started talking).
@@ -234,7 +235,7 @@ async fn ensure(app: &AppHandle) -> Result<(String, String), String> {
     // reads them from the environment; apps started by macOS don't inherit a shell's).
     {
         let st = app.state::<AppState>();
-        let settings = st.settings.lock().unwrap().clone();
+        let settings = st.settings.lock_ok().clone();
         for (provider, var) in [("deepseek", "DEEPSEEK_API_KEY"), ("claude", "ANTHROPIC_API_KEY"), ("openai", "OPENAI_API_KEY")] {
             if let Some(k) = crate::config::key_for(&st.data_dir, &settings, provider) {
                 cmd.env(var, k);
@@ -335,7 +336,7 @@ async fn list_models(base: &str, auth: &str) -> Result<Vec<Value>, String> {
         }));
     }
     out.sort_by(|a, b| b["free"].as_bool().cmp(&a["free"].as_bool()).then(b["released"].as_i64().cmp(&a["released"].as_i64())));
-    *shared().models.lock().unwrap() = caps;
+    *shared().models.lock_ok() = caps;
     Ok(out)
 }
 
@@ -491,7 +492,7 @@ async fn tool_call(params: &Value) -> Value {
     let input = params.get("arguments").cloned().unwrap_or(json!({}));
     let session = params["_meta"]["ai.opencode/sessionID"].as_str().unwrap_or("").to_string();
     let found = {
-        let turns = shared().turns.lock().unwrap();
+        let turns = shared().turns.lock_ok();
         turns.get(&session).map(|t| (t.ctx.clone(), t.allowed.contains(&name), t.events.clone()))
     };
     let err = |m: String| json!({ "content": [{ "type": "text", "text": m }], "isError": true });
@@ -518,7 +519,7 @@ async fn tool_call(params: &Value) -> Value {
 /// For voice turns: the model's variant with the least thinking (none, minimal or low), so
 /// speech starts sooner.
 fn quick_variant(model: &str) -> Option<String> {
-    let caps = shared().models.lock().unwrap();
+    let caps = shared().models.lock_ok();
     let variants = &caps.get(model)?.2;
     ["none", "minimal", "low"].iter().find(|v| variants.iter().any(|x| x == *v)).map(|v| v.to_string())
 }
@@ -619,9 +620,9 @@ pub async fn run(
         .await
         .map_err(api)?;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    shared().turns.lock().unwrap().insert(sid.clone(), Turn { ctx: ctx.clone(), allowed: tools.iter().map(|t| t.name.clone()).collect(), events: tx });
+    shared().turns.lock_ok().insert(sid.clone(), Turn { ctx: ctx.clone(), allowed: tools.iter().map(|t| t.name.clone()).collect(), events: tx });
     let result = drive(app, &base, &auth, &sid, &model, &messages, opts, ctx, &mut rx, on_event).await;
-    shared().turns.lock().unwrap().remove(&sid);
+    shared().turns.lock_ok().remove(&sid);
     touch();
     // Pixie keeps its own history; the session isn't needed again.
     let _ = call(&base, &auth, reqwest::Method::DELETE, &format!("/api/session/{sid}"), None).await;
@@ -778,7 +779,7 @@ impl Provider for OpencodeProvider {
     fn sees_images_at(&self, effort: Effort) -> bool {
         let Some(app) = Self::app() else { return false };
         let m = model_for(app, effort);
-        shared().models.lock().unwrap().get(&m).map(|c| c.0).unwrap_or(m.contains("flash") || m.contains("vl"))
+        shared().models.lock_ok().get(&m).map(|c| c.0).unwrap_or(m.contains("flash") || m.contains("vl"))
     }
 
     async fn complete(&self, req: &Request, on_event: OnEvent<'_>) -> Result<Response, LlmError> {

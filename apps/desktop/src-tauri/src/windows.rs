@@ -1,7 +1,7 @@
 //! Normal windows: the note (a job's full page) and Settings. Both may take focus: the user
 //! asked for them.
 
-use crate::{emit, CANVAS, NOTE, SETTINGS};
+use crate::{emit, CANVAS, NOTE, SETTINGS, UPDATE};
 use pixie_core::Event;
 use serde_json::json;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -154,6 +154,47 @@ pub fn open_settings(app: &AppHandle, tab: &str) {
     });
 }
 
+/// The update window: what's new in the downloaded version, and Install and Relaunch / Install on
+/// Quit / Skip This Version. A fixed-size dialog, in front, with a Dock icon while it's open.
+pub fn open_update(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = handle.get_webview_window(UPDATE) {
+            dock(&handle, true);
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+            return;
+        }
+        let builder = WebviewWindowBuilder::new(&handle, UPDATE, WebviewUrl::App("index.html".into()))
+            .title("Software Update")
+            .inner_size(600.0, 420.0)
+            .resizable(false)
+            .maximizable(false)
+            .center()
+            .visible(true)
+            .focused(true);
+        #[cfg(target_os = "macos")]
+        let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+        match builder.build() {
+            Ok(w) => {
+                dock(&handle, true);
+                let _ = w.set_focus();
+            }
+            Err(e) => log::error!("update window: {e}"),
+        }
+    });
+}
+
+pub fn close_update(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = handle.get_webview_window(UPDATE) {
+            let _ = w.close();
+        }
+    });
+}
+
 /// Pixie lives in the menu bar, but while Settings or a note is open it also gets a Dock icon
 /// (and ⌘-Tab), like any window you opened on purpose. Main thread.
 pub fn dock(app: &AppHandle, show: bool) {
@@ -167,7 +208,7 @@ pub fn dock(app: &AppHandle, show: bool) {
 
 /// Drop the Dock icon once no normal window is showing. Main thread.
 pub fn dock_sync(app: &AppHandle, closing: &str) {
-    let open = [SETTINGS, NOTE]
+    let open = [SETTINGS, NOTE, UPDATE]
         .iter()
         .filter(|l| **l != closing)
         .any(|l| app.get_webview_window(l).and_then(|w| w.is_visible().ok()).unwrap_or(false));

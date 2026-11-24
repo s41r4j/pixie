@@ -83,6 +83,16 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Click and type for you | ✅ | 🧪 | 🟡 | Windows SendInput. Linux xdotool, X11 only. |
 | Several steps in one request (fresh screen after every action, ids stable for the request, look in voice) | ✅ | 🧪 | 🟡 | 0.8.0. Checked on the Mac with DeepSeek Flash in Finder and System Settings; not yet on Claude. Linux has no control list, so only clicks by position. |
 | Exact clicks: an id goes to the live control (scrolled into view, refused if covered or changed); points aren't moved; each click says what it hit | 🧪 | 🧪 | 🧪 | 0.8.1. Unit-tested (out-of-view rows marked, not clicked by name); the helper's live checks type-check but weren't run against real apps here (no Accessibility for the test shell). Windows and Linux: out-of-view refused, no live check yet. |
+| Marks land right: numbers tried as screen points and as screenshot pixels, names matched through OCR slips and line breaks | 🧪 | 🧪 | 🧪 | 0.8.2. Unit-tested with the cases from a real log (a copied position read as pixels, "IocalGPT", a sentence over two lines). Shared code. |
+| Browser pages' buttons and links listed (Chromium browsers and Electron apps asked to open their Accessibility tree) | 🧪 | n/a | n/a | 0.8.2. Helper builds; not yet run against a real browser here (no Accessibility for the test shell). |
+| Marks appear as the words before them are spoken | 🧪 | 🧪 | 🧪 | 0.8.2. Word timing unit-tested; driven by the voice's word events (the helper on the Mac, the native player on Windows and Linux). |
+| 3D view closes on a click outside Pixie | 🧪 | 🧪 | 🧪 | 0.8.2. Same focus check as the canvas. |
+| 3D view closes for real (close button, model's close), 60 fps cap, quality drop on slow frames, motion pauses after a minute, rebuilds after a GPU reset | 🧪 | 🧪 | 🧪 | 0.8.2. GPU reset and the idle pause checked in the browser preview (Chromium, software GL); not yet on WebKit with a real GPU. |
+| Releases signed with Pixie's self-signed certificate, so permissions stay on across updates | 🧪 | n/a | n/a | 0.8.2. Certificate signs locally; the CI step runs only once the PIXIE_CODESIGN_* secrets exist. Needs one real update to confirm. |
+| Update window: what's new, Install and Relaunch / Install on Quit / Skip This Version, automatic-updates checkbox; closing it means Install on Quit | 🧪 | 🧪 | 🧪 | 0.8.2. Looked at in the browser preview (Mac light and dark, Windows). First seen for real on the update after 0.8.2: 0.8.1 updates to 0.8.2 the old way. |
+| Dictation goes on the clipboard when pasting fails | 🧪 | 🧪 | 🧪 | 0.8.2. From a real log where the paste failed with Accessibility off. |
+| Reading another app's controls can't stall the helper (0.25 s per element, 5 s partial capture) | 🧪 | n/a | n/a | 0.8.2. Helper type-checks; not timed against a slow app yet. |
+| Locks survive a panic (`pixie_core::sync::LockOk`) | 🧪 | 🧪 | 🧪 | 0.8.2. Unit-tested. |
 | Asks before risky actions (Delete, Send, Pay, Return in a chat, cmd+delete, `rm -rf`…): a dialog, Don't by default | 🧪 | 🧪 | 🧪 | 0.8.1. Rules unit-tested. Mac: osascript dialog; Windows: a message box; Linux: zenity or kdialog, and without either it doesn't do it. |
 | Press a control by name, open menus | ✅ | 🧪 | ❌ | Needs the UI tree. |
 | Keyboard shortcuts (key combos) | ✅ | 🧪 | 🟡 | On Windows ⌘ means Ctrl. Linux via xdotool. |
@@ -176,7 +186,7 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Onboarding (welcome steps) | ✅ | 🧪 | 🧪 | |
 | General: personality (Pix, Inos, Xtrem with Spicy, Eon) and drawing | 🧪 | 🧪 | 🧪 | The face changes in the notch, the buddy and Settings. |
 | Experimental | ✅ | 🧪 | 🧪 | Connectors, 3D explanations. |
-| About: updates (automatic, Check now, Restart now) | 🧪 | 🧪 | 🧪 | |
+| About: updates (automatic, Check now, Install and Relaunch, See what's new) | 🧪 | 🧪 | 🧪 | |
 
 ## The app itself
 
@@ -187,6 +197,6 @@ On Windows and Linux, the Mac's Swift helper is replaced by native code in
 | Reopen from the Dock opens Settings | ✅ | n/a | n/a | |
 | One copy at a time | ✅ | 🧪 | 🧪 | |
 | Pixel design | ✅ | 🧪 | 🧪 | |
-| Auto update from GitHub Releases | 🧪 | 🧪 | 🧪 | Signed `latest.json`; checks on launch and every 6 h, installs when Pixie is idle, or on Restart now / Quit. Starts working from the first release built with the signing key. |
+| Auto update from GitHub Releases | 🧪 | 🧪 | 🧪 | Signed `latest.json`; checks on launch and every 6 h, downloads and verifies, then asks in the update window (since 0.8.2). Starts working from the first release built with the signing key. |
 | Open at login | ❌ | ❌ | ❌ | |
 | CI checks (clippy + tests) | ✅ | 🧪 | 🧪 | Windows and Linux jobs added to `ci.yml`. |

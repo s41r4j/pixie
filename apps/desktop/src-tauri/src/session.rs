@@ -3,6 +3,7 @@
 //! points at things, draws, writes on the panel's paper or hands work to a background job.
 //! Hold fn+⌃ to dictate: the cleaned-up text is typed into the focused field.
 
+use pixie_core::sync::LockOk;
 use crate::host::AppHost;
 use crate::panel::{self, PanelMode};
 use crate::screen::{self, Capture};
@@ -93,7 +94,7 @@ fn retried(app: &AppHandle, n: u64) -> bool {
 fn run_again(app: &AppHandle, text: String, typed: bool) {
     let st = state(app);
     let n = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.turn += 1;
         i.collapse_gen += 1;
         i.turn
@@ -202,49 +203,49 @@ pub struct Session {
 
 impl Session {
     pub fn speaking_started(&self, id: &str) {
-        self.inner.lock().unwrap().speaking.insert(id.to_string());
+        self.inner.lock_ok().speaking.insert(id.to_string());
     }
     pub fn speaking_cleared(&self) {
-        self.inner.lock().unwrap().speaking.clear();
+        self.inner.lock_ok().speaking.clear();
     }
     fn speaking_ended(&self, id: &str) -> bool {
-        let mut i = self.inner.lock().unwrap();
+        let mut i = self.inner.lock_ok();
         i.speaking.remove(id);
         i.speaking.is_empty()
     }
     pub fn is_speaking(&self) -> bool {
-        !self.inner.lock().unwrap().speaking.is_empty()
+        !self.inner.lock_ok().speaking.is_empty()
     }
     pub fn busy(&self) -> bool {
-        let i = self.inner.lock().unwrap();
+        let i = self.inner.lock_ok();
         i.answering || !i.speaking.is_empty()
     }
     pub fn hovered(&self) -> bool {
-        self.inner.lock().unwrap().hovered
+        self.inner.lock_ok().hovered
     }
     pub fn set_hovered(&self, h: bool) {
-        self.inner.lock().unwrap().hovered = h;
+        self.inner.lock_ok().hovered = h;
     }
     /// Listening, thinking, answering or speaking.
     pub fn active(&self) -> bool {
-        let i = self.inner.lock().unwrap();
+        let i = self.inner.lock_ok();
         i.listening.is_some() || i.answering || !i.speaking.is_empty()
     }
     /// Today's conversation so far (carrying on with today's saved chat after a relaunch).
     pub fn chat_log(&self, data: &std::path::Path, reset_hour: u32) -> Vec<ChatEntry> {
-        let mut i = self.inner.lock().unwrap();
+        let mut i = self.inner.lock_ok();
         i.ensure_today(data, reset_hour);
         i.log.clone()
     }
     /// Start a new conversation: forget the context and the log (the old chat stays saved).
     pub fn chat_clear(&self) {
-        let mut i = self.inner.lock().unwrap();
+        let mut i = self.inner.lock_ok();
         i.reset_chat();
         i.fresh = true;
     }
     /// Memory has read a chat up to `n` entries.
     pub fn set_learned(&self, data: &std::path::Path, id: &str, n: usize) {
-        let mut i = self.inner.lock().unwrap();
+        let mut i = self.inner.lock_ok();
         if i.chat_id.as_deref() == Some(id) {
             i.meta.learned = i.meta.learned.max(n);
             crate::chats::save(data, id, &i.log, &i.meta);
@@ -263,7 +264,7 @@ fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
 fn interrupt(app: &AppHandle) {
     let st = state(app);
     let cancel = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.answering = false;
         i.cancel.take()
     };
@@ -293,7 +294,7 @@ fn start_listening(app: &AppHandle, kind: Listening) {
     interrupt(app);
     let st = state(app);
     let n = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.turn += 1;
         i.listening = Some(kind);
         i.collapse_gen += 1;
@@ -303,7 +304,7 @@ fn start_listening(app: &AppHandle, kind: Listening) {
         // Clear marks first so they aren't in the screenshot's way (they're excluded anyway).
         overlay::clear(app);
         let rx = begin_capture(app, n);
-        st.session.inner.lock().unwrap().capture = Some(rx);
+        st.session.inner.lock_ok().capture = Some(rx);
     }
     panel::set_mode(app, if kind == Listening::Talk { PanelMode::Listening } else { PanelMode::Dictating });
     emit(app, Event::new("mic.start", json!({ "turn": n, "kind": if kind == Listening::Talk { "talk" } else { "dictate" } })));
@@ -329,7 +330,7 @@ fn start_listening(app: &AppHandle, kind: Listening) {
         }
         if let Err(e) = started {
             log::warn!("listen_start: {e}");
-            let still = app2.state::<AppState>().session.inner.lock().unwrap().turn == n;
+            let still = app2.state::<AppState>().session.inner.lock_ok().turn == n;
             if still {
                 show_error(&app2, &e, true);
             }
@@ -377,7 +378,7 @@ pub fn talk_down(app: &AppHandle) {
 pub fn talk_up(app: &AppHandle, tap: bool, was_open: bool) {
     let st = state(app);
     let (n, rx) = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.listening = None;
         (i.turn, i.capture.take())
     };
@@ -409,7 +410,7 @@ pub fn ask_text(app: &AppHandle, text: String) {
     interrupt(app);
     let st = state(app);
     let n = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.turn += 1;
         i.collapse_gen += 1;
         i.turn
@@ -420,7 +421,7 @@ pub fn ask_text(app: &AppHandle, text: String) {
 }
 
 pub fn escape(app: &AppHandle) {
-    let listening = state(app).session.inner.lock().unwrap().listening.take();
+    let listening = state(app).session.inner.lock_ok().listening.take();
     if listening.is_some() {
         if crate::stt::recording() {
             crate::stt::cancel(app);
@@ -436,11 +437,11 @@ pub fn escape(app: &AppHandle) {
 
 /// Dictation is listening now.
 pub fn dictating(app: &AppHandle) -> bool {
-    state(app).session.inner.lock().unwrap().listening == Some(Listening::Dictate)
+    state(app).session.inner.lock_ok().listening == Some(Listening::Dictate)
 }
 
 pub fn dictate_down(app: &AppHandle) {
-    if state(app).session.inner.lock().unwrap().listening == Some(Listening::Talk) {
+    if state(app).session.inner.lock_ok().listening == Some(Listening::Talk) {
         return;
     }
     start_listening(app, Listening::Dictate);
@@ -449,7 +450,7 @@ pub fn dictate_down(app: &AppHandle) {
 pub fn dictate_up(app: &AppHandle) {
     {
         let st = state(app);
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         if i.listening != Some(Listening::Dictate) {
             return;
         }
@@ -520,7 +521,19 @@ pub fn dictate_up(app: &AppHandle) {
                 panel::set_mode(&app, PanelMode::Toast);
                 schedule_collapse(&app, Duration::from_millis(1400));
             }
-            Err(e) => show_error(&app, &e, false),
+            // Pasting failed (Accessibility off, the helper busy, the field gone): their words go
+            // on the clipboard so nothing they said is lost.
+            Err(e) => {
+                let copied = copy_to_clipboard(&text).await;
+                log::info!("dictation: paste failed ({e}); copied instead: {}", if copied { "ok" } else { "failed" });
+                if copied {
+                    emit(&app, Event::new("dictation.done", json!({ "text": text })));
+                    let paste = if cfg!(target_os = "macos") { "⌘V" } else { "Ctrl+V" };
+                    show_error(&app, &format!("I couldn't type it in, so it's on the clipboard. Press {paste} to paste it."), false);
+                } else {
+                    show_error(&app, &format!("{e} What I heard: {text}"), false);
+                }
+            }
         }
     });
 }
@@ -537,8 +550,8 @@ async fn copy_to_clipboard(text: &str) -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = text;
-        false
+        let text = text.to_string();
+        tauri::async_runtime::spawn_blocking(move || arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).is_ok()).await.unwrap_or(false)
     }
 }
 
@@ -590,7 +603,7 @@ pub fn desktops_line(request: &str, capture: Option<&Capture>) -> String {
 
 fn environment(app: &AppHandle, cwd: &std::path::Path, capture: Option<&Capture>) -> prompt::Environment {
     let st = state(app);
-    let s = st.settings.lock().unwrap().clone();
+    let s = st.settings.lock_ok().clone();
     prompt::Environment {
         version: app.package_info().version.to_string(),
         cwd: cwd.display().to_string(),
@@ -639,7 +652,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
     let st = app.state::<AppState>();
     let cancel = CancellationToken::new();
     {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         if i.turn != n {
             return; // superseded
         }
@@ -653,7 +666,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
     }
     // Carrying on after a while: say how long it's been.
     let gap_note = {
-        let i = st.session.inner.lock().unwrap();
+        let i = st.session.inner.lock_ok();
         let since = i.log.last().map(|e| chrono::Utc::now().timestamp_millis() - e.at).unwrap_or(0);
         if since > GAP_NOTE.as_millis() as i64 {
             let mins = since / 60_000;
@@ -684,7 +697,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
             None
         }
     };
-    *st.last_capture.lock().unwrap() = cap.clone();
+    *st.last_capture.lock_ok() = cap.clone();
     let session_dir = st.data_dir.join("session");
     let _ = std::fs::create_dir_all(&session_dir);
     let note_path = session_dir.join("note.md");
@@ -721,7 +734,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
     let reading = if text_reply { "\n\nHOW THEY GET YOUR ANSWER\nThey typed this and will read your answer, not hear it: plain sentences, a little more detail is fine, no Markdown." } else { "" };
     content.push(Content::text(format!("{now_context}{reading}\n\nTHEIR REQUEST\n{gap_note}{text}")));
     let mut messages = {
-        let i = st.session.inner.lock().unwrap();
+        let i = st.session.inner.lock_ok();
         let mut m = vec![];
         if !i.meta.summary.is_empty() {
             m.push(Message::user_text(format!("(Earlier in today's conversation, in short: {})", i.meta.summary)));
@@ -805,7 +818,7 @@ async fn run_turn(app: AppHandle, n: u64, text: String, capture: Option<oneshot:
     match result {
         Ok(out) => {
             {
-                let mut i = st.session.inner.lock().unwrap();
+                let mut i = st.session.inner.lock_ok();
                 let clean = strip_tool_note(&out.final_text);
                 let a = if clean.trim().is_empty() { "(showed it on screen)".to_string() } else { clean };
                 let entry = ChatEntry { q: text.clone(), a, at: chrono::Utc::now().timestamp_millis(), tools: used.lock().map(|u| u.clone()).unwrap_or_default() };
@@ -892,7 +905,7 @@ async fn summarize(app: AppHandle, id: String, prev: String, older: Vec<ChatEntr
         return;
     }
     let st = state(&app);
-    let mut i = st.session.inner.lock().unwrap();
+    let mut i = st.session.inner.lock_ok();
     if i.chat_id.as_deref() == Some(id.as_str()) && upto > i.meta.summarized {
         i.meta.summary = summary;
         i.meta.summarized = upto;
@@ -927,7 +940,7 @@ pub fn spawn_learner(app: AppHandle) {
 fn finish_turn(app: &AppHandle, n: u64, spoke: bool) {
     let st = state(app);
     {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         if i.turn == n {
             i.answering = false;
             i.cancel = None;
@@ -944,7 +957,7 @@ fn finish_turn(app: &AppHandle, n: u64, spoke: bool) {
 pub fn schedule_collapse(app: &AppHandle, after: Duration) {
     let st = state(app);
     let gen = {
-        let mut i = st.session.inner.lock().unwrap();
+        let mut i = st.session.inner.lock_ok();
         i.collapse_gen += 1;
         i.collapse_gen
     };
@@ -953,7 +966,7 @@ pub fn schedule_collapse(app: &AppHandle, after: Duration) {
         tokio::time::sleep(after).await;
         let st = app.state::<AppState>();
         let (same, hovered, busy, listening) = {
-            let i = st.session.inner.lock().unwrap();
+            let i = st.session.inner.lock_ok();
             (i.collapse_gen == gen, i.hovered, i.answering || !i.speaking.is_empty(), i.listening.is_some())
         };
         if !same || listening || busy {
@@ -972,7 +985,7 @@ pub fn schedule_collapse(app: &AppHandle, after: Duration) {
 /// A queued sentence that won't be spoken (synthesis failed or was superseded).
 pub fn speech_failed(app: &AppHandle, id: &str) {
     // Its marks still show.
-    crate::narrate::started(app, id);
+    crate::narrate::ended(app, id);
     let st = app.state::<AppState>();
     let all_done = st.session.speaking_ended(id);
     emit(app, Event::new("speech.end", json!({ "id": id, "cancelled": true })));
@@ -998,9 +1011,16 @@ pub fn spawn_event_pump(app: AppHandle) {
                     crate::narrate::started(&app, data["id"].as_str().unwrap_or(""));
                     emit(&app, Event::new("speech.start", data));
                 }
-                "speak_word" => emit(&app, Event::new("speech.word", data)),
+                "speak_word" => {
+                    let at = data["at"].as_u64().unwrap_or(0) as usize;
+                    crate::narrate::word(&app, data["id"].as_str().unwrap_or(""), at);
+                    emit(&app, Event::new("speech.word", data));
+                }
                 "speak_end" => {
                     let id = data["id"].as_str().unwrap_or("").to_string();
+                    if data["cancelled"].as_bool() != Some(true) {
+                        crate::narrate::ended(&app, &id);
+                    }
                     let st = app.state::<AppState>();
                     let all_done = st.session.speaking_ended(&id);
                     emit(&app, Event::new("speech.end", data));

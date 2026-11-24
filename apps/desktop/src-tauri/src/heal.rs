@@ -4,6 +4,7 @@
 //! Everything stays on this computer. Nothing is ever sent anywhere by Pixie: a report opens a
 //! pre-filled GitHub issue page in their browser, and they read it and press Submit.
 
+use pixie_core::sync::LockOk;
 use serde_json::Value;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -88,7 +89,7 @@ pub fn init(data: &Path, version: &str) {
     let path = log_path(data);
     let f = rotate(data).or_else(|| std::fs::OpenOptions::new().create(true).append(true).open(&path).ok());
     if let Some(f) = f {
-        *LOG.lock().unwrap() = Some(f);
+        *LOG.lock_ok() = Some(f);
     }
     log::info!("Pixie {version} starting");
     let crash = dir.join("crash.txt");

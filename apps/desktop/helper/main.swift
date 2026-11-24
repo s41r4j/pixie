@@ -622,11 +622,16 @@ enum AX {
             owners[pid] = w[kCGWindowOwnerName as String] as? String ?? ""
         }
         var out: [(label: String, frame: CGRect, element: AXUIElement)] = []
+        // A few apps not answering can't add more than this to a look.
+        let deadline = Date().addingTimeInterval(0.35)
         for (pid, owner) in owners.sorted(by: { $0.key < $1.key }) {
+            if Date() > deadline { break }
             let app = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(app, 0.1)
             guard let bar = attr(app, "AXExtrasMenuBar") else { continue }
+            AXUIElementSetMessagingTimeout(bar as! AXUIElement, 0.1)
             for el in children(bar as! AXUIElement) {
+                AXUIElementSetMessagingTimeout(el, 0.1)
                 guard let f = frame(el), f.width > 1, f.height > 1, screenRect.map({ $0.intersects(f) }) ?? true else { continue }
                 var l = label(el, role: "AXMenuBarItem")
                 if l.isEmpty { l = owner }
@@ -638,16 +643,37 @@ enum AX {
         return out.sorted { $0.frame.minX < $1.frame.minX }
     }
 
+    /// Apps whose web content has been asked to show itself to Accessibility.
+    static var webOpened: Set<pid_t> = []
+
+    /// Chromium browsers (Chrome, Arc, Edge, Brave, Ardia…) and Electron apps only build the
+    /// Accessibility tree of a page for screen readers; without it their buttons and links are
+    /// missing from the controls and Pixie can only guess from the picture. Setting
+    /// AXManualAccessibility (Chromium and Electron) turns it on for that app; others ignore it.
+    /// Once per app: the first look may still miss the page while it's built.
+    static func openWebContent(_ root: AXUIElement, pid: pid_t) {
+        guard !webOpened.contains(pid) else { return }
+        webOpened.insert(pid)
+        if AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success {
+            // The page's tree is built on the app's side; a moment lets this first look see it.
+            usleep(150_000)
+        }
+    }
+
     /// Walk the frontmost app's focused window + menu bar and number the controls (`e1`, `e2`…).
-    static func snapshot(limit: Int = 160, on screenRect: CGRect? = nil, texts wantTexts: Bool = false) -> [String: Any] {
+    static func snapshot(limit: Int = 200, on screenRect: CGRect? = nil, texts wantTexts: Bool = false) -> [String: Any] {
         cache.removeAll()
         guard AXIsProcessTrusted(), let app = frontApp() else {
             return ["trusted": AXIsProcessTrusted(), "elements": [] as [Any]]
         }
         let root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(root, 0.4)
+        openWebContent(root, pid: app.processIdentifier)
         var out: [[String: Any]] = []
         var visited = 0
+        // Controls scrolled out of view are listed too (clicking their id scrolls to them), but
+        // only a few, so a long page can't crowd out what's on screen.
+        var hiddenCount = 0
         let deadline = Date().addingTimeInterval(0.6)
         var counter = 0
         var texts: [[String: Any]] = []
@@ -658,6 +684,10 @@ enum AX {
         func walk(_ el: AXUIElement, depth: Int, clip: CGRect? = nil) {
             if out.count >= limit || visited > 5000 || depth > 45 || Date() > deadline { return }
             visited += 1
+            // Each element's own limit: without it a busy app (a big page still building its
+            // tree) can hold one call for macOS's default 6 s, and this runs on the main thread,
+            // so every other request (the mic, typing) would wait behind it.
+            AXUIElementSetMessagingTimeout(el, 0.25)
             let role = string(el, kAXRoleAttribute) ?? ""
             // What can be seen of this element's children: the window, cut by each scroll area.
             var inner = clip
@@ -670,13 +700,15 @@ enum AX {
             if interesting.contains(role), let f = frame(el), f.width > 1, f.height > 1,
                area.map({ $0.intersects(f) }) ?? true {
                 let l = label(el, role: role)
-                if !l.isEmpty || role == "AXTextField" || role == "AXTextArea" {
+                let gone = hidden(f, clip: clip)
+                if gone { hiddenCount += 1 }
+                if (!l.isEmpty || role == "AXTextField" || role == "AXTextArea") && (!gone || hiddenCount <= 40) {
                     counter += 1
                     let id = "e\(counter)"
                     cache[id] = AXItem(id: id, role: role, label: l, frame: f, element: el)
                     var e: [String: Any] = ["id": id, "role": role.replacingOccurrences(of: "AX", with: "").lowercased(),
                                             "label": l, "frame": rectJSON(f)]
-                    if hidden(f, clip: clip) { e["hidden"] = true }
+                    if gone { e["hidden"] = true }
                     out.append(e)
                 }
             }
@@ -1281,12 +1313,27 @@ enum Screen {
                     "cursor": ["x": Int(mouse.x), "y": Int(mouse.y)],
                 ]
                 var took: [String: Int] = [:]
+                var answered = false
                 let put = { (name: String, values: [String: Any]) in
                     lock.lock()
                     for (k, v) in values { result[k] = v }
                     took[name] = since()
                     lock.unlock()
                 }
+                // Answer once: when every part is in, or after 5 s with the parts that are (the
+                // app gives up at 8 s and would get nothing at all).
+                let finish = { (late: Bool) in
+                    lock.lock()
+                    if answered { lock.unlock(); return }
+                    answered = true
+                    took["all"] = since()
+                    if late { result["partial"] = true }
+                    result["took_ms"] = took
+                    let r = result
+                    lock.unlock()
+                    done(.success(r))
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 5) { finish(true) }
                 if let path {
                     DispatchQueue.global(qos: .userInitiated).async(group: group) {
                         // 1 image pixel = 1 screen point, so positions read off the image are exact.
@@ -1312,11 +1359,7 @@ enum Screen {
                     if let g = ax["gen"] { v["gen"] = g }
                     put("controls", v)
                 }
-                group.notify(queue: .main) {
-                    took["all"] = since()
-                    result["took_ms"] = took
-                    done(.success(result))
-                }
+                group.notify(queue: .main) { finish(false) }
             }
         }
     }

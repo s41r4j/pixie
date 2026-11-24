@@ -1,6 +1,7 @@
 //! Connectors (M6): MCP servers from `<app_data>/mcp.json`, started at launch; their tools are
 //! offered to voice and jobs as `mcp__<server>__<tool>`.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use pixie_llm::ToolDef;
 use pixie_mcp::{qualified, Client, Tool};
@@ -52,7 +53,7 @@ pub fn start(app: AppHandle) {
     // keep them: the switch starts on for them.
     {
         let st = app.state::<crate::AppState>();
-        let mut s = st.settings.lock().unwrap();
+        let mut s = st.settings.lock_ok();
         if !s.experimental.contains_key(FLAG) {
             s.experimental.insert(FLAG.into(), !servers.is_empty());
             s.save(&st.data_dir);
@@ -95,7 +96,7 @@ mod trim_tests {
 }
 
 fn connect(name: String, cfg: pixie_mcp::ServerConfig) {
-    errors().lock().unwrap().remove(&name);
+    errors().lock_ok().remove(&name);
     tauri::async_runtime::spawn(async move {
         let res = match Client::connect(&name, &cfg).await {
             Ok(client) => client.list_tools().await.map(|tools| (client, tools)),
@@ -104,11 +105,11 @@ fn connect(name: String, cfg: pixie_mcp::ServerConfig) {
         match res {
             Ok((client, tools)) => {
                 log::info!("mcp {name}: {} tools", tools.len());
-                registry().lock().unwrap().insert(name, Connected { client, tools });
+                registry().lock_ok().insert(name, Connected { client, tools });
             }
             Err(e) => {
                 log::warn!("mcp {name}: {e}");
-                errors().lock().unwrap().insert(name, e);
+                errors().lock_ok().insert(name, e);
             }
         }
     });
@@ -126,16 +127,16 @@ pub fn switched(app: &AppHandle) {
     if enabled(app) {
         reload(app);
     } else {
-        registry().lock().unwrap().clear();
-        errors().lock().unwrap().clear();
+        registry().lock_ok().clear();
+        errors().lock_ok().clear();
     }
 }
 
 /// Re-read mcp.json: drop servers that went away or changed, start the new ones.
 pub fn reload(app: &AppHandle) {
     let servers = pixie_mcp::load_config(&config_path(app));
-    registry().lock().unwrap().clear(); // dropping a client stops its server
-    errors().lock().unwrap().clear();
+    registry().lock_ok().clear(); // dropping a client stops its server
+    errors().lock_ok().clear();
     if !enabled(app) {
         return;
     }
@@ -291,8 +292,8 @@ fn has_node() -> bool {
 pub fn gallery(app: &AppHandle) -> Value {
     let file = read_file(app);
     let servers = file["mcpServers"].as_object().cloned().unwrap_or_default();
-    let live = registry().lock().unwrap().iter().map(|(k, c)| (k.clone(), c.tools.len())).collect::<BTreeMap<_, _>>();
-    let errs = errors().lock().unwrap().clone();
+    let live = registry().lock_ok().iter().map(|(k, c)| (k.clone(), c.tools.len())).collect::<BTreeMap<_, _>>();
+    let errs = errors().lock_ok().clone();
     let names: BTreeMap<String, Vec<Value>> = registry()
         .lock()
         .unwrap()
@@ -396,7 +397,7 @@ pub fn save(app: &AppHandle, id: &str, values: &Value, on: bool) -> Result<(), S
 pub fn retry(app: &AppHandle, id: &str) -> Result<(), String> {
     let servers = pixie_mcp::load_config(&config_path(app));
     let cfg = servers.into_iter().find(|(n, _)| n == id).map(|(_, c)| c).ok_or("That connector is off or not added.")?;
-    registry().lock().unwrap().remove(id);
+    registry().lock_ok().remove(id);
     crate::watchdog::forgive(&format!("connector:{id}"));
     connect(id.to_string(), cfg);
     Ok(())
@@ -437,17 +438,17 @@ pub fn remove(app: &AppHandle, id: &str) -> Result<(), String> {
 
 /// Connected servers, for the watchdog.
 pub fn clients() -> Vec<(String, Arc<Client>)> {
-    registry().lock().unwrap().iter().map(|(n, c)| (n.clone(), c.client.clone())).collect()
+    registry().lock_ok().iter().map(|(n, c)| (n.clone(), c.client.clone())).collect()
 }
 
 /// The watchdog gave up on one: it's dropped (its tools go) and its card says why until Retry.
 pub fn pause(id: &str, why: &str) {
-    registry().lock().unwrap().remove(id);
-    errors().lock().unwrap().insert(id.to_string(), why.to_string());
+    registry().lock_ok().remove(id);
+    errors().lock_ok().insert(id.to_string(), why.to_string());
 }
 
 pub fn connected_names() -> Vec<String> {
-    registry().lock().unwrap().keys().cloned().collect()
+    registry().lock_ok().keys().cloned().collect()
 }
 
 /// Past this many connector tools, only the ones whose service the request names are offered
@@ -478,7 +479,7 @@ pub fn tools(app: &AppHandle) -> Vec<ToolDef> {
     if !enabled(app) {
         return Vec::new();
     }
-    let r = registry().lock().unwrap();
+    let r = registry().lock_ok();
     r.iter()
         .flat_map(|(server, c)| {
             c.tools.iter().map(move |t| ToolDef {
@@ -492,7 +493,7 @@ pub fn tools(app: &AppHandle) -> Vec<ToolDef> {
 
 pub async fn call(_app: &AppHandle, name: &str, input: &Value) -> Result<String, String> {
     let target = {
-        let r = registry().lock().unwrap();
+        let r = registry().lock_ok();
         r.iter().find_map(|(server, c)| {
             c.tools.iter().find(|t| qualified(server, &t.name) == name).map(|t| (c.client.clone(), t.name.clone()))
         })

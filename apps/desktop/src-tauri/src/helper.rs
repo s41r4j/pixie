@@ -1,6 +1,7 @@
 //! Client for the Swift helper sidecar (`pixie-helper`): JSON lines over stdio.
 //! It is restarted automatically if it exits.
 
+use pixie_core::sync::LockOk;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -91,13 +92,13 @@ impl Helper {
                 }
             };
             let stdout = child.stdout.take().expect("stdout");
-            *self.stdin.lock().unwrap() = child.stdin.take();
-            *self.child.lock().unwrap() = Some(child);
+            *self.stdin.lock_ok() = child.stdin.take();
+            *self.child.lock_ok() = Some(child);
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
                 let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
                 if let Some(id) = v.get("id").and_then(Value::as_u64) {
-                    if let Some(tx) = self.pending.lock().unwrap().remove(&id) {
+                    if let Some(tx) = self.pending.lock_ok().remove(&id) {
                         let r = if v["ok"].as_bool().unwrap_or(false) {
                             Ok(v.get("result").cloned().unwrap_or(Value::Null))
                         } else {
@@ -110,11 +111,11 @@ impl Helper {
                 }
             }
             // Exited: fail everything in flight and restart.
-            *self.stdin.lock().unwrap() = None;
-            if let Some(mut c) = self.child.lock().unwrap().take() {
+            *self.stdin.lock_ok() = None;
+            if let Some(mut c) = self.child.lock_ok().take() {
                 let _ = c.wait();
             }
-            for (_, tx) in self.pending.lock().unwrap().drain() {
+            for (_, tx) in self.pending.lock_ok().drain() {
                 let _ = tx.send(Err("The helper restarted.".into()));
             }
             let _ = self.events.send(("restarted".into(), Value::Null));
@@ -150,14 +151,14 @@ impl Helper {
         #[allow(unreachable_code)]
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending.lock_ok().insert(id, tx);
         let line = json!({ "id": id, "cmd": cmd, "args": args }).to_string();
         {
             // The helper may be starting up; wait briefly for stdin.
             let mut tries = 0;
             loop {
                 let sent = {
-                    let mut guard = self.stdin.lock().unwrap();
+                    let mut guard = self.stdin.lock_ok();
                     guard.as_mut().is_some_and(|stdin| writeln!(stdin, "{line}").and_then(|_| stdin.flush()).is_ok())
                 };
                 if sent {
@@ -165,7 +166,7 @@ impl Helper {
                 }
                 tries += 1;
                 if tries > 30 || !self.available() {
-                    self.pending.lock().unwrap().remove(&id);
+                    self.pending.lock_ok().remove(&id);
                     return Err("The native helper isn't running.".into());
                 }
                 // Not a thread sleep: this runs on the async workers every answer shares.
@@ -182,7 +183,7 @@ impl Helper {
             }
             Ok(Err(_)) => Err("The helper went away.".into()),
             Err(_) => {
-                self.pending.lock().unwrap().remove(&id);
+                self.pending.lock_ok().remove(&id);
                 Err(format!("The helper didn't answer {cmd} in time."))
             }
         }
@@ -203,7 +204,7 @@ impl Helper {
 pub fn force_restart(app: &tauri::AppHandle) {
     use tauri::Manager;
     let st = app.state::<crate::AppState>();
-    let mut guard = st.helper.child.lock().unwrap();
+    let mut guard = st.helper.child.lock_ok();
     if let Some(c) = guard.as_mut() {
         let _ = c.kill();
     }
@@ -217,7 +218,7 @@ pub fn restart(app: &tauri::AppHandle) {
         return;
     }
     let st = app.state::<crate::AppState>();
-    let mut guard = st.helper.child.lock().unwrap();
+    let mut guard = st.helper.child.lock_ok();
     if let Some(c) = guard.as_mut() {
         let _ = c.kill();
     }
@@ -225,7 +226,7 @@ pub fn restart(app: &tauri::AppHandle) {
 
 impl Drop for Helper {
     fn drop(&mut self) {
-        if let Some(mut c) = self.child.lock().unwrap().take() {
+        if let Some(mut c) = self.child.lock_ok().take() {
             let _ = c.kill();
         }
     }

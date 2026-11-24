@@ -9,6 +9,7 @@
 //! - With "type as you speak", each change goes to the text field as the fewest keystrokes
 //!   (`live_type_*`: the Swift helper on the Mac, `native` elsewhere).
 
+use pixie_core::sync::LockOk;
 use crate::{emit, AppState};
 use pixie_core::Event;
 use pixie_stt::engine::Engine;
@@ -143,7 +144,7 @@ fn typist(app: &AppHandle) -> &'static tokio::sync::mpsc::UnboundedSender<String
 /// Start the engine child if it isn't running (about a second the first time).
 fn ensure_engine(app: &AppHandle) -> Result<(), String> {
     let s = shared();
-    let mut guard = s.engine.lock().unwrap();
+    let mut guard = s.engine.lock_ok();
     if guard.as_mut().is_some_and(|e| e.alive()) {
         return Ok(());
     }
@@ -172,10 +173,10 @@ pub fn start(_app: AppHandle) {
     let _ = std::thread::Builder::new().name("pixie-stt-idle".into()).spawn(|| loop {
         std::thread::sleep(Duration::from_secs(60));
         let s = shared();
-        if s.active.lock().unwrap().is_some() || s.last_used.lock().unwrap().elapsed() < IDLE_UNLOAD {
+        if s.active.lock_ok().is_some() || s.last_used.lock_ok().elapsed() < IDLE_UNLOAD {
             continue;
         }
-        if s.engine.lock().unwrap().take().is_some() {
+        if s.engine.lock_ok().take().is_some() {
             log::info!("stt: quiet for a while, unloading the speech model");
         }
     });
@@ -226,7 +227,7 @@ pub async fn begin(app: &AppHandle, live: bool) -> Result<Value, String> {
     let s = shared();
     cancel(app);
     let session = s.session.fetch_add(1, Ordering::SeqCst) + 1;
-    *s.last_used.lock().unwrap() = Instant::now();
+    *s.last_used.lock_ok() = Instant::now();
     // The field first, so the first word has somewhere to go.
     let mut info = json!({ "engine": "pixie", "live": false });
     s.live.store(false, Ordering::SeqCst);
@@ -251,7 +252,7 @@ pub async fn begin(app: &AppHandle, live: bool) -> Result<Value, String> {
         .name("pixie-stt-mic".into())
         .spawn(move || record(app2, session, stop2, ready_tx, done_tx))
         .map_err(|e| e.to_string())?;
-    *s.active.lock().unwrap() = Some(Active { stop, done });
+    *s.active.lock_ok() = Some(Active { stop, done });
     match tokio::time::timeout(Duration::from_secs(5), ready_rx).await {
         Ok(Ok(Ok(()))) => Ok(info),
         Ok(Ok(Err(e))) => {
@@ -307,7 +308,7 @@ fn record(app: AppHandle, session: u64, stop: Arc<AtomicBool>, ready: tokio::syn
             }
         }
         if engine_ok && !heard.is_empty() && s.session.load(Ordering::SeqCst) == session {
-            if let Some(e) = s.engine.lock().unwrap().as_mut() {
+            if let Some(e) = s.engine.lock_ok().as_mut() {
                 e.audio(&heard);
             }
             heard.clear();
@@ -323,7 +324,7 @@ fn record(app: AppHandle, session: u64, stop: Arc<AtomicBool>, ready: tokio::syn
         resampler.push(&chunk, &mut heard);
     }
     if engine_ok && !heard.is_empty() && s.session.load(Ordering::SeqCst) == session {
-        if let Some(e) = s.engine.lock().unwrap().as_mut() {
+        if let Some(e) = s.engine.lock_ok().as_mut() {
             e.audio(&heard);
         }
     }
@@ -331,8 +332,8 @@ fn record(app: AppHandle, session: u64, stop: Arc<AtomicBool>, ready: tokio::syn
         log::warn!("stt: {e}");
         crate::heal::note("stt", "Pixie's speech engine didn't start", "Nothing was typed", &e);
     }
-    let text = if s.session.load(Ordering::SeqCst) == session { s.engine.lock().unwrap().as_mut().map(|e| e.finish()).unwrap_or_default() } else { String::new() };
-    *s.last_used.lock().unwrap() = Instant::now();
+    let text = if s.session.load(Ordering::SeqCst) == session { s.engine.lock_ok().as_mut().map(|e| e.finish()).unwrap_or_default() } else { String::new() };
+    *s.last_used.lock_ok() = Instant::now();
     let _ = done.send(text);
 }
 
@@ -340,7 +341,7 @@ fn record(app: AppHandle, session: u64, stop: Arc<AtomicBool>, ready: tokio::syn
 /// same shape the Mac helper's `listen_stop` gives.
 pub async fn finish(app: &AppHandle) -> Option<Value> {
     let s = shared();
-    let active = s.active.lock().unwrap().take()?;
+    let active = s.active.lock_ok().take()?;
     active.stop.store(true, Ordering::SeqCst);
     let text = tauri::async_runtime::spawn_blocking(move || active.done.recv_timeout(Duration::from_secs(6)).unwrap_or_default()).await.unwrap_or_default();
     let mut out = json!({ "text": text.trim() });
@@ -361,17 +362,17 @@ pub async fn finish(app: &AppHandle) -> Option<Value> {
 
 /// Is a recording by Pixie's engine in progress?
 pub fn recording() -> bool {
-    shared().active.lock().unwrap().is_some()
+    shared().active.lock_ok().is_some()
 }
 
 /// Throw the recording away (esc, or a new one starting).
 pub fn cancel(app: &AppHandle) {
     let s = shared();
-    let Some(active) = s.active.lock().unwrap().take() else { return };
+    let Some(active) = s.active.lock_ok().take() else { return };
     active.stop.store(true, Ordering::SeqCst);
     // Words still on their way from this recording belong to nobody.
     s.session.fetch_add(1, Ordering::SeqCst);
-    if let Some(e) = s.engine.lock().unwrap().as_mut() {
+    if let Some(e) = s.engine.lock_ok().as_mut() {
         e.forget();
     }
     if s.live.swap(false, Ordering::SeqCst) {
@@ -406,7 +407,7 @@ pub struct Status {
 pub fn status(app: &AppHandle) -> Status {
     let st = app.state::<AppState>();
     let s = shared();
-    let (done, total) = *s.progress.lock().unwrap();
+    let (done, total) = *s.progress.lock_ok();
     Status {
         supported: runtime_package().is_some(),
         installed: installed(&st.data_dir),
@@ -431,10 +432,10 @@ fn fetch(url: &str, to: &Path, before: u64, app: &AppHandle) -> Result<u64, Stri
         while let Some(chunk) = resp.chunk().await.map_err(|e| format!("download failed: {e}"))? {
             file.write_all(&chunk).await.map_err(|e| e.to_string())?;
             got += chunk.len() as u64;
-            shared().progress.lock().unwrap().0 = before + got;
+            shared().progress.lock_ok().0 = before + got;
             if last.elapsed() > Duration::from_millis(400) {
                 last = Instant::now();
-                let total = shared().progress.lock().unwrap().1;
+                let total = shared().progress.lock_ok().1;
                 emit(app, Event::new("stt.install", json!({ "step": "download", "done": before + got, "total": total })));
             }
         }
@@ -461,7 +462,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
             let (runtime, model) = (runtime_dir(&data), model_dir(&data));
             let need_runtime = !pixie_stt::ffi::library(&runtime).exists();
             // Sizes are known well enough for a progress bar: the model, plus the library.
-            *s.progress.lock().unwrap() = (0, 73_000_000 + if need_runtime { 40_000_000 } else { 0 });
+            *s.progress.lock_ok() = (0, 73_000_000 + if need_runtime { 40_000_000 } else { 0 });
             let mut before = 0u64;
             if need_runtime {
                 let stage = crate::kokoro::voices_dir(&data).join("dl-stt-runtime");
@@ -514,7 +515,7 @@ pub fn install(app: AppHandle) -> Result<(), String> {
 /// Settings → Voice → remove the speech model (the library stays: the natural voice uses it).
 pub fn remove(app: &AppHandle) {
     cancel(app);
-    shared().engine.lock().unwrap().take();
+    shared().engine.lock_ok().take();
     let _ = std::fs::remove_dir_all(model_dir(&app.state::<AppState>().data_dir));
 }
 

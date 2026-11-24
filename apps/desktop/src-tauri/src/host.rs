@@ -1,6 +1,7 @@
 //! The app side of the tools: speech, pointer, Accessibility, plan/progress, asking, jobs,
 //! the browser and connectors.
 
+use pixie_core::sync::LockOk;
 use crate::{browser, emit, jobs, overlay, speech, AppState};
 use pixie_core::prompt::Mode;
 use pixie_core::Event;
@@ -112,7 +113,7 @@ async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
             };
             at = Some((x, y));
             if action == "press" && (crate::safety::risky_label(&label) || crate::safety::risky_label(&t.label)) {
-                let front = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+                let front = st.last_capture.lock_ok().as_ref().map(|c| c.app.clone()).unwrap_or_default();
                 let what = crate::safety::press_text(&label, &front);
                 if !crate::safety::ask(app, &what, pid).await {
                     return ToolOutput::err(crate::safety::declined(&what));
@@ -188,7 +189,7 @@ async fn mac_step(app: &AppHandle, action: &str, input: &Value) -> ToolOutput {
 /// The risk in a press-by-label, menu choice, key or typed text, as "what Pixie would do".
 async fn risk_of(app: &AppHandle, action: &str, target: &str) -> Option<String> {
     let st = app.state::<AppState>();
-    let front = st.last_capture.lock().unwrap().as_ref().map(|c| c.app.clone()).unwrap_or_default();
+    let front = st.last_capture.lock_ok().as_ref().map(|c| c.app.clone()).unwrap_or_default();
     let front = if front.is_empty() { front_app(app).await } else { front };
     match action {
         "type" => {
@@ -247,10 +248,10 @@ impl Host for AppHost {
                 let id = format!("say-{}", rand::random::<u32>());
                 emit(app, Event::new("speech.segment", json!({ "id": id, "text": text, "job": job })));
                 if st.settings.lock().map(|s| s.speak_answers).unwrap_or(true) {
-                    crate::narrate::on_start_of(&id, marks);
+                    crate::narrate::on_start_of(&id, &text, marks);
                     speech::speak(app, &id, &text);
                 } else {
-                    crate::narrate::run(app, marks);
+                    crate::narrate::run(app, crate::narrate::marks_of(marks));
                 }
                 ToolOutput::ok("Said it.")
             }
@@ -289,7 +290,7 @@ impl Host for AppHost {
                     vec![(None, String::new())]
                 } else {
                     let ds = crate::screen::displays(app);
-                    let window = st.last_capture.lock().unwrap().as_ref().and_then(|c| c.window_frame.clone());
+                    let window = st.last_capture.lock_ok().as_ref().and_then(|c| c.window_frame.clone());
                     match crate::screen::resolve(&ds, want, crate::macos::cursor(), window.as_ref()) {
                         Ok(v) if ds.len() > 1 => v.into_iter().map(|i| (crate::screen::center_of(&ds, i), crate::screen::name_of(&ds, i))).collect(),
                         Ok(_) => vec![(None, String::new())],

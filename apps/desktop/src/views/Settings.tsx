@@ -821,15 +821,18 @@ function Updates({ view, onSaved }: { view: SettingsView | null; onSaved: (v: Se
       un.then((f) => f());
     };
   }, []);
-  const pct = u && u.total ? Math.round((u.done / u.total) * 100) : 0;
+  const pct = u && u.total ? Math.min(100, Math.round((u.done / u.total) * 100)) : 0;
+  const mb = u ? (u.done / 1048576).toFixed(1) : "0";
   const line = !u
     ? ""
     : u.phase === "checking"
       ? "Checking GitHub…"
       : u.phase === "downloading"
-        ? `Downloading ${u.version}${u.total ? ` · ${pct}%` : "…"}`
+        ? `Downloading ${u.version}${u.total ? ` · ${pct}%` : u.done > 0 ? ` · ${mb} MB` : "…"}`
         : u.phase === "ready"
-          ? `${u.version} is ready. Pixie switches over when it restarts, on its own once you're not using it.`
+          ? u.on_quit
+            ? `${u.version} is downloaded and installs when Pixie quits.`
+            : `${u.version} is downloaded and ready to install.`
           : u.phase === "up_to_date"
             ? `You're on the newest version · checked ${ago(u.checked_at)}`
             : u.phase === "error"
@@ -841,17 +844,32 @@ function Updates({ view, onSaved }: { view: SettingsView | null; onSaved: (v: Se
     <>
       <h3 className="sub">Updates</h3>
       <ul className="rows">
-        <SRow sid="auto_update" label="Update automatically" why="Downloads new versions in the background and installs them when Pixie is idle. Nothing to download by hand.">
+        <SRow sid="auto_update" label="Update automatically" why="Checks for and downloads new versions in the background. When one is ready, a window shows what's new: install it now, when Pixie quits, or skip it.">
           <Switch on={view?.settings.auto_update ?? true} onChange={(v) => api.setSettings({ auto_update: v }).then(onSaved)} label="Update automatically" />
         </SRow>
       </ul>
-      <div className={`banner ${u?.phase === "ready" ? "banner--ok" : u?.phase === "error" ? "banner--warn" : "banner--muted"}`}>{line}</div>
-      {u?.phase === "downloading" && u.total > 0 && (
-        <div className="bar" aria-label="Download progress"><span style={{ width: `${pct}%` }} /></div>
+      {u?.phase === "downloading" ? (
+        // The box itself fills as the download goes; a sweep when the size isn't known yet.
+        <div
+          className={`banner banner--muted banner--fill${u.total > 0 ? "" : " is-unknown"}`}
+          role="progressbar"
+          aria-label="Download progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={u.total > 0 ? pct : undefined}
+        >
+          <span className="banner__fill" style={u.total > 0 ? { width: `${pct}%` } : undefined} />
+          <span className="banner__text">{line}</span>
+        </div>
+      ) : (
+        <div className={`banner ${u?.phase === "ready" ? "banner--ok" : u?.phase === "error" ? "banner--warn" : "banner--muted"}`}>{line}</div>
       )}
       <div className="row-actions">
         {u?.phase === "ready" ? (
-          <button className="btn btn--primary" onClick={() => api.updateRestart().catch(console.error)}>Restart now</button>
+          <>
+            <button className="btn btn--primary" onClick={() => api.updateRestart().catch(console.error)}>Install and Relaunch</button>
+            <button className="btn btn--ghost" onClick={() => api.updateShow().catch(console.error)}>See what's new</button>
+          </>
         ) : (
           <button className="btn btn--ghost" disabled={!u?.supported || u.phase === "checking" || u.phase === "downloading"} onClick={() => api.updateCheck().then(setU).catch(console.error)}>
             Check now

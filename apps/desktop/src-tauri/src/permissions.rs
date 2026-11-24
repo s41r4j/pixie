@@ -1,6 +1,7 @@
 //! Permissions wizard backend (BUILD-SPEC §9): detect each state, request it, or deep-link
 //! to the right System Settings pane.
 
+use pixie_core::sync::LockOk;
 use serde::Serialize;
 use std::sync::Mutex;
 
@@ -141,13 +142,13 @@ fn open_settings(id: PermId) {
 fn screen_check_fresh() -> bool {
     // The UI polls every 1.5 s; one subprocess every 3 s is plenty.
     static LAST: std::sync::Mutex<Option<(std::time::Instant, bool)>> = std::sync::Mutex::new(None);
-    if let Some((at, v)) = *LAST.lock().unwrap() {
+    if let Some((at, v)) = *LAST.lock_ok() {
         if at.elapsed() < std::time::Duration::from_secs(3) {
             return v;
         }
     }
     let v = screen_check_run();
-    *LAST.lock().unwrap() = Some((std::time::Instant::now(), v));
+    *LAST.lock_ok() = Some((std::time::Instant::now(), v));
     v
 }
 

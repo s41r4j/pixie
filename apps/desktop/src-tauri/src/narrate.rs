@@ -4,9 +4,12 @@
 //!
 //! The text stream is filtered here: marks are cut out of what's shown and spoken, and a
 //! private-use character stands in their place so the sentence splitter knows which sentence
-//! each one belongs to. When that sentence is queued for speech, its marks wait for the
-//! helper's `speak_start`; when nothing is spoken (a typed answer, voice off) they run at once.
+//! each one belongs to, and where in it. When that sentence is queued for speech, each mark waits
+//! for the word it follows: the helper reports every word as it's spoken (`speak_word`), so
+//! "this is the Download button [[point e5]]" points as "Download" is said, not at the sentence's
+//! start. When nothing is spoken (a typed answer, voice off) they run at once.
 
+use pixie_core::sync::LockOk;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -157,7 +160,8 @@ impl Filter {
 }
 
 /// The stand-ins in `s`, as indexes into [`Filter::marks`].
-pub fn indexes(s: &str) -> Vec<usize> {
+#[cfg(test)]
+fn indexes(s: &str) -> Vec<usize> {
     s.chars().filter_map(|c| (c as u32).checked_sub(BASE).filter(|i| *i < 0x1000).map(|i| i as usize)).collect()
 }
 
@@ -178,35 +182,126 @@ pub fn strip(s: &str) -> String {
     t.trim().to_string()
 }
 
-/// A whole line's text without marks, and its marks (for the `say` tool).
-pub fn split(s: &str) -> (String, Vec<Mark>) {
+/// A whole line's text without marks, and its marks with their places (for the `say` tool).
+pub fn split(s: &str) -> (String, Vec<Placed>) {
     let mut f = Filter::default();
     let mut out = f.push(s);
     out.push_str(&f.finish());
-    (clean(&out).replace("  ", " ").trim().to_string(), f.marks)
+    let marks = placed(&out, &f.marks);
+    (clean(&out).replace("  ", " ").trim().to_string(), marks)
 }
 
-static WAITING: Mutex<Option<HashMap<String, Vec<Mark>>>> = Mutex::new(None);
+/// Just the marks, in order.
+pub fn marks_of(p: Vec<Placed>) -> Vec<Mark> {
+    p.into_iter().map(|p| p.mark).collect()
+}
 
-/// Run `marks` when utterance `id` starts playing.
-pub fn on_start_of(id: &str, marks: Vec<Mark>) {
+/// A mark and how many words of its sentence come before it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placed {
+    pub mark: Mark,
+    pub after_words: usize,
+}
+
+/// Words in `s`, counted the way the speech side splits them (runs of letters and digits).
+pub fn count_words(s: &str) -> usize {
+    let mut n = 0;
+    let mut inside = false;
+    for c in s.chars() {
+        let w = c.is_alphanumeric() || (inside && (c == '\'' || c == '’'));
+        if w && !inside {
+            n += 1;
+        }
+        inside = w;
+    }
+    n
+}
+
+/// The marks in `raw` (a sentence with stand-ins), each with the words before it.
+pub fn placed(raw: &str, marks: &[Mark]) -> Vec<Placed> {
+    let mut out = vec![];
+    let mut before = String::new();
+    for c in raw.chars() {
+        match (c as u32).checked_sub(BASE).filter(|i| *i < 0x1000) {
+            Some(i) => {
+                if let Some(m) = marks.get(i as usize) {
+                    out.push(Placed { mark: m.clone(), after_words: count_words(&before) });
+                }
+            }
+            None => before.push(c),
+        }
+    }
+    out
+}
+
+/// A mark shows this many words before the one it follows: the pointer needs a moment to fly
+/// there, so it arrives as the thing is named.
+const LEAD_WORDS: usize = 2;
+
+/// Should a mark placed after `after_words` words show once word `spoken` (0-based) is playing?
+fn due(after_words: usize, spoken: usize) -> bool {
+    spoken + LEAD_WORDS >= after_words
+}
+
+struct Waiting {
+    /// The spoken text, to turn the helper's character offsets into words.
+    text: Vec<u16>,
+    marks: Vec<Placed>,
+}
+
+static WAITING: Mutex<Option<HashMap<String, Waiting>>> = Mutex::new(None);
+
+/// Run `marks` as utterance `id` (whose spoken text is `text`) reaches each one.
+pub fn on_start_of(id: &str, text: &str, marks: Vec<Placed>) {
     if marks.is_empty() {
         return;
     }
-    WAITING.lock().unwrap().get_or_insert_with(HashMap::new).insert(id.to_string(), marks);
+    WAITING.lock_ok().get_or_insert_with(HashMap::new).insert(id.to_string(), Waiting { text: text.encode_utf16().collect(), marks });
 }
 
-/// Utterance `id` started (or failed, so the marks still show): run its marks.
+/// Take the marks of `id` that are due once word `spoken` plays (all of them when None).
+fn take_due(id: &str, spoken: Option<usize>) -> Vec<Mark> {
+    let mut g = WAITING.lock_ok();
+    let Some(map) = g.as_mut() else { return vec![] };
+    let Some(w) = map.get_mut(id) else { return vec![] };
+    let (now, later): (Vec<Placed>, Vec<Placed>) = std::mem::take(&mut w.marks).into_iter().partition(|p| spoken.is_none_or(|s| due(p.after_words, s)));
+    w.marks = later;
+    if w.marks.is_empty() {
+        map.remove(id);
+    }
+    now.into_iter().map(|p| p.mark).collect()
+}
+
+/// Utterance `id` started playing: marks near its start show.
 pub fn started(app: &AppHandle, id: &str) {
-    let marks = WAITING.lock().unwrap().as_mut().and_then(|m| m.remove(id));
-    if let Some(marks) = marks {
+    run(app, take_due(id, Some(0)));
+}
+
+/// The helper is saying the word at UTF-16 offset `at` of utterance `id`.
+pub fn word(app: &AppHandle, id: &str, at: usize) {
+    let spoken = {
+        let g = WAITING.lock_ok();
+        let Some(w) = g.as_ref().and_then(|m| m.get(id)) else { return };
+        let end = at.min(w.text.len());
+        count_words(&String::from_utf16_lossy(&w.text[..end]))
+    };
+    let marks = take_due(id, Some(spoken));
+    if !marks.is_empty() {
+        run(app, marks);
+    }
+}
+
+/// Utterance `id` ended or failed: anything it still held shows now.
+pub fn ended(app: &AppHandle, id: &str) {
+    let marks = take_due(id, None);
+    if !marks.is_empty() {
         run(app, marks);
     }
 }
 
 /// Speech was stopped: marks still waiting are dropped.
 pub fn cancel_all() {
-    if let Some(m) = WAITING.lock().unwrap().as_mut() {
+    if let Some(m) = WAITING.lock_ok().as_mut() {
         m.clear();
     }
 }
@@ -230,53 +325,43 @@ fn coords(t: &str) -> Option<Vec<f64>> {
     (v.len() == 2 || v.len() == 4).then_some(v)
 }
 
-/// The model saw the screenshot this turn: numbers in marks are read off it, in its pixels.
+/// The model saw the screenshot this turn: numbers it gives may be read off the image, in its
+/// pixels, or copied from the lists, in screen points ([`crate::overlay`] works out which).
 static SAW_IMAGE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn set_saw_image(on: bool) {
     SAW_IMAGE.store(on, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// A target as overlay input. Numbers are screenshot pixels when the model saw one (models read
-/// positions off the image; it's sent smaller than the screen), else screen points.
-fn where_in(t: &str, scale: (f64, f64, f64)) -> Value {
+pub fn saw_image() -> bool {
+    SAW_IMAGE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// A target as overlay input: numbers as given, else an id or on-screen text.
+fn where_(t: &str) -> Value {
     match coords(t) {
         Some(v) => {
-            let (k, ox, oy) = scale;
-            let w = v.get(2).copied().unwrap_or(24.0 / k);
-            let h = v.get(3).copied().unwrap_or(24.0 / k);
-            json!({ "x": ox + v[0] * k, "y": oy + v[1] * k, "w": w * k, "h": h * k })
+            let mut o = json!({ "x": v[0], "y": v[1] });
+            if let (Some(w), Some(h)) = (v.get(2), v.get(3)) {
+                o["w"] = json!(w);
+                o["h"] = json!(h);
+            }
+            o
         }
         None => json!({ "target": t }),
     }
 }
 
-#[cfg(test)]
-fn where_(t: &str) -> Value {
-    where_in(t, (1.0, 0.0, 0.0))
-}
-
-fn scale_now(app: &AppHandle) -> (f64, f64, f64) {
-    use tauri::Manager;
-    if !SAW_IMAGE.load(std::sync::atomic::Ordering::SeqCst) {
-        return (1.0, 0.0, 0.0);
-    }
-    let cap = app.state::<crate::AppState>().last_capture.lock().unwrap().clone();
-    cap.map(|c| c.pixel_scale()).unwrap_or((1.0, 0.0, 0.0))
-}
-
 fn run_one(app: &AppHandle, m: &Mark) -> Result<String, String> {
-    let scale = scale_now(app);
-    let where_ = |t: &str| where_in(t, scale);
-    let at = where_(&m.target);
+    let mut at = where_(&m.target);
+    // The label helps find it ("Download" when the numbers are a little off).
+    if !m.label.is_empty() {
+        at["label"] = json!(m.label);
+    }
     match m.kind.as_str() {
         "3d" => crate::scene3d::focus(app, &m.target, &m.label),
         "canvas" => crate::canvas::focus(app, &m.target),
-        "point" => {
-            let mut input = at;
-            input["label"] = json!(m.label);
-            crate::overlay::highlight(app, &input)
-        }
+        "point" => crate::overlay::highlight(app, &at),
         "circle" | "box" | "underline" => {
             let mut op = at;
             op["kind"] = json!(m.kind);
@@ -358,14 +443,30 @@ mod tests {
     #[test]
     fn coordinates_work_as_targets() {
         assert_eq!(where_("120,340")["x"], 120.0);
+        assert!(where_("120,340").get("w").is_none());
         assert_eq!(where_("1,2,30,40")["h"], 40.0);
         assert_eq!(where_("e12")["target"], "e12");
-        // A 1280 px screenshot of a 1710 pt screen at x 0.
-        let k = 1710.0 / 1280.0;
-        let p = where_in("1017,14,20,12", (k, 0.0, 0.0));
-        assert!((p["x"].as_f64().unwrap() - 1358.6).abs() < 0.5, "{p}");
-        assert!((p["w"].as_f64().unwrap() - 26.7).abs() < 0.1);
-        // Second screen to the right: its origin is added.
-        assert_eq!(where_in("10,10", (1.0, 1710.0, -200.0))["y"], -190.0);
+    }
+
+    #[test]
+    fn words_are_counted_like_speech() {
+        assert_eq!(count_words("This is the Download button"), 5);
+        assert_eq!(count_words("It's 3.5 GB, isn't it?"), 6);
+        assert_eq!(count_words("  "), 0);
+    }
+
+    #[test]
+    fn marks_show_as_the_words_before_them_are_said() {
+        let mut f = Filter::default();
+        let raw = f.push("[[point e1]] Up here is the menu, and the big Download button [[circle e5]] sits below.");
+        let p = placed(&raw, &f.marks);
+        assert_eq!(p.iter().map(|p| (p.mark.target.as_str(), p.after_words)).collect::<Vec<_>>(), vec![("e1", 0), ("e5", 10)]);
+        // At the start only the first; the second as "Download" (word 8) is said.
+        assert!(due(0, 0) && !due(10, 0) && !due(10, 7) && due(10, 8));
+        on_start_of("t-1", &clean(&raw), p);
+        assert_eq!(take_due("t-1", Some(0)).len(), 1);
+        assert!(take_due("t-1", Some(3)).is_empty());
+        assert_eq!(take_due("t-1", None).len(), 1);
+        assert!(take_due("t-1", None).is_empty());
     }
 }

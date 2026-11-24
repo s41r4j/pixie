@@ -34,7 +34,7 @@ impl Provider for ScriptedProvider {
         true
     }
     async fn complete(&self, req: &Request, on_event: OnEvent<'_>) -> Result<Response, LlmError> {
-        self.seen.lock().unwrap().push(req.clone());
+        self.seen.lock().unwrap_or_else(|e| e.into_inner()).push(req.clone());
         let r = self
             .script
             .lock()

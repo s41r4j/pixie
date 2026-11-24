@@ -7,6 +7,7 @@
 //! and it's left alone: they're told once, with what to do, and it goes in the problems list.
 //! No restart loops.
 
+use pixie_core::sync::LockOk;
 use crate::panel::{self, PanelMode};
 use crate::{hotkey, session, AppState};
 use serde_json::json;
@@ -55,7 +56,7 @@ fn judge(p: &mut Part, now: Instant) -> Verdict {
 
 /// Count a restart of `part`; on giving up, note it and tell them once.
 fn strike(app: &AppHandle, part: &str, what: &str, gave_up_text: &str) -> bool {
-    let v = judge(parts().lock().unwrap().entry(part.to_string()).or_default(), Instant::now());
+    let v = judge(parts().lock_ok().entry(part.to_string()).or_default(), Instant::now());
     match v {
         Verdict::Restart => {
             log::warn!("watchdog: {what}; restarting it");
@@ -74,7 +75,7 @@ fn strike(app: &AppHandle, part: &str, what: &str, gave_up_text: &str) -> bool {
 
 /// They fixed it by hand (Retry): count from zero again.
 pub fn forgive(part: &str) {
-    parts().lock().unwrap().remove(part);
+    parts().lock_ok().remove(part);
 }
 
 pub fn start(app: AppHandle) {
@@ -220,7 +221,7 @@ fn permission_in(err: &str) -> Option<&'static str> {
 pub fn helper_error(err: &str) {
     let (Some(app), Some(id)) = (APP.get(), permission_in(err)) else { return };
     let Some((label, granted)) = crate::permissions::check(id) else { return };
-    if granted || !watching().lock().unwrap().insert(id) {
+    if granted || !watching().lock_ok().insert(id) {
         return;
     }
     log::warn!("permissions: {label} is off");
@@ -242,7 +243,7 @@ pub fn helper_error(err: &str) {
                 break;
             }
         }
-        watching().lock().unwrap().remove(id);
+        watching().lock_ok().remove(id);
     });
 }
 

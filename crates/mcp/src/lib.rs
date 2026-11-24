@@ -133,7 +133,7 @@ impl Client {
                     if line.is_empty() {
                         continue;
                     }
-                    let mut t = tail.lock().unwrap();
+                    let mut t = tail.lock().unwrap_or_else(|e| e.into_inner());
                     t.push_back(line.chars().take(300).collect());
                     if t.len() > 12 {
                         t.pop_front();
@@ -152,7 +152,7 @@ impl Client {
                 if v.get("method").is_some() {
                     continue; // server→client requests (sampling, roots) not supported yet
                 }
-                if let Some(tx) = reader_pending.lock().unwrap().remove(&id) {
+                if let Some(tx) = reader_pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
                     let r = match v.get("error") {
                         Some(e) => Err(e["message"].as_str().unwrap_or("error").to_string()),
                         None => Ok(v.get("result").cloned().unwrap_or(Value::Null)),
@@ -161,7 +161,7 @@ impl Client {
                 }
             }
             log::info!("mcp {server}: closed");
-            for (_, tx) in reader_pending.lock().unwrap().drain() {
+            for (_, tx) in reader_pending.lock().unwrap_or_else(|e| e.into_inner()).drain() {
                 let _ = tx.send(Err("the connector stopped".into()));
             }
         });
@@ -194,14 +194,14 @@ impl Client {
                 return Err(if said.is_empty() { e } else { format!("{e}. It said: {said}") });
             }
         };
-        *client.server_info.lock().unwrap() = init.get("serverInfo").cloned().unwrap_or(Value::Null);
+        *client.server_info.lock().unwrap_or_else(|e| e.into_inner()) = init.get("serverInfo").cloned().unwrap_or(Value::Null);
         client.notify("notifications/initialized", json!({})).await?;
         Ok(client)
     }
 
     /// What the server last wrote to stderr, most useful line last.
     pub fn stderr_tail(&self) -> String {
-        let t = self.stderr.lock().unwrap();
+        let t = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
         let useful: Vec<&String> = t.iter().filter(|l| !l.starts_with("npm warn") && !l.starts_with("npm WARN")).collect();
         useful.iter().rev().take(3).rev().map(|s| s.as_str()).collect::<Vec<_>>().join(" · ")
     }
@@ -221,13 +221,13 @@ impl Client {
     pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending.lock().unwrap_or_else(|e| e.into_inner()).insert(id, tx);
         self.write(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })).await?;
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(r)) => r.map_err(|e| format!("{}: {e}", self.name)),
             Ok(Err(_)) => Err(format!("{}: no reply", self.name)),
             Err(_) => {
-                self.pending.lock().unwrap().remove(&id);
+                self.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
                 Err(format!("{}: {method} timed out", self.name))
             }
         }
@@ -326,7 +326,7 @@ for line in sys.stdin:
         std::fs::write(&script, FAKE).unwrap();
         let cfg = ServerConfig { command: "python3".into(), args: vec![script.display().to_string()], env: Default::default(), url: None, disabled: false };
         let c = Client::connect("fake", &cfg).await.unwrap();
-        assert_eq!(c.server_info.lock().unwrap()["name"], "fake");
+        assert_eq!(c.server_info.lock().unwrap_or_else(|e| e.into_inner())["name"], "fake");
         let tools = c.list_tools().await.unwrap();
         assert_eq!(tools[0].name, "echo");
         assert_eq!(c.call_tool("echo", json!({"text": "hi"})).await.unwrap(), "echo: hi");

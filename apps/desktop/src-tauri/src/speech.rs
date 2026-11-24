@@ -97,20 +97,20 @@ impl SpeechStream {
     }
 
     fn say(&mut self, raw: &str) {
-        let marks: Vec<_> = crate::narrate::indexes(raw).into_iter().filter_map(|i| self.marks.marks.get(i).cloned()).collect();
+        let marks = crate::narrate::placed(raw, &self.marks.marks);
         let text = speakable(&crate::narrate::clean(raw));
         if text.chars().filter(|c| c.is_alphanumeric()).count() < 2 {
-            crate::narrate::run(&self.app, marks);
+            crate::narrate::run(&self.app, crate::narrate::marks_of(marks));
             return;
         }
         self.n += 1;
         let id = format!("{}-{}", self.turn, self.n);
         emit(&self.app, Event::new("speech.segment", json!({ "id": id, "text": text, "turn": self.turn })));
         if self.enabled {
-            crate::narrate::on_start_of(&id, marks);
+            crate::narrate::on_start_of(&id, &text, marks);
             speak(&self.app, &id, &text);
         } else {
-            crate::narrate::run(&self.app, marks);
+            crate::narrate::run(&self.app, crate::narrate::marks_of(marks));
         }
     }
 

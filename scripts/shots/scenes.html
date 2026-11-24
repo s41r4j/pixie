@@ -1,0 +1,272 @@
+<!doctype html>
+<!-- Stand-in desktops for the website and README pictures (scripts/shots/make.mjs).
+     ?scene=buddy|ask|do. Each scene lists the marks Pixie draws on it in window.SCENE, worked
+     out from the elements tagged data-at, so the real overlay draws them in the right place. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "VT323"; src: url(../../resources/fonts/VT323-Regular.ttf); }
+@font-face { font-family: "IBM Plex Mono"; src: url(../../resources/fonts/IBMPlexMono-Regular.ttf); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url(../../resources/fonts/IBMPlexMono-SemiBold.ttf); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1280px; height: 800px; overflow: hidden; }
+body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #1d1d1f; -webkit-font-smoothing: antialiased;
+  background: radial-gradient(120% 90% at 15% 10%, #dfe7f1 0%, #c8d3e2 45%, #b7c2d3 100%); }
+body::before { content: ""; position: fixed; inset: 0; opacity: .35; background:
+  radial-gradient(60% 50% at 85% 85%, #e9dccb 0%, transparent 70%), radial-gradient(40% 40% at 70% 20%, #f3f0ea 0%, transparent 70%); }
+
+/* menu bar + notch */
+.menubar { position: fixed; top: 0; left: 0; right: 0; height: 30px; display: flex; align-items: center; gap: 20px; padding: 0 16px;
+  background: rgba(246,246,248,.72); backdrop-filter: blur(20px); font-size: 13px; z-index: 5; }
+.menubar b { font-weight: 700; }
+.menubar .right { margin-left: auto; display: flex; gap: 16px; align-items: center; color: #222; }
+.apple { width: 13px; height: 15px; background: #111; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 17'%3E%3Cpath d='M11.6 9c0-2 1.7-3 1.8-3-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8-.7 0-1.7-.8-2.8-.7C3 4.5 1.6 5.4.9 6.8c-1.5 2.6-.4 6.4 1 8.5.7 1 1.5 2.2 2.6 2.1 1-.1 1.4-.7 2.7-.7s1.6.7 2.7.6c1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.4 0 0-2-.8-2-3.9zM9.6 3c.6-.7 1-1.7.9-2.7-.8 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z'/%3E%3C/svg%3E") center/contain no-repeat; }
+.icon { width: 16px; height: 12px; border: 1.5px solid #222; border-radius: 3px; position: relative; }
+.icon::after { content: ""; position: absolute; inset: 1.5px 5px 1.5px 1.5px; background: #222; border-radius: 1px; }
+.wifi { width: 16px; height: 12px; background: #222; -webkit-mask: radial-gradient(circle at 50% 100%, #000 2px, transparent 2.5px, transparent 4px, #000 4.5px, #000 6px, transparent 6.5px, transparent 8px, #000 8.5px, #000 10px, transparent 10.5px) ; clip-path: polygon(50% 100%, 0 20%, 100% 20%); }
+.notch { position: fixed; top: 0; left: 50%; transform: translateX(-50%); height: 34px; background: #000; z-index: 6;
+  border-radius: 0 0 14px 14px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.notch.idle { width: 190px; }
+.notch.talk { width: 300px; }
+.face { font: 22px/1 "VT323", monospace; color: #fff; letter-spacing: -1px; }
+.wave { display: flex; gap: 3px; align-items: center; height: 16px; }
+.wave i { width: 3px; background: #fff; }
+
+/* windows */
+.win { position: absolute; background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.25), 0 22px 60px rgba(30,40,60,.28), 0 6px 18px rgba(30,40,60,.12); }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.15); }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+
+/* caption: what Pixie is saying, the word being spoken lit up */
+.caption { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 1180px; padding: 10px 16px 11px;
+  background: #0b0b0b; color: #e8e8e8; font: 13px/1.45 "IBM Plex Mono", monospace; box-shadow: 4px 4px 0 rgba(0,0,0,.25); z-index: 4; white-space: nowrap; }
+.caption .who { color: #8a8a8a; margin-right: 10px; font-size: 12px; letter-spacing: 1px; }
+.caption .said { color: #fff; }
+.caption .now { background: #fff; color: #000; padding: 0 3px; }
+.caption .later { color: #6f6f6f; }
+
+/* ---------- browser ---------- */
+.browser { left: 104px; top: 66px; width: 1072px; height: 646px; }
+.chrome { height: 78px; background: #f1f1f3; border-bottom: 1px solid #dcdce0; }
+.tabs { display: flex; align-items: center; gap: 14px; padding: 12px 14px 0; }
+.tab { background: #fff; border-radius: 9px 9px 0 0; padding: 7px 14px 9px; font-size: 12px; display: flex; gap: 8px; align-items: center; min-width: 220px; }
+.tab .fav { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, #ff9a3c, #ff4f7b); }
+.tab.off { background: transparent; color: #666; min-width: 160px; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 6px 14px; background: #fff; }
+.nav { color: #888; font-size: 16px; letter-spacing: 6px; }
+.url { flex: 1; background: #f1f1f3; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: #333; }
+.url span { color: #999; }
+.page { position: relative; height: calc(100% - 78px); background: #fbfbfd; overflow: hidden; }
+.site-nav { display: flex; align-items: center; gap: 28px; padding: 18px 44px; border-bottom: 1px solid #eee; font-size: 13.5px; color: #444; background: #fff; }
+.logo { display: flex; gap: 9px; align-items: center; font-weight: 700; font-size: 16px; color: #111; margin-right: 18px; }
+.logo i { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg, #ff9a3c, #ff4f7b); }
+.site-nav .sign { margin-left: auto; border: 1px solid #ddd; border-radius: 8px; padding: 6px 12px; }
+.hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; padding: 46px 44px 0; }
+h1 { font-size: 40px; letter-spacing: -.8px; line-height: 1.1; }
+.sub { color: #6b6b72; font-size: 15px; margin: 12px 0 26px; }
+.dl { display: inline-flex; align-items: center; gap: 10px; background: #111; color: #fff; border-radius: 12px; padding: 15px 24px; font-size: 16px; font-weight: 600; }
+.dl .apple { background: #fff; }
+.dl small { font-weight: 400; color: #aaa; margin-left: 6px; font-size: 13px; }
+.chips { display: flex; gap: 8px; margin: 26px 0 14px; }
+.chip { border: 1px solid #ddd; border-radius: 99px; padding: 6px 13px; font-size: 13px; color: #555; background: #fff; }
+.chip.on { border-color: #111; color: #111; font-weight: 600; }
+.req { color: #7a7a80; font-size: 13px; }
+.other { margin-top: 26px; font-size: 13px; color: #555; }
+.other a { color: #2463eb; text-decoration: none; margin-right: 14px; }
+.card { background: #fff; border: 1px solid #ececf0; border-radius: 14px; padding: 22px 22px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+.card h3 { font-size: 15px; margin-bottom: 4px; }
+.card .ver { font-size: 12px; color: #999; margin-bottom: 14px; }
+.card li { list-style: none; padding: 8px 0; border-top: 1px solid #f2f2f4; font-size: 13px; color: #444; display: flex; gap: 10px; }
+.card li b { color: #111; font-weight: 600; min-width: 64px; }
+.card .more { display: inline-block; margin-top: 12px; color: #2463eb; font-size: 13px; }
+.shots { display: flex; gap: 14px; padding: 34px 44px; }
+.shots div { flex: 1; border-radius: 12px; background: #fff; border: 1px solid #ececf0; padding: 16px 18px; font-size: 13px; color: #666; }
+.shots b { display: block; color: #111; font-size: 14px; margin: 10px 0 4px; }
+.shots i { display: block; width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, #ffb36b, #ff6f91); }
+.shots div:nth-child(2) i { background: linear-gradient(135deg, #7cc4ff, #6be3b0); }
+.shots div:nth-child(3) i { background: linear-gradient(135deg, #ffd66b, #ff8fb1); }
+
+/* ---------- slides app ---------- */
+.slides { left: 92px; top: 64px; width: 1096px; height: 664px; background: #ececee; }
+.slides .top { height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 16px; background: #f6f6f7; border-bottom: 1px solid #d9d9dd; }
+.slides .title { font-weight: 600; font-size: 13px; color: #333; margin-left: 10px; }
+.tools { margin-left: auto; display: flex; gap: 6px; }
+.tool { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: #555; padding: 4px 9px; border-radius: 7px; }
+.tool i { width: 22px; height: 16px; border: 1.6px solid #555; border-radius: 4px; }
+.tool.play i { border: none; width: 0; height: 0; border-left: 14px solid #555; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+.body { display: flex; height: calc(100% - 52px); }
+.thumbs { width: 180px; padding: 14px 14px; display: flex; flex-direction: column; gap: 12px; background: #e6e6e9; border-right: 1px solid #d6d6da; }
+.thumb { height: 90px; background: #fff; border-radius: 4px; position: relative; box-shadow: 0 0 0 1px #d0d0d4; }
+.thumb.on { box-shadow: 0 0 0 3px #2f6fed; }
+.thumb::before { content: ""; position: absolute; left: 12px; top: 12px; width: 60px; height: 6px; background: #222; border-radius: 2px; }
+.thumb::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 12px; height: 46px; background: repeating-linear-gradient(90deg, #c9c9cf 0 14px, transparent 14px 22px); clip-path: polygon(0 60%, 25% 40%, 50% 50%, 75% 20%, 100% 0, 100% 100%, 0 100%); }
+.stage { flex: 1; display: flex; align-items: center; justify-content: center; }
+.slide { width: 760px; height: 428px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); padding: 34px 44px; position: relative; }
+.slide h2 { font-size: 26px; letter-spacing: -.3px; }
+.slide .note { color: #888; font-size: 13px; margin-top: 4px; }
+.chart { position: absolute; left: 44px; right: 44px; bottom: 54px; height: 260px; display: flex; align-items: flex-end; gap: 34px; padding: 0 20px; border-bottom: 2px solid #222; }
+.chart .col { flex: 1; position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.chart .b { width: 100%; background: #c9cdd6; border-radius: 4px 4px 0 0; }
+.chart .col.hi .b { background: #1f2a44; }
+.chart .v { font-size: 12.5px; color: #555; margin-bottom: 6px; font-weight: 600; }
+.chart .m { position: absolute; bottom: -24px; font-size: 12px; color: #777; }
+.delta { position: absolute; right: 52px; top: 40px; background: #e8f6ee; color: #137a3a; font-weight: 700; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+
+/* export sheet */
+.dim { position: absolute; inset: 52px 0 0 0; background: rgba(0,0,0,.08); }
+.sheet { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); width: 520px; background: #f6f6f7; border-radius: 0 0 12px 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.28), 0 0 0 .5px rgba(0,0,0,.2); padding: 20px 22px 18px; }
+.sheet h4 { font-size: 13px; text-align: center; margin-bottom: 14px; }
+.seg { display: flex; justify-content: center; margin-bottom: 18px; }
+.seg span { padding: 4px 14px; font-size: 12px; border: 1px solid #c8c8cc; background: #fff; }
+.seg span:first-child { border-radius: 6px 0 0 6px; } .seg span:last-child { border-radius: 0 6px 6px 0; }
+.seg span.on { background: #6c6c70; color: #fff; border-color: #6c6c70; }
+.frow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; margin: 9px 0; font-size: 13px; }
+.frow label { text-align: right; color: #444; }
+.input { background: #fff; border: 1px solid #c8c8cc; border-radius: 6px; padding: 5px 9px; box-shadow: 0 0 0 3px rgba(47,111,237,.35); border-color: #2f6fed; }
+.input::after { content: ""; display: inline-block; width: 1.5px; height: 14px; background: #111; vertical-align: -2px; margin-left: 1px; }
+.popup { background: #fff; border: 1px solid #c8c8cc; border-radius: 6px; padding: 4px 9px; width: 200px; display: flex; justify-content: space-between; }
+.checks { margin: 12px 0 0 100px; font-size: 12.5px; color: #333; display: grid; gap: 6px; }
+.checks span::before { content: "✓"; display: inline-block; width: 15px; height: 15px; border-radius: 4px; background: #2f6fed; color: #fff; font-size: 11px; text-align: center; line-height: 15px; margin-right: 7px; }
+.btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.btns span { padding: 5px 16px; border-radius: 6px; background: #fff; border: 1px solid #c8c8cc; font-size: 13px; }
+.btns .primary { background: #2f6fed; color: #fff; border-color: #2f6fed; }
+.scene { display: none; }
+</style>
+</head>
+<body>
+<div class="menubar"><i class="apple"></i><b id="app">Safari</b><span>File</span><span>Edit</span><span>View</span><span>History</span><span>Window</span><span>Help</span>
+  <div class="right"><i class="wifi"></i><i class="icon"></i><span id="clock">Mon 17 Nov 10:09</span></div></div>
+<div class="notch talk"><span class="face">:)</span><span class="wave"><i style="height:6px"></i><i style="height:13px"></i><i style="height:9px"></i><i style="height:15px"></i><i style="height:7px"></i></span></div>
+
+<!-- Where's the download button? -->
+<section class="scene" id="buddy">
+  <div class="win browser">
+    <div class="chrome">
+      <div class="tabs"><div class="lights"><i></i><i></i><i></i></div><div class="tab"><i class="fav"></i>Download Lumen</div><div class="tab off">Inbox (3)</div></div>
+      <div class="bar"><span class="nav">‹ ›</span><div class="url"><span>https://</span>lumen.app/download</div></div>
+    </div>
+    <div class="page">
+      <div class="site-nav"><span class="logo"><i></i>Lumen</span><span>Features</span><span>Pricing</span><span>Blog</span><span>Support</span><span class="sign">Sign in</span></div>
+      <div class="hero">
+        <div>
+          <h1>Download Lumen</h1>
+          <p class="sub">The photo editor that stays out of your way. Free for 14 days.</p>
+          <span class="dl" data-at="dl"><i class="apple"></i>Download for Mac<small>4.2 · 212 MB</small></span>
+          <div class="chips"><span class="chip on" data-at="chip">Apple silicon</span><span class="chip">Intel</span></div>
+          <p class="req"><span data-at="req">Requires macOS 13 Ventura or later</span></p>
+          <p class="other">Other platforms: <a>Windows</a><a>Linux</a><a>iPad</a></p>
+        </div>
+        <div class="card">
+          <h3>What's new in 4.2</h3><p class="ver">Released 12 November</p>
+          <ul><li><b>Faster</b>Exports twice as quick on M-series Macs</li><li><b>Masks</b>Select a subject with one click</li><li><b>Fixes</b>Raw files from newer cameras open again</li></ul>
+          <span class="more" data-at="notes">Read the release notes →</span>
+        </div>
+      </div>
+      <div class="shots"><div><i></i><b>Edits that stay</b>Every change can be undone, even next week.</div><div><i></i><b>Your library, local</b>Photos stay on your Mac unless you share them.</div><div><i></i><b>One price</b>Buy once, updates for a year included.</div></div>
+    </div>
+  </div>
+  <p class="caption"><span class="who">PIXIE</span><span class="said">It's the big </span><span class="now">Download</span><span class="later"> for Mac button. Keep Apple silicon for your M3; you need macOS 13.</span></p>
+</section>
+
+<!-- How did revenue do this quarter? -->
+<section class="scene" id="ask">
+  <div class="win slides">
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="title">Q3 Review · Edited</span>
+      <div class="tools"><span class="tool"><i></i>View</span><span class="tool"><i></i>Zoom</span><span class="tool"><i></i>Chart</span><span class="tool"><i></i>Text</span><span class="tool play"><i></i>Play</span><span class="tool"><i></i>Share</span><span class="tool"><i></i>Format</span></div></div>
+    <div class="body">
+      <div class="thumbs"><div class="thumb"></div><div class="thumb on"></div><div class="thumb"></div><div class="thumb"></div><div class="thumb"></div></div>
+      <div class="stage"><div class="slide">
+        <h2>Q3 revenue</h2><p class="note">Monthly, in thousands of dollars</p>
+        <span class="delta" data-at="delta">+18% in November</span>
+        <div class="chart">
+          <div class="col"><span class="v">412</span><div class="b" style="height:120px"></div><span class="m">Jul</span></div>
+          <div class="col"><span class="v">448</span><div class="b" style="height:138px"></div><span class="m">Aug</span></div>
+          <div class="col"><span class="v">471</span><div class="b" style="height:150px"></div><span class="m">Sep</span></div>
+          <div class="col"><span class="v">509</span><div class="b" style="height:168px"></div><span class="m">Oct</span></div>
+          <div class="col hi" data-at="nov"><span class="v">601</span><div class="b" style="height:206px"></div><span class="m">Nov</span></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <p class="caption"><span class="who">PIXIE</span><span class="said">Revenue grew every month, and </span><span class="now">November</span><span class="later"> jumped 18%, mostly new customers.</span></p>
+</section>
+
+<!-- Export this as a PDF on my desktop. -->
+<section class="scene" id="do">
+  <div class="win slides">
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div><span class="title">Q3 Review</span>
+      <div class="tools"><span class="tool"><i></i>View</span><span class="tool"><i></i>Zoom</span><span class="tool"><i></i>Chart</span><span class="tool"><i></i>Text</span><span class="tool play"><i></i>Play</span><span class="tool"><i></i>Share</span><span class="tool"><i></i>Format</span></div></div>
+    <div class="body">
+      <div class="thumbs"><div class="thumb"></div><div class="thumb on"></div><div class="thumb"></div><div class="thumb"></div><div class="thumb"></div></div>
+      <div class="stage"><div class="slide">
+        <h2>Q3 revenue</h2><p class="note">Monthly, in thousands of dollars</p>
+        <div class="chart">
+          <div class="col"><span class="v">412</span><div class="b" style="height:120px"></div><span class="m">Jul</span></div>
+          <div class="col"><span class="v">448</span><div class="b" style="height:138px"></div><span class="m">Aug</span></div>
+          <div class="col"><span class="v">471</span><div class="b" style="height:150px"></div><span class="m">Sep</span></div>
+          <div class="col"><span class="v">509</span><div class="b" style="height:168px"></div><span class="m">Oct</span></div>
+          <div class="col hi"><span class="v">601</span><div class="b" style="height:206px"></div><span class="m">Nov</span></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="dim"></div>
+    <div class="sheet">
+      <h4>Export Your Presentation</h4>
+      <div class="seg"><span class="on">PDF</span><span>PowerPoint</span><span>Movie</span><span>Images</span><span>HTML</span></div>
+      <div class="frow"><label>Save As:</label><div class="input" data-at="name">Q3 Review.pdf</div></div>
+      <div class="frow"><label>Where:</label><div class="popup" data-at="where"><span>Desktop</span><span>⌄</span></div></div>
+      <div class="checks"><span>Include presenter notes</span><span>Include skipped slides</span></div>
+      <div class="btns"><span>Cancel</span><span class="primary" data-at="save">Save</span></div>
+    </div>
+  </div>
+  <p class="caption"><span class="who">PIXIE</span><span class="said">Named it Q3 Review, on your Desktop, and </span><span class="now">saving</span><span class="later"> it now.</span></p>
+</section>
+
+<script>
+const scene = new URLSearchParams(location.search).get("scene") || "buddy";
+document.getElementById(scene).style.display = "block";
+if (scene !== "buddy") document.getElementById("app").textContent = "Keynote";
+const at = (k) => { const r = document.querySelector(`#${scene} [data-at="${k}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+const pad = (r, p) => ({ x: r.x - p, y: r.y - p, w: r.w + 2 * p, h: r.h + 2 * p });
+const mid = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+// [event, payload, ms after the previous one]
+const marks = {
+  buddy: () => {
+    const notes = at("notes"), dl = at("dl");
+    return [
+      ["speech.start", { id: "s" }, 0],
+      ["overlay.highlight", { rect: pad(dl, 6) }, 200],
+      ["overlay.draw", { ops: [{ kind: "circle", ...pad(at("chip"), 4) }] }, 1600],
+      ["overlay.draw", { ops: [{ kind: "underline", ...at("req") }] }, 1600],
+      ["overlay.draw", { ops: [{ kind: "box", ...pad(notes, 5) }] }, 1600],
+      ["buddy.cursor", { x: dl.x + dl.w + 30, y: dl.y + dl.h + 8 }, 1400],
+    ];
+  },
+  ask: () => {
+    const nov = at("nov");
+    return [
+      ["speech.start", { id: "s" }, 0],
+      ["overlay.draw", { ops: [{ kind: "circle", ...pad(nov, 14) }] }, 200],
+      ["overlay.highlight", { rect: pad(at("delta"), 5) }, 1700],
+      ["buddy.cursor", { x: nov.x + nov.w + 16, y: nov.y + 40 }, 1500],
+    ];
+  },
+  do: () => {
+    const save = at("save");
+    return [
+      ["speech.start", { id: "s" }, 0],
+      ["overlay.draw", { ops: [{ kind: "underline", ...at("name") }] }, 200],
+      ["overlay.draw", { ops: [{ kind: "check", x: at("where").x + at("where").w + 10, y: at("where").y - 6 }] }, 1500],
+      ["overlay.highlight", { rect: pad(save, 4) }, 1400],
+      ["buddy.cursor", { x: save.x + save.w + 2, y: save.y + 2 }, 1400],
+    ];
+  },
+};
+document.fonts.ready.then(() => { window.SCENE = marks[scene](); });
+</script>
+</body>
+</html>

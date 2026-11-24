@@ -324,6 +324,8 @@ export interface UpdateStatus {
   total: number;
   checked_at: number | null;
   auto: boolean;
+  /** They chose Install on Quit (or closed the update window). */
+  on_quit: boolean;
   /** False in dev builds. */
   supported: boolean;
 }
@@ -397,6 +399,9 @@ export const api = {
   updateStatus: () => invoke<UpdateStatus>("update_status"),
   updateCheck: () => invoke<UpdateStatus>("update_check"),
   updateRestart: () => invoke<void>("update_restart"),
+  updateLater: () => invoke<void>("update_later"),
+  updateSkip: () => invoke<void>("update_skip"),
+  updateShow: () => invoke<void>("update_show"),
   canvasOpen: (id?: string) => invoke<string>("canvas_open", { id: id ?? null }),
   memoryList: () => invoke<MemoryNote[]>("memory_list"),
   memoryAdd: (text: string, kind: string) => invoke<MemoryNote>("memory_add", { text, kind }),

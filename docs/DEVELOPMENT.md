@@ -66,6 +66,16 @@ espeak-ng). **[CHECKLIST.md](../CHECKLIST.md)** ticks every feature and setting 
 a signed, notarized Mac build: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
 
+**Self-signed releases.** Without a Developer ID, releases are signed with Pixie's own
+self-signed certificate ("Pixie Self-Signed", made once with openssl, valid to 2046). macOS ties
+Screen Recording, Accessibility and the microphone to the certificate, so they stay on across
+updates; an ad-hoc signature changes with every build and turns them off. The repo secrets are
+`PIXIE_CODESIGN_P12` (the .p12, base64) and `PIXIE_CODESIGN_PASSWORD`; the build puts the
+certificate in a keychain of its own because Tauri only imports Apple-issued certificates itself.
+The .p12 and its password are kept with the updater key, never in the repo. Losing them means one
+more round of permissions for everyone, not a broken update. First opens still need right-click →
+Open, as before; only a Developer ID removes that.
+
 **Auto update.** Installed copies check `releases/latest/download/latest.json` (written by the
 release job) and install signed updates themselves (`src-tauri/src/updates.rs`). The signing key
 pair is made once with `npx tauri signer generate`; the public key is in `tauri.conf.json`
@@ -78,6 +88,11 @@ The website lives in `site/`: Home (with the interactive demo), Features, Downlo
 Changelog, sharing `site/assets/site.css` and `site/assets/site.js`. `npm run site` builds it into
 `_site/` with `scripts/build-site.sh` and serves it on http://localhost:8000; `pages.yml` deploys the
 same build (Settings → Pages → Source: GitHub Actions).
+
+The pictures of Pixie at work (`site/shots/buddy.png`, `ask.png`, `do.png`, also used in the README)
+are drawn by Pixie's real overlay over stand-in desktops in `scripts/shots/scenes.html`: start the
+preview with `npm run dev -w apps/desktop`, then run
+`node scripts/shots/make.mjs <path to chrome-headless-shell> [buddy|ask|do]`.
 
 ## Browser and connectors
 

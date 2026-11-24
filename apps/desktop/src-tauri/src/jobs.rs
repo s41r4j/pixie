@@ -6,6 +6,7 @@
 //!   note.md  output/  tmp/  inbox/  AGENTS.md  state.json
 //! ```
 
+use pixie_core::sync::LockOk;
 use crate::host::AppHost;
 use crate::{emit, panel, session, AppState};
 use pixie_core::model::{JobState, PlanStep, StepStatus};
@@ -149,18 +150,18 @@ fn slim(messages: &[Message]) -> Vec<Message> {
 
 impl Jobs {
     pub fn list(&self) -> Vec<JobView> {
-        let mut v: Vec<JobView> = self.map.lock().unwrap().values().map(|e| e.view.clone()).collect();
+        let mut v: Vec<JobView> = self.map.lock_ok().values().map(|e| e.view.clone()).collect();
         v.sort_by_key(|j| std::cmp::Reverse(j.created_at));
         v
     }
 
     pub fn get(&self, id: &str) -> Option<JobView> {
-        self.map.lock().unwrap().get(id).map(|e| e.view.clone())
+        self.map.lock_ok().get(id).map(|e| e.view.clone())
     }
 
     fn update<F: FnOnce(&mut Entry)>(&self, app: &AppHandle, id: &str, f: F) -> Option<JobView> {
         let view = {
-            let mut m = self.map.lock().unwrap();
+            let mut m = self.map.lock_ok();
             let e = m.get_mut(id)?;
             f(e);
             e.view.updated_at = now_ms();
@@ -185,7 +186,7 @@ impl Jobs {
             .filter_map(|s| serde_json::from_str::<Saved>(&s).ok())
             .collect();
         loaded.sort_by_key(|s| std::cmp::Reverse(s.view.created_at));
-        let mut m = self.map.lock().unwrap();
+        let mut m = self.map.lock_ok();
         for mut s in loaded.into_iter().take(30) {
             if matches!(s.view.state, JobState::Running | JobState::WaitingOnUser | JobState::Offered) {
                 s.view.state = JobState::Failed;
@@ -238,7 +239,7 @@ pub fn start(app: &AppHandle, title: &str, instructions: &str, kind: &str) -> Re
         kind: kind.to_string(),
         coders: vec![],
     };
-    st.jobs.map.lock().unwrap().insert(
+    st.jobs.map.lock_ok().insert(
         id.clone(),
         Entry { view: view.clone(), messages: vec![Message::user_text(instructions)], cancel: CancellationToken::new(), answer: None },
     );
@@ -271,7 +272,7 @@ pub fn message(app: &AppHandle, id: &str, text: &str) -> Result<(), String> {
 
 pub fn answer(app: &AppHandle, id: &str, text: &str) -> Result<(), String> {
     let st = app.state::<AppState>();
-    let tx = st.jobs.map.lock().unwrap().get_mut(id).and_then(|e| e.answer.take());
+    let tx = st.jobs.map.lock_ok().get_mut(id).and_then(|e| e.answer.take());
     match tx {
         Some(tx) => {
             let _ = tx.send(text.to_string());
@@ -287,7 +288,7 @@ pub fn answer(app: &AppHandle, id: &str, text: &str) -> Result<(), String> {
 
 pub fn cancel(app: &AppHandle, id: &str) {
     let st = app.state::<AppState>();
-    let mut m = st.jobs.map.lock().unwrap();
+    let mut m = st.jobs.map.lock_ok();
     if let Some(e) = m.get_mut(id) {
         e.cancel.cancel();
         e.answer.take();
@@ -302,7 +303,7 @@ pub fn dismiss(app: &AppHandle, id: &str) {
 pub fn delete(app: &AppHandle, id: &str) {
     cancel(app, id);
     let st = app.state::<AppState>();
-    if let Some(e) = st.jobs.map.lock().unwrap().remove(id) {
+    if let Some(e) = st.jobs.map.lock_ok().remove(id) {
         let _ = std::fs::remove_dir_all(&e.view.cwd);
     }
     emit(app, Event::with_job("job.removed", id, json!({})));
@@ -355,7 +356,7 @@ pub async fn ask(app: &AppHandle, id: &str, question: &str, choices: Vec<String>
     let st = app.state::<AppState>();
     let (tx, rx) = oneshot::channel();
     let cancel = {
-        let mut m = st.jobs.map.lock().unwrap();
+        let mut m = st.jobs.map.lock_ok();
         let e = m.get_mut(id).ok_or("No such job.")?;
         e.answer = Some(tx);
         e.cancel.clone()
@@ -405,14 +406,14 @@ fn friendly_progress(name: &str, input: &Value) -> Option<String> {
 /// Is a live agent working on the screen?
 pub fn live_running(app: &AppHandle) -> bool {
     let st = app.state::<AppState>();
-    let m = st.jobs.map.lock().unwrap();
+    let m = st.jobs.map.lock_ok();
     m.values().any(|e| e.view.kind == "live" && e.view.state == JobState::Running)
 }
 
 /// Stop every live agent (esc).
 pub fn cancel_live(app: &AppHandle) {
     let st = app.state::<AppState>();
-    let m = st.jobs.map.lock().unwrap();
+    let m = st.jobs.map.lock_ok();
     for e in m.values() {
         if e.view.kind == "live" && matches!(e.view.state, JobState::Running | JobState::WaitingOnUser) {
             e.cancel.cancel();
@@ -431,7 +432,7 @@ fn drive(app: AppHandle, id: String) {
             });
             return;
         };
-        let Some((view, mut messages, cancel)) = st.jobs.map.lock().unwrap().get(&id).map(|e| (e.view.clone(), e.messages.clone(), e.cancel.clone())) else {
+        let Some((view, mut messages, cancel)) = st.jobs.map.lock_ok().get(&id).map(|e| (e.view.clone(), e.messages.clone(), e.cancel.clone())) else {
             return;
         };
         let host = Arc::new(AppHost { app: app.clone() });

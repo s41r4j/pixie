@@ -1,6 +1,30 @@
 # Changelog
 
-## 0.8.1 · unreleased
+## 0.8.2 · 2026-11-24
+Pixie now marks exactly what it's talking about, as it says it, and stays steady while it does.
+
+### New
+
+- **A proper update window.** When a new version is downloaded and verified, Pixie shows what's new and asks: **Install and Relaunch**, **Install on Quit** or **Skip This Version**, with "Automatically download and install updates" right there. Nothing is installed without asking, and closing the window means Install on Quit. On Mac, Windows and Linux.
+- **Marks keep time with the voice.** A mark used to appear when its sentence started. Now each one appears as the words just before it are spoken: "the big Download button" lights up the button as "Download" is said, then the next mark waits for its own words.
+- **A click outside puts the 3D view away**, like the canvas: the window closes, stops drawing, and the rest of the explanation doesn't bring it back until Pixie shows a new model.
+- **The update box fills as it downloads**, with the size so far when GitHub doesn't say the total.
+
+### Fixed
+
+- **Marks land on the thing Pixie is talking about.** Asked where a download button was, Pixie marked the wrong places. Three causes, all fixed. A position copied from the list of controls (in screen points) was read as a position on the screenshot (in its smaller pixels) and moved by a third, so a mark meant for one button landed on another: numbers are now tried both ways and the one that lands on a real control or line of text wins. Text the model asked for by name wasn't found when the screen reading had a slip (a capital I for an l) or a sentence ran over two lines: names are now matched ignoring case, punctuation and the letters screen reading mixes up, and by most of their words. And in Chromium browsers (Chrome, Arc, Edge, Brave, Ardia) and Electron apps, a page's buttons and links weren't listed at all, so Pixie could only guess from the picture: Pixie now asks those apps to show their pages to Accessibility, and controls scrolled out of view can no longer crowd out the ones on screen.
+- **The 3D view no longer drags the computer down.** In 0.8.1, closing the 3D window only hid it, so its graphics memory stayed in use; now it really closes. It draws at most 60 frames a second (ProMotion screens asked for 120), lowers its quality when frames stay slow, stops its motion after a minute nobody touched it (Play starts it again), no longer asks Macs with two graphics chips to switch to the power-hungry one, and rebuilds itself if the graphics card resets instead of freezing.
+- **Permissions survive updates.** Releases are now signed with Pixie's own certificate instead of a throwaway signature, so macOS recognises each update as the same app and keeps Screen Recording, Accessibility and the microphone on. (Updating to 0.8.2 asks for them once more; after that they stay.)
+- **Dictation never loses your words.** If Pixie can't type them in (Accessibility off, the field gone), they go on the clipboard and Pixie says so.
+- **A slow app can't stall Pixie.** Reading another app's controls now gives up on any one that doesn't answer within a quarter of a second, instead of waiting up to 6 seconds while the mic and typing waited behind it; a look at the screen answers with what it has after 5 seconds.
+- **One bug can't break the rest.** A crash in one part of a turn used to leave shared state locked for good, so speaking or listening failed until Pixie restarted; now the next turn carries on.
+
+### Behind the scenes
+
+- **Pictures that show the real thing.** The README and website shots are now drawn by Pixie's own overlay over a realistic desktop (`scripts/shots`), and the README opens with the new Pixie logo instead of the old name.
+- **CI passes on Windows and Linux.** Two shortcut tests about the fn key, which only Macs have, now run on Macs only.
+
+## 0.8.1 · 2026-11-15
 Pixie's name everywhere.
 
 - **Clicks land on what Pixie meant.** Asked to message someone in WhatsApp, Pixie opened other chats: a click was moved to the nearest control even when that wasn't under the point, a contact scrolled out of the list was clicked where it used to be (below the screen), and Pixie reported the label it expected rather than what it hit. Now a click by control id goes to that exact control as it is right now (scrolled into view first when it's out of its list), and is refused when something covers it or it has changed; a click at a point stays at that point; every click says what it actually landed on; and controls out of view are marked as such for the model.
@@ -21,7 +45,7 @@ Pixie's name everywhere.
 - **Housekeeping.** The log starts a new file when it's full while Pixie runs (before, only at launch). Quitting Pixie no longer logs "helper exited" as a problem. Google calls reuse one connection.
 - **Report a problem on Windows** now removes your user folder from the draft, like on the Mac.
 
-## 0.8.0 · unreleased
+## 0.8.0 · 2026-11-10
 Pixie looks after itself, works across several screens, draws while it explains (in 3D too), costs less to run, can run with no API key, and dictation can type as you speak. Everything from 0.7.8 to 0.7.17 ships here (those versions were only built locally).
 
 **Self-healing**

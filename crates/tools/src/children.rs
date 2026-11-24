@@ -5,6 +5,7 @@
 //! closes) and ends the groups in the file. Stopping or timing out a command ends its whole group,
 //! not only the shell at the top (a `npm run dev` under it kept running before).
 
+use pixie_core::sync::LockOk;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tokio::process::Command;
@@ -52,7 +53,7 @@ impl Drop for Guard {
 /// List a spawned process (its pid is its group id after [`prepare`]).
 pub fn add(pid: Option<u32>) -> Guard {
     let Some(pid) = pid else { return Guard(None) };
-    let mut list = LIST.lock().unwrap();
+    let mut list = LIST.lock_ok();
     // Groups that have ended drop off, so the list stays short.
     list.retain(|p| alive(*p));
     list.push(pid);
@@ -62,7 +63,7 @@ pub fn add(pid: Option<u32>) -> Guard {
 
 /// Pixie is quitting: end every group still running.
 pub fn kill_all() {
-    let mut list = LIST.lock().unwrap();
+    let mut list = LIST.lock_ok();
     for p in list.drain(..) {
         kill_group(p);
     }

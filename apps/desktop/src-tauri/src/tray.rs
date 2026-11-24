@@ -8,11 +8,11 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager};
 
 static UPDATE_ITEM: std::sync::OnceLock<MenuItem<tauri::Wry>> = std::sync::OnceLock::new();
-/// "Restart to Update" once a new version is waiting.
+/// "Install Pixie x.y.z…" once a new version is waiting (opens the update window).
 pub fn update_item(_app: &AppHandle) {
     if let Some(item) = UPDATE_ITEM.get() {
         let text = match crate::updates::ready_version() {
-            Some(v) => format!("Restart to Update to {v}"),
+            Some(v) => format!("Install Pixie {v}…"),
             None => "Check for Updates…".to_string(),
         };
         let _ = item.set_text(text);
@@ -62,11 +62,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             "settings" => commands::open_permissions_window(app),
             "update" => {
                 if crate::updates::ready_version().is_some() {
-                    let _ = crate::updates::restart_now(app);
+                    crate::updates::show(app);
                 } else {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let s = crate::updates::check(&app).await.unwrap_or_default();
+                        let s = crate::updates::check(&app, true).await.unwrap_or_default();
                         let msg = match s["phase"].as_str().unwrap_or("") {
                             "up_to_date" => format!("Pixie {} is the newest version.", s["current"].as_str().unwrap_or("")),
                             "error" => s["error"].as_str().unwrap_or("Couldn't check for updates.").to_string(),

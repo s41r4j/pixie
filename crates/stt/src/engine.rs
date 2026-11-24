@@ -129,10 +129,10 @@ impl Engine {
                         let _ = ready_tx.send(Err(e.to_string()));
                     } else if let Some(t) = v["text"].as_str() {
                         if v["final"].as_bool() == Some(true) {
-                            last2.lock().unwrap().clear();
+                            last2.lock().unwrap_or_else(|e| e.into_inner()).clear();
                             let _ = final_tx.send(t.to_string());
                         } else {
-                            *last2.lock().unwrap() = t.to_string();
+                            *last2.lock().unwrap_or_else(|e| e.into_inner()) = t.to_string();
                             on_text(t);
                         }
                     }
@@ -179,13 +179,13 @@ impl Engine {
                 Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {}
             }
         }
-        std::mem::take(&mut *self.last.lock().unwrap())
+        std::mem::take(&mut *self.last.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     /// Throw away what was heard.
     pub fn forget(&mut self) {
         self.send(b'R', &[]);
-        self.last.lock().unwrap().clear();
+        self.last.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     pub fn alive(&mut self) -> bool {

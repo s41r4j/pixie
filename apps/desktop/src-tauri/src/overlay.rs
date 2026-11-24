@@ -5,6 +5,7 @@
 //! the UI converts using the window's *actual* frame. Targets snap to the nearest real control
 //! or text line from the last capture.
 
+use pixie_core::sync::LockOk;
 use crate::macos::{self, Rect};
 use crate::{emit, screen, AppState, OVERLAY};
 use pixie_core::Event;
@@ -95,34 +96,62 @@ fn num(v: &Value, k: &str) -> f64 {
     v.get(k).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
+/// The ways numbers from the model can be read: as screen points (what the lists and tool
+/// results give), and, when it saw the screenshot, as that image's pixels (scaled to points).
+fn readings(cap: Option<&screen::Capture>, raw: Rect) -> Vec<Rect> {
+    let mut v = vec![raw];
+    if let Some(c) = cap.filter(|_| crate::narrate::saw_image()) {
+        let (k, ox, oy) = c.pixel_scale();
+        if (k - 1.0).abs() > 0.01 || ox != 0.0 || oy != 0.0 {
+            v.push(Rect { x: ox + raw.x * k, y: oy + raw.y * k, w: raw.w * k, h: raw.h * k });
+        }
+    }
+    v
+}
+
+/// Is the middle of `r` on the screen that was captured?
+fn on_display(cap: Option<&screen::Capture>, r: &Rect) -> bool {
+    let Some(d) = cap.map(|c| &c.display).filter(|d| d.w > 0.0) else { return true };
+    let (x, y) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
+    x >= d.x && x <= d.x + d.w && y >= d.y && y <= d.y + d.h
+}
+
 /// Where to point: a named target (id or on-screen text) wins; then coordinates snapped to the
-/// nearest real item; then, if the coordinates hit nothing, the label as a target. Returns None
-/// when nothing on screen backs the request (so the model can try again instead of pointing at
-/// empty space).
+/// nearest real item, read as points or as screenshot pixels, whichever lands on something
+/// (models copy points from the lists but read positions off the image in pixels); then the
+/// label as a target. Err when nothing on screen backs the request (so the model can try again
+/// instead of pointing at empty space).
 fn locate(app: &AppHandle, input: &Value, label: &str) -> Result<Rect, String> {
-    let cap = app.state::<AppState>().last_capture.lock().unwrap().clone();
+    let cap = app.state::<AppState>().last_capture.lock_ok().clone();
+    let label = if label.is_empty() { input.get("label").and_then(Value::as_str).unwrap_or("") } else { label };
     let has_xy = input.get("x").and_then(Value::as_f64).is_some() && input.get("y").and_then(Value::as_f64).is_some();
     let raw = Rect { x: num(input, "x"), y: num(input, "y"), w: num(input, "w").max(8.0), h: num(input, "h").max(8.0) };
-    let near = has_xy.then_some((raw.x + raw.w / 2.0, raw.y + raw.h / 2.0));
+    let reads = if has_xy { readings(cap.as_ref(), raw) } else { vec![] };
     let as_rect = |f: screen::Frame| Rect { x: f.x, y: f.y, w: f.w, h: f.h };
     if let Some(c) = &cap {
+        let near = reads.first().map(|r| (r.x + r.w / 2.0, r.y + r.h / 2.0));
         if let Some(t) = input.get("target").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
             if let Some(f) = screen::find(c, t, near) {
                 return Ok(as_rect(f));
             }
         }
-        if has_xy {
-            if let Some(f) = screen::snap(c, raw.x, raw.y, raw.w, raw.h, label) {
-                return Ok(as_rect(f));
-            }
+        let best = reads
+            .iter()
+            .filter(|r| on_display(cap.as_ref(), r))
+            .filter_map(|r| screen::snap_scored(c, r.x, r.y, r.w, r.h, label))
+            .max_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((_, f)) = best {
+            return Ok(as_rect(f));
         }
         if let Some(f) = screen::find(c, label, near) {
             return Ok(as_rect(f));
         }
     }
     if has_xy && (raw.x != 0.0 || raw.y != 0.0) {
-        // Nothing listed there (an image, a canvas): trust the coordinates.
-        return Ok(raw);
+        // Nothing listed there (an image, a canvas): trust the coordinates, as points unless
+        // only the pixel reading is on the screen.
+        let pick = reads.iter().find(|r| on_display(cap.as_ref(), r)).copied().unwrap_or(raw);
+        return Ok(pick);
     }
     Err("I couldn't find that on screen. Give target (an element id like e12 or the exact text from the lists) or the x, y, w, h from the lists.".into())
 }

@@ -7,6 +7,7 @@
 //! the rest are found with the tool's search. Anything that looks like a password or key is
 //! refused. Settings → Memory → Off stops both reading and learning.
 
+use pixie_core::sync::LockOk;
 use crate::AppState;
 use pixie_llm::{Effort, Message, Request, ToolDef};
 use serde::{Deserialize, Serialize};
@@ -158,7 +159,7 @@ pub fn add(data: &Path, text: &str, kind: &str, source: &str) -> Result<(Note, b
     if looks_secret(text) {
         return Err("That looks like a password or key; I don't keep those.".into());
     }
-    let _g = LOCK.lock().unwrap();
+    let _g = LOCK.lock_ok();
     let mut notes = load(data);
     let t = now();
     if let Some(n) = notes.iter_mut().find(|n| n.text.eq_ignore_ascii_case(text) || similar(&n.text, text)) {
@@ -194,7 +195,7 @@ pub fn update(data: &Path, id: &str, text: &str, kind: Option<&str>) -> Result<N
     if looks_secret(text) {
         return Err("That looks like a password or key; I don't keep those.".into());
     }
-    let _g = LOCK.lock().unwrap();
+    let _g = LOCK.lock_ok();
     let mut notes = load(data);
     let n = notes.iter_mut().find(|n| n.id == id).ok_or("No such note.")?;
     n.text = text.to_string();
@@ -208,7 +209,7 @@ pub fn update(data: &Path, id: &str, text: &str, kind: Option<&str>) -> Result<N
 }
 
 pub fn remove(data: &Path, id: &str) -> bool {
-    let _g = LOCK.lock().unwrap();
+    let _g = LOCK.lock_ok();
     let mut notes = load(data);
     let before = notes.len();
     notes.retain(|n| n.id != id);
@@ -220,7 +221,7 @@ pub fn remove(data: &Path, id: &str) -> bool {
 }
 
 pub fn clear(data: &Path) {
-    let _g = LOCK.lock().unwrap();
+    let _g = LOCK.lock_ok();
     save(data, &[]);
     let _ = std::fs::remove_file(data.join("memory.md"));
 }
@@ -240,7 +241,7 @@ fn score(n: &Note, t: i64) -> f64 {
 /// Best matches for a query (and they count as used).
 pub fn search(data: &Path, query: &str, limit: usize) -> Vec<Note> {
     let q = words(query);
-    let _g = LOCK.lock().unwrap();
+    let _g = LOCK.lock_ok();
     let mut notes = load(data);
     let t = now();
     let mut hits: Vec<(f64, usize)> = notes

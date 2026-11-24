@@ -315,6 +315,8 @@ mod tests {
         assert!(matches!(t.update(CO | FLAG_COMMAND, false, now)[..], [HotkeyEvent::TalkUp { .. }]));
     }
 
+    // fn exists only on the Mac; elsewhere a chord with fn becomes Ctrl+Win (`configure`).
+    #[cfg(target_os = "macos")]
     #[test]
     fn fn_control_is_dictation_not_talk() {
         let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
@@ -333,6 +335,7 @@ mod tests {
         assert!(POLL_RESTING < SHARED_HOLD / 4, "a held fn is still seen well inside its hold");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn fn_alone_waits_for_a_hold() {
         let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());

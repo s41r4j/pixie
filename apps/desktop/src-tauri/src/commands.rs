@@ -1,5 +1,6 @@
 //! Tauri commands called from the UI. Permission commands live in `permissions.rs`.
 
+use pixie_core::sync::LockOk;
 use crate::config::Settings;
 use crate::jobs::{self, JobView};
 use crate::macos::Rect;
@@ -149,7 +150,7 @@ pub fn sound_custom(app: AppHandle, slot: String, name: String, data: String) ->
         path.display().to_string()
     };
     {
-        let mut s = state.settings.lock().unwrap();
+        let mut s = state.settings.lock_ok();
         s.sounds.entry(slot.clone()).or_default().custom = custom;
         s.save(&state.data_dir);
         if let Ok(mut bus) = state.audio.lock() {
@@ -387,7 +388,7 @@ fn mask(k: &str) -> String {
 
 #[tauri::command]
 pub fn settings_get(state: State<'_, AppState>) -> SettingsView {
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = state.settings.lock_ok().clone();
     let cfg = crate::config::provider_config(&state.data_dir, &settings);
     if settings.provider == "opencode" && crate::opencode::binary().is_some() {
         let m = settings.models.get("opencode").cloned().unwrap_or_default();
@@ -445,7 +446,7 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
     let provider_was = state.settings.lock().map(|s| s.provider.clone()).unwrap_or_default();
     let notch_was = state.settings.lock().map(|s| s.notch_screen.clone()).unwrap_or_default();
     {
-        let mut s = state.settings.lock().unwrap();
+        let mut s = state.settings.lock_ok();
         let mut cur = serde_json::to_value(&*s).map_err(|e| e.to_string())?;
         if let (Some(obj), Some(p)) = (cur.as_object_mut(), patch.as_object()) {
             for (k, v) in p {
@@ -487,7 +488,7 @@ pub fn settings_set(app: AppHandle, patch: Value) -> Result<SettingsView, String
 #[tauri::command]
 pub async fn models_available(app: AppHandle, provider: String) -> Result<Value, String> {
     let state = app.state::<AppState>();
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = state.settings.lock_ok().clone();
     let models = crate::usage::fetch_models(&state.data_dir, &settings, &provider).await?;
     let at = crate::usage::catalog().lock().map(|c| c.fetched_at).unwrap_or(0);
     Ok(json!({ "models": models, "prices_at": at }))
@@ -504,7 +505,7 @@ pub async fn prices_refresh(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 pub fn usage_summary(app: AppHandle, days: Option<i64>, provider: Option<String>, kind: Option<String>) -> Value {
     let state = app.state::<AppState>();
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = state.settings.lock_ok().clone();
     let lines = crate::usage::read(&state.data_dir);
     let f = crate::usage::Filter { days: days.unwrap_or(30), provider: provider.unwrap_or_default(), kind: kind.unwrap_or_default() };
     let mut v = crate::usage::summary_with(&lines, &settings, &f, chrono::Utc::now().timestamp_millis());
@@ -603,7 +604,7 @@ pub async fn mic_test_stop(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn onboarding_done(app: AppHandle) {
     let state = app.state::<AppState>();
-    let mut s = state.settings.lock().unwrap();
+    let mut s = state.settings.lock_ok();
     s.onboarded = true;
     s.save(&state.data_dir);
 }
@@ -695,12 +696,33 @@ pub fn update_status(app: AppHandle) -> Value {
 
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Result<Value, String> {
-    crate::updates::check(&app).await
+    crate::updates::check(&app, true).await
 }
 
+/// Install and Relaunch. Off the main thread: macOS copies the running version aside first.
 #[tauri::command]
-pub fn update_restart(app: AppHandle) -> Result<(), String> {
-    crate::updates::restart_now(&app)
+pub async fn update_restart(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::updates::restart_now(&app)).await.map_err(|e| e.to_string())?
+}
+
+/// Install on Quit.
+#[tauri::command]
+pub fn update_later(app: AppHandle) {
+    crate::updates::later(&app);
+    crate::windows::close_update(&app);
+}
+
+/// Skip This Version.
+#[tauri::command]
+pub fn update_skip(app: AppHandle) {
+    crate::updates::skip(&app);
+    crate::windows::close_update(&app);
+}
+
+/// Open the update window again (Settings → About, the tray menu).
+#[tauri::command]
+pub fn update_show(app: AppHandle) {
+    crate::updates::show(&app);
 }
 
 

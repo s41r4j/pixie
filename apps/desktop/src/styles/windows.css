@@ -39,6 +39,15 @@ html[data-view="settings"] body, html[data-view="note"] body { background: radia
 .banner--ok { border-color: rgba(76,200,116,.35); background: rgba(76,200,116,.08); }
 .banner--warn { border-color: rgba(242,180,88,.4); background: rgba(242,180,88,.08); }
 .banner--muted { color: var(--secondary); }
+/* A banner that fills like a progress bar (an update downloading). */
+.banner--fill { position: relative; overflow: hidden; isolation: isolate; }
+.banner__fill { position: absolute; inset: 0 auto 0 0; width: 0; z-index: -1; background: var(--fill, rgba(127,127,127,.22)); transition: width 450ms cubic-bezier(.2,.7,.2,1); }
+.banner__fill::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(-45deg, transparent 0 6px, rgba(255,255,255,.07) 6px 12px); background-size: 17px 17px; animation: banner-crawl 900ms linear infinite; }
+.banner--fill.is-unknown .banner__fill { width: 34%; animation: banner-sweep 1.8s linear infinite; }
+.banner__text { position: relative; }
+@keyframes banner-crawl { to { background-position: 17px 0; } }
+@keyframes banner-sweep { 0% { transform: translateX(-70%); } 100% { transform: translateX(270%); } }
+@media (prefers-reduced-motion: reduce) { .banner__fill::after, .banner--fill.is-unknown .banner__fill { animation: none; } .banner--fill.is-unknown .banner__fill { width: 100%; opacity: .5; } }
 .steps { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: var(--secondary); line-height: 1.45; }
 .steps b { color: var(--label); }
 .soundboard { display: flex; flex-wrap: wrap; gap: 6px; }

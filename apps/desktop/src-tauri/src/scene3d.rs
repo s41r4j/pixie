@@ -2,9 +2,12 @@
 //! arrows they can spin, built by the `scene3d` tool. Marks in the spoken answer (`[[3d heart]]`)
 //! turn to and light up one object as its sentence plays.
 //!
-//! The window is created when a scene is shown and freed when it's closed. The scene itself is
-//! kept here so the window can load it when it starts.
+//! The window is created when a scene is shown and freed when it's closed (its close button, the
+//! model's `close`, or a click outside Pixie, as with the canvas). The scene itself is kept here
+//! so the window can load it when it starts. Once closed, nothing keeps drawing and the rest of
+//! the explanation doesn't bring it back until a new model is shown.
 
+use pixie_core::sync::LockOk;
 use crate::{emit, AppState};
 use pixie_core::Event;
 use pixie_llm::ToolDef;
@@ -23,6 +26,15 @@ const MAX_OBJECTS: usize = 80;
 const MAX_COPIES: usize = 600;
 
 static SCENE: Mutex<Option<Value>> = Mutex::new(None);
+/// They clicked away from the 3D view: marks and view changes leave it closed.
+static DISMISSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// When the last model was shown, so the old window closing just as a new one opens doesn't put
+/// the new one away.
+static SHOWN: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+fn dismissed() -> bool {
+    DISMISSED.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 pub fn enabled(app: &AppHandle) -> bool {
     app.state::<AppState>().settings.lock().map(|s| s.experiment(FLAG)).unwrap_or(false)
@@ -220,10 +232,13 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         "focus" => focus(app, input.get("name").and_then(Value::as_str).unwrap_or(""), ""),
         // Pull the parts apart, or slice the model open; `on: false` puts it back.
         view @ ("explode" | "cut") => {
-            if SCENE.lock().unwrap().is_none() {
+            if SCENE.lock_ok().is_none() {
                 return Err("No 3D view is open.".into());
             }
             let on = input.get("on").and_then(Value::as_bool).unwrap_or(true);
+            if dismissed() {
+                return Ok("They put the 3D view away; leave it closed unless they ask for it.".into());
+            }
             if app.get_webview_window(WINDOW).is_none() {
                 open(app);
             }
@@ -239,7 +254,9 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
         _ => {
             let scene = sanitize(input)?;
             let n = names(&scene);
-            *SCENE.lock().unwrap() = Some(scene.clone());
+            *SCENE.lock_ok() = Some(scene.clone());
+            DISMISSED.store(false, std::sync::atomic::Ordering::SeqCst);
+            *SHOWN.lock_ok() = Some(std::time::Instant::now());
             open(app);
             emit(app, Event::new("scene3d.show", scene));
             Ok(format!("Showing {} object(s) in 3D: {}. Use [[3d name]] in your sentences to turn to each.", n.len(), n.join(", ")))
@@ -249,13 +266,16 @@ pub async fn call(app: &AppHandle, input: &Value) -> Result<String, String> {
 
 /// Turn the view to one object and light it up.
 pub fn focus(app: &AppHandle, name: &str, label: &str) -> Result<String, String> {
-    let scene = SCENE.lock().unwrap().clone().ok_or("No 3D view is open.")?;
+    let scene = SCENE.lock_ok().clone().ok_or("No 3D view is open.")?;
     let all = names(&scene);
     let want = name.trim().to_lowercase();
     let hit = all.iter().find(|n| n.to_lowercase() == want).or_else(|| all.iter().find(|n| n.to_lowercase().contains(&want) && !want.is_empty()));
     let Some(hit) = hit else {
         return Err(format!("No object called {name}; there are: {}.", all.join(", ")));
     };
+    if dismissed() {
+        return Ok("The 3D view was put away.".into());
+    }
     if app.get_webview_window(WINDOW).is_none() {
         open(app);
     }
@@ -296,10 +316,36 @@ fn close(app: &AppHandle) {
     });
 }
 
+/// The 3D window lost focus: if they clicked outside Pixie (another app, the desktop), it
+/// closes and stays closed for the rest of this explanation. The notch or a Pixie sheet keeps it.
+pub fn blurred(app: &AppHandle) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let h = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            let Some(w) = h.get_webview_window(WINDOW) else { return };
+            if !w.is_focused().unwrap_or(false) && !crate::macos::app_active_in(&h) {
+                DISMISSED.store(true, std::sync::atomic::Ordering::SeqCst);
+                let _ = w.close();
+            }
+        });
+    });
+}
+
+/// The window is gone (they closed it, clicked away, or the model closed it): the rest of this
+/// explanation leaves it closed; only a new model opens it again.
+pub fn closed() {
+    let fresh = SHOWN.lock_ok().is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(1500));
+    if !fresh {
+        DISMISSED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// The window asks for the scene when it starts.
 #[tauri::command]
 pub fn scene3d_get() -> Option<Value> {
-    SCENE.lock().unwrap().clone()
+    SCENE.lock_ok().clone()
 }
 
 #[cfg(test)]
